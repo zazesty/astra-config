@@ -82,9 +82,13 @@ mkdir -p /root/.config/systemd/user
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.service" /root/.config/systemd/user/astra-commit.service
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.timer"   /root/.config/systemd/user/astra-commit.timer
 
-# Claude Code settings (SessionStart hooks: auto-commit config + warn on uncommitted app repo)
+# Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
 ln -sfnT "$REPO/home/.claude/settings.json" /root/.claude/settings.json
+
+# ~/.bashrc is tracked in the repo (carries the interactive grok-mcp warn snippet +
+# nvm setup). Symlink it into place; replaces the fresh-box default .bashrc.
+ln -sfnT "$REPO/home/.bashrc" /root/.bashrc
 
 # -----------------------------------------------------------------------------
 say "6/10  Git hooks + script perms (secret-scanning pre-commit)"
