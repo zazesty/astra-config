@@ -83,9 +83,10 @@ curl -s https://zaz-astra.tail5d74e1.ts.net/mcp -X POST \
 etc/systemd/system/grok-mcp.service   # the service unit (symlinked into place)
 etc/sysctl.d/99-swap.conf             # vm.swappiness=10
 home/.config/systemd/user/            # nightly auto-commit service + timer
-home/.claude/settings.json            # Claude Code SessionStart hooks (symlinked into place)
+home/.claude/settings.json            # Claude Code permissions + SessionStart hook (symlinked into place)
+home/.bashrc                          # operator shell rc (interactive warn snippet + nvm); symlinked into place
 scripts/commit-if-changed.sh          # commit repo iff dirty (hook + timer use it)
-scripts/warn-uncommitted.sh           # SessionStart: warn if grok-mcp has uncommitted changes
+scripts/warn-uncommitted.sh           # ~/.bashrc interactive reminder: warn if grok-mcp has uncommitted changes
 .githooks/pre-commit                  # aborts commits containing key-shaped strings
 .env.example                          # template for /etc/grok-mcp.env
 setup.sh                              # idempotent rebuild
@@ -93,10 +94,13 @@ setup.sh                              # idempotent rebuild
 
 ## Automation (keeps this repo current)
 
-- **SessionStart Claude hooks** (`~/.claude/settings.json`, itself symlinked into this
-  repo so it's captured): (1) `commit-if-changed.sh` auto-commits this repo; (2)
-  `warn-uncommitted.sh` warns at session start if **grok-mcp** (the app repo) has
-  uncommitted changes — it is NOT auto-committed; commit+push it via its own flow.
-- **Nightly user timer** (`astra-commit.timer`, 03:00) as the floor.
-- Both auto-commits are **commit only** (local). Push deliberately with your token:
+- **SessionStart Claude hook** (`~/.claude/settings.json`, itself symlinked into this
+  repo so it's captured): `commit-if-changed.sh` auto-commits this repo. That file also
+  carries the Claude permissions allow/deny policy.
+- **Interactive-shell reminder** (`~/.bashrc`, tracked in this repo + symlinked into
+  place): `warn-uncommitted.sh` prints to the operator's terminal (NOT Claude's context)
+  if **grok-mcp** (the app repo) has uncommitted work — it is NOT auto-committed;
+  commit+push it via its own flow.
+- **Nightly user timer** (`astra-commit.timer`, 03:00) as the floor for the config repo.
+- Auto-commits are **commit only** (local). Push deliberately with your token:
   `git -C /root/astra-config push`.
