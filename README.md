@@ -100,6 +100,7 @@ home/.config/systemd/user/            # nightly auto-commit service + timer
 home/.claude/settings.json            # Claude Code permissions + SessionStart hook (symlinked into place)
 home/.bashrc                          # operator shell rc (interactive warn snippet + nvm); symlinked into place
 scripts/commit-if-changed.sh          # commit repo iff dirty (hook + timer use it)
+scripts/push-if-ahead.sh              # push to origin iff local is ahead (nightly timer only; off-box backup floor 24h)
 scripts/warn-uncommitted.sh           # ~/.bashrc interactive reminder: warn if grok-mcp has uncommitted changes
 scripts/smoke-test.sh                 # curl funnel + assert tool count; setup.sh's final self-check (retries while Funnel warms up)
 .githooks/pre-commit                  # aborts commits containing key-shaped strings
@@ -116,6 +117,11 @@ setup.sh                              # idempotent rebuild
   place): `warn-uncommitted.sh` prints to the operator's terminal (NOT Claude's context)
   if **grok-mcp** (the app repo) has uncommitted work — it is NOT auto-committed;
   commit+push it via its own flow.
-- **Nightly user timer** (`astra-commit.timer`, 03:00) as the floor for the config repo.
-- Auto-commits are **commit only** (local). Push deliberately with your token:
-  `git -C /root/astra-config push`.
+- **Nightly user timer** (`astra-commit.timer`, 03:00) as the floor for the config repo:
+  runs `commit-if-changed.sh` **then** `push-if-ahead.sh`, so the nightly path also
+  pushes off-box (auth via the stored `github.com` token, `credential.helper=store`,
+  user `zazesty`). **Off-box backup floor: 24h.**
+- The **SessionStart hook is commit-only** (local) — only the nightly timer pushes.
+  To back up off-box immediately, push by hand: `git -C /root/astra-config push`.
+- **grok-mcp is NOT auto-backed-up** — manual commit + push by design (it's a clone of
+  upstream `ad-astra`); the shell login warn net nags when local edits aren't pushed.
