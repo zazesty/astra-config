@@ -45,7 +45,11 @@ NODE_BIN="$NVM_DIR/versions/node/v${NODE_VERSION}/bin"
 # -----------------------------------------------------------------------------
 say "3/10  Clone + build the MCP app (ad-astra -> $APP)"
 if [ ! -d "$APP/.git" ]; then
-  git clone "$APP_REPO" "$APP"
+  git clone "$APP_REPO" "$APP" || {
+    echo "ERROR: clone of $APP_REPO failed. If that repo is PRIVATE, configure a" >&2
+    echo "       token/SSH key for read access first, then re-run setup.sh." >&2
+    exit 1
+  }
 fi
 cd "$APP"
 "$NODE_BIN/npm" ci
@@ -95,6 +99,9 @@ say "8/10  Enable units (system + user nightly commit timer)"
 systemctl daemon-reload
 systemctl enable grok-mcp.service
 loginctl enable-linger root            # so the user timer runs without a login session
+# Ensure the root user-systemd manager is up before --user calls (fresh box has none yet)
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+systemctl start "user@$(id -u).service" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable --now astra-commit.timer
 
