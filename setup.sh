@@ -90,10 +90,42 @@ ln -sfnT "$REPO/home/.claude/settings.json" /root/.claude/settings.json
 # nvm setup). Symlink it into place; replaces the fresh-box default .bashrc.
 ln -sfnT "$REPO/home/.bashrc" /root/.bashrc
 
+# Belt-and-suspenders for the login warn net: if something atomic-replaces
+# ~/.bashrc back into a plain file (nvm/rustup/editors do this, swapping the
+# symlink away), re-append the interactive warn snippet — but ONLY if the marker
+# is absent, so re-runs stay idempotent. Guarded with `case $- in *i*` so it
+# never runs in non-interactive shells.
+if ! grep -q 'warn-uncommitted.sh' /root/.bashrc 2>/dev/null; then
+  cat >> /root/.bashrc <<'BASHRC_WARN'
+
+# grok-mcp uncommitted-work reminder (interactive shells only)
+case $- in
+  *i*) /root/astra-config/scripts/warn-uncommitted.sh ;;
+esac
+BASHRC_WARN
+fi
+
 # -----------------------------------------------------------------------------
-say "6/10  Git hooks + script perms (secret-scanning pre-commit)"
+say "6/10  Git hooks + script perms + push credential helper"
 git -C "$REPO" config core.hooksPath .githooks
 chmod +x "$REPO"/.githooks/* "$REPO"/scripts/*.sh
+
+# Off-box auto-push (nightly, via astra-commit.service -> push-if-ahead.sh) needs
+# a credential it can use unattended. credential.helper=store reads a plaintext
+# token from ~/.git-credentials (root-owned, chmod 600). The TOKEN ITSELF is a
+# secret and is NEVER in this repo — the operator supplies it once (below).
+git config --global credential.helper store
+# Non-interactive auth probe: GIT_TERMINAL_PROMPT=0 makes a missing credential
+# fail fast instead of hanging setup waiting for a password.
+if GIT_TERMINAL_PROMPT=0 git -C "$REPO" push --dry-run origin HEAD >/dev/null 2>&1; then
+  echo "  push auth OK — nightly off-box backup is wired."
+else
+  echo "  ⚠️  No working push credential yet for $(git -C "$REPO" remote get-url origin)."
+  echo "      The nightly 3am auto-push needs one. After setup, store it once:"
+  echo "        printf 'https://<user>:<TOKEN>@github.com\\n' >> ~/.git-credentials"
+  echo "        chmod 600 ~/.git-credentials   # then: git -C $REPO push"
+  echo "      (Until then, commits are local-only; the login warn net will flag failures.)"
+fi
 
 # -----------------------------------------------------------------------------
 say "7/10  Secrets file scaffold (blank; you fill it below)"
