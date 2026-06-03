@@ -48,6 +48,20 @@ Both live in `/etc/grok-mcp.env` (chmod 600, **never** in git).
 
 ## Verify
 
+`setup.sh` runs this automatically as its final step (`scripts/smoke-test.sh`) and
+**fails the rebuild** if the funnel doesn't serve the expected 4 tools. It retries
+for ~45s because Funnel can take a few seconds to come live after `tailscale up`.
+Run it anytime:
+
+```bash
+sudo bash scripts/smoke-test.sh
+# discovers the funnel URL from `tailscale funnel status`, calls tools/list,
+# asserts EXPECTED_TOOLS (default 4): ask_grok, get_odds, grok_x_search, ask_gemini
+# tunables: EXPECTED_TOOLS, MCP_PATH (/mcp|/mcp/PATH), RETRIES, SLEEP_SECS, FUNNEL_URL
+```
+
+Or by hand:
+
 ```bash
 curl -s https://HOST.ts.net/mcp -X POST \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
@@ -87,6 +101,7 @@ home/.claude/settings.json            # Claude Code permissions + SessionStart h
 home/.bashrc                          # operator shell rc (interactive warn snippet + nvm); symlinked into place
 scripts/commit-if-changed.sh          # commit repo iff dirty (hook + timer use it)
 scripts/warn-uncommitted.sh           # ~/.bashrc interactive reminder: warn if grok-mcp has uncommitted changes
+scripts/smoke-test.sh                 # curl funnel + assert tool count; setup.sh's final self-check (retries while Funnel warms up)
 .githooks/pre-commit                  # aborts commits containing key-shaped strings
 .env.example                          # template for /etc/grok-mcp.env
 setup.sh                              # idempotent rebuild
