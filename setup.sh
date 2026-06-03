@@ -82,6 +82,10 @@ mkdir -p /root/.config/systemd/user
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.service" /root/.config/systemd/user/astra-commit.service
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.timer"   /root/.config/systemd/user/astra-commit.timer
 
+# Claude Code settings (SessionStart hooks: auto-commit config + warn on uncommitted app repo)
+mkdir -p /root/.claude
+ln -sfnT "$REPO/home/.claude/settings.json" /root/.claude/settings.json
+
 # -----------------------------------------------------------------------------
 say "6/10  Git hooks + script perms (secret-scanning pre-commit)"
 git -C "$REPO" config core.hooksPath .githooks
