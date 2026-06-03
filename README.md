@@ -108,20 +108,27 @@ scripts/smoke-test.sh                 # curl funnel + assert tool count; setup.s
 setup.sh                              # idempotent rebuild
 ```
 
-## Automation (keeps this repo current)
+## Backup model
 
-- **SessionStart Claude hook** (`~/.claude/settings.json`, itself symlinked into this
-  repo so it's captured): `commit-if-changed.sh` auto-commits this repo. That file also
-  carries the Claude permissions allow/deny policy.
-- **Interactive-shell reminder** (`~/.bashrc`, tracked in this repo + symlinked into
-  place): `warn-uncommitted.sh` prints to the operator's terminal (NOT Claude's context)
-  if **grok-mcp** (the app repo) has uncommitted work — it is NOT auto-committed;
-  commit+push it via its own flow.
-- **Nightly user timer** (`astra-commit.timer`, 03:00) as the floor for the config repo:
-  runs `commit-if-changed.sh` **then** `push-if-ahead.sh`, so the nightly path also
-  pushes off-box (auth via the stored `github.com` token, `credential.helper=store`,
-  user `zazesty`). **Off-box backup floor: 24h.**
-- The **SessionStart hook is commit-only** (local) — only the nightly timer pushes.
-  To back up off-box immediately, push by hand: `git -C /root/astra-config push`.
-- **grok-mcp is NOT auto-backed-up** — manual commit + push by design (it's a clone of
-  upstream `ad-astra`); the shell login warn net nags when local edits aren't pushed.
+**astra-config (this repo) — auto-backed-up:**
+
+- **Auto-commit (local):** the **SessionStart Claude hook** (`~/.claude/settings.json`,
+  itself symlinked into this repo so it's captured) runs `commit-if-changed.sh` — commits
+  this repo iff dirty. The **nightly user timer** (`astra-commit.timer`, **3am
+  America/Los_Angeles**, DST-aware) is the floor.
+- **Auto-push (off-box) — Option A, NIGHTLY:** the nightly timer runs `commit-if-changed.sh`
+  **then** `push-if-ahead.sh` (2nd `ExecStart`), which pushes to `origin` only when local
+  is ahead. **Off-box backup floor: 24h.** The SessionStart hook is **commit-only** — only
+  the nightly path pushes. Auth: `credential.helper=store` + a `github.com` token in
+  `~/.git-credentials` (user `zazesty`, set by `setup.sh` step 6).
+- **Push failures are never silent:** every run appends to **`/root/.astra-push.log`**; a
+  failure also drops **`/root/.astra-push.failed`**, which the `~/.bashrc` login warn net
+  (`warn-uncommitted.sh`) surfaces on the operator's terminal until the next clean push.
+- Force an immediate off-box backup: `git -C /root/astra-config push`.
+
+**grok-mcp (the app) — NOT auto-backed-up, by design:**
+
+- It's a clone of upstream `ad-astra`; back it up with **manual commit + push via its own
+  flow**. The `~/.bashrc` login warn net (`warn-uncommitted.sh`, interactive shells only,
+  prints to the operator's terminal — **never** into Claude's context) nags whenever it
+  has uncommitted work.
