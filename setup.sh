@@ -136,9 +136,21 @@ read -rp "Press Enter once BOTH keys are saved in /etc/grok-mcp.env... " _
 
 systemctl start grok-mcp.service || systemctl restart grok-mcp.service
 sleep 2
-say "Done. Service status:"
+say "Service status:"
 systemctl --no-pager --lines=0 status grok-mcp.service || true
-echo
-echo "Verify end-to-end:  curl -s https://zaz-astra.tail5d74e1.ts.net/mcp -X POST \\"
-echo "  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \\"
-echo "  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}'"
+
+# -----------------------------------------------------------------------------
+say "Smoke-test — curl the funnel + assert tool count (retries while Funnel warms up)"
+# Self-check: hits the PUBLIC funnel URL and asserts EXPECTED_TOOLS tools are
+# served. Retries internally because Funnel can take a few seconds to come live
+# after a fresh `tailscale up`. Loud + fatal on failure so a broken rebuild
+# can't pass silently.
+if bash "$REPO/scripts/smoke-test.sh"; then
+  say "Done. Rebuild verified end-to-end. ✅"
+else
+  echo
+  echo "⚠️  Smoke-test FAILED — the box is built but the funnel isn't serving the"
+  echo "    expected tools yet. Check: systemctl status grok-mcp.service and"
+  echo "    tailscale funnel status, then re-run: sudo bash scripts/smoke-test.sh"
+  exit 1
+fi
