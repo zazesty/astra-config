@@ -140,7 +140,7 @@ systemctl daemon-reload
 systemctl enable grok-mcp.service
 loginctl enable-linger root            # so the user timer runs without a login session
 # Ensure the root user-systemd manager is up before --user calls (fresh box has none yet)
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"; export XDG_RUNTIME_DIR
 systemctl start "user@$(id -u).service" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable --now astra-commit.timer
