@@ -17,7 +17,7 @@ set -uo pipefail
 REPO="${1:-/root/astra-config}"
 LOG="${ASTRA_PUSH_LOG:-/root/.astra-push.log}"
 FAIL="${ASTRA_PUSH_FAIL:-/root/.astra-push.failed}"
-cd "$REPO"
+cd "$REPO" || { echo "push-if-ahead: repo $REPO not found" >&2; exit 1; }
 
 stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 log()   { printf '%s %s\n' "$(stamp)" "$*" >> "$LOG"; }
