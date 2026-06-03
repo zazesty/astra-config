@@ -1,6 +1,7 @@
 [Unit]
-Description=Auto-commit astra-config if changed (floor backstop for the SessionStart hook)
+Description=Auto-commit + push astra-config if changed (floor backstop for the SessionStart hook)
 
 [Service]
 Type=oneshot
 ExecStart=/root/astra-config/scripts/commit-if-changed.sh /root/astra-config
+ExecStart=/root/astra-config/scripts/push-if-ahead.sh /root/astra-config

@@ -1,8 +1,8 @@
 [Unit]
-Description=Nightly astra-config auto-commit (floor; SessionStart hook does the rest)
+Description=Nightly astra-config auto-commit + off-box push (floor; SessionStart hook commits the rest)
 
 [Timer]
-OnCalendar=*-*-* 03:00:00
+OnCalendar=*-*-* 03:00:00 America/Los_Angeles
 Persistent=true
 
 [Install]
