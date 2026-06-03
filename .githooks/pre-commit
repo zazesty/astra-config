@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Block any commit whose staged content contains a key-shaped string. Defense in
+# depth behind .gitignore. Enabled via: git config core.hooksPath .githooks
+set -euo pipefail
+
+# Key shapes: OpenAI sk-, xAI xai-, Google AIza..., PEM private keys.
+PATTERN='(sk-[A-Za-z0-9]{8,})|(xai-[A-Za-z0-9]{8,})|(AIza[A-Za-z0-9_-]{10,})|(-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+
+# Only look at ADDED lines in the staged diff (skip the +++ file headers).
+added="$(git diff --cached -U0 | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+
+if printf '%s' "$added" | grep -EnH "$PATTERN" >/dev/null 2>&1; then
+  echo "================================================================" >&2
+  echo "pre-commit ABORT: staged content looks like it contains a secret:" >&2
+  printf '%s\n' "$added" | grep -En "$PATTERN" >&2
+  echo "----------------------------------------------------------------" >&2
+  echo "Remove the secret (it belongs in /etc/grok-mcp.env, gitignored)." >&2
+  echo "False positive? Re-run with --no-verify (NOT recommended)."        >&2
+  echo "================================================================" >&2
+  exit 1
+fi
+exit 0

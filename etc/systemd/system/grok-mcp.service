@@ -1,0 +1,20 @@
+[Unit]
+Description=Grok MCP remote server (ask_grok tool)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/grok-mcp
+EnvironmentFile=/etc/grok-mcp.env
+Environment=PORT=3000
+ExecStart=/root/.nvm/versions/node/v22.22.3/bin/node /root/grok-mcp/build/index.js
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/root/grok-mcp
+
+[Install]
+WantedBy=multi-user.target

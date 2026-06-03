@@ -1,0 +1,68 @@
+# ===== Requested extras: secrets & noise (NEVER commit) =====
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.log
+
+# ===== GitHub Node.gitignore template =====
+# Logs
+logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage / nyc
+lib-cov
+coverage
+*.lcov
+.nyc_output
+
+# Dependency directories
+node_modules/
+jspm_packages/
+web_modules/
+
+# Caches
+.npm
+.eslintcache
+.stylelintcache
+.cache
+.parcel-cache
+
+# Optional build / output dirs
+build/
+dist/
+out/
+.next
+.nuxt
+
+# dotenv / secrets managers
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# Editor / OS cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# ===== This box: local backups never go to history =====
+backups/
+*.bak
+*.bak-*
