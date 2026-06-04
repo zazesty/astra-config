@@ -107,6 +107,12 @@ fi
 
 # -----------------------------------------------------------------------------
 say "6/10  Git hooks + script perms + push credential helper"
+# Identity for commits made by the auto-commit hook/timer + manual commits.
+git config --global user.name "Zavdi"
+git config --global user.email "zazesty@gmail.com"
+# Root-owned repo can trip Git's "dubious ownership" guard in some contexts;
+# mark it safe so the hooks/timer never refuse to operate on it.
+git config --global --add safe.directory "$REPO"
 git -C "$REPO" config core.hooksPath .githooks
 chmod +x "$REPO"/.githooks/* "$REPO"/scripts/*.sh
 
