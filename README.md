@@ -43,7 +43,7 @@ Both live in `/etc/grok-mcp.env` (chmod 600, **never** in git).
 
 ## Endpoints
 
-- Public: `https://HOST.ts.net/mcp` (and `/mcp/PATH` alias).
+- Public: the `https://<host>.<tailnet>.ts.net` base is whatever `tailscale funnel status` reports; the MCP server lives at `/mcp` (and `/mcp/PATH` alias).
 - Local: `127.0.0.1:3000`. Funnel terminates TLS; the node server is plain HTTP on loopback.
 
 ## Verify
@@ -63,7 +63,8 @@ sudo bash scripts/smoke-test.sh
 Or by hand:
 
 ```bash
-curl -s https://HOST.ts.net/mcp -X POST \
+BASE="$(tailscale funnel status | grep -oE 'https://[^ ]+' | head -n1)"
+curl -s "$BASE/mcp" -X POST \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 # expect 4 tools: ask_grok, get_odds, grok_x_search, ask_gemini
@@ -79,8 +80,6 @@ curl -s https://HOST.ts.net/mcp -X POST \
   `ask_gemini` call 403s.
 - **Tailscale cert 500 after toggling HTTPS/DNS in the admin console:** run
   `sudo systemctl restart tailscaled` to force a netmap refresh, then retry.
-- **REDACTED server** — the Funnel URL is public. The xAI + Google **spend caps
-  are the entire REDACTED.** Set them.
 - **Connector tool cache (Grok):** Grok caches the tool list per URL. If you add
   tools, point Grok at a new path (`/mcp/PATH`, …) to force a refresh.
 
