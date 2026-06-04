@@ -110,7 +110,15 @@ setup.sh                              # idempotent rebuild
 
 ## Backup model
 
-**astra-config (this repo) — auto-backed-up:**
+**Why the two repos have opposite policies:** this repo is **config** — edits are
+small, rare, and complete-on-save, so an auto-commit always captures a coherent
+state; auto-push is safe and desirable. `grok-mcp` is **live source under active
+edit** — auto-push would force an auto-commit on whatever happens to be on disk,
+which routinely means a half-finished mid-edit tree (broken build, dangling
+refactor) snapshotted into history. So config auto-saves; source is committed by
+hand at known-good points.
+
+**astra-config (this repo) — auto-backed-up (config changes rarely, so every snapshot is coherent):**
 
 - **Auto-commit (local):** the **SessionStart Claude hook** (`~/.claude/settings.json`,
   itself symlinked into this repo so it's captured) runs `commit-if-changed.sh` — commits
@@ -128,7 +136,10 @@ setup.sh                              # idempotent rebuild
 
 **grok-mcp (the app) — NOT auto-backed-up, by design:**
 
-- It's a clone of upstream `ad-astra`; back it up with **manual commit + push via its own
-  flow**. The `~/.bashrc` login warn net (`warn-uncommitted.sh`, interactive shells only,
+- **Why manual:** it's a clone of upstream `ad-astra` *and* it's source under active edit.
+  Wiring it into the nightly auto-push would force an auto-commit of the on-disk tree,
+  which is frequently a broken mid-edit state (failing build, partial refactor) — that
+  belongs nowhere in history. So it's backed up with **manual commit + push via its own
+  flow**, committed only at known-good points. The `~/.bashrc` login warn net (`warn-uncommitted.sh`, interactive shells only,
   prints to the operator's terminal — **never** into Claude's context) nags whenever it
   has uncommitted work.
