@@ -11,7 +11,13 @@
 set -euo pipefail
 
 EXPECTED_TOOLS="${EXPECTED_TOOLS:-4}"
-MCP_PATH="${MCP_PATH:-/mcp/PATH}"     # ONLY mount; bare /mcp retired 2026-06-05 (was REDACTED)
+# Mount path comes from the off-repo env file (MCP_PATH); never hardcode it
+# here. First MCP_PATH entry is used.
+SECRET_ENV="${GROK_ENV:-/etc/grok-mcp.env}"
+if [ -z "${MCP_PATH:-}" ] && [ -r "$SECRET_ENV" ]; then
+  MCP_PATH="$(grep -E '^MCP_PATH=' "$SECRET_ENV" | head -n1 | cut -d= -f2- | cut -d, -f1)"
+fi
+[ -n "${MCP_PATH:-}" ] || { echo "smoke-test: FAIL — MCP_PATH not set (need $SECRET_ENV or MCP_PATH env)"; exit 1; }
 RETRIES="${RETRIES:-15}"           # ~15 tries
 SLEEP_SECS="${SLEEP_SECS:-3}"      # x 3s = up to ~45s for Funnel to come live
 

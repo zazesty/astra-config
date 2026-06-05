@@ -43,7 +43,7 @@ Both live in `/etc/grok-mcp.env` (chmod 600, **never** in git).
 
 ## Endpoints
 
-- Public: the `https://<host>.<tailnet>.ts.net` base is whatever `tailscale funnel status` reports; the MCP server lives at `/mcp` (and `/mcp/PATH` alias).
+- Public: the `https://<host>.<tailnet>.ts.net` base is whatever `tailscale funnel status` reports; the MCP server's mount path comes from `MCP_PATH` in the off-repo env file (`/etc/grok-mcp.env`).
 - Local: `127.0.0.1:3000`. Funnel terminates TLS; the node server is plain HTTP on loopback.
 
 ## Verify
@@ -57,14 +57,16 @@ Run it anytime:
 sudo bash scripts/smoke-test.sh
 # discovers the funnel URL from `tailscale funnel status`, calls tools/list,
 # asserts EXPECTED_TOOLS (default 4): ask_grok, get_odds, grok_x_search, ask_gemini
-# tunables: EXPECTED_TOOLS, MCP_PATH (/mcp|/mcp/PATH), RETRIES, SLEEP_SECS, FUNNEL_URL
+# reads the mount path from MCP_PATH in the off-repo env file (/etc/grok-mcp.env)
+# tunables: EXPECTED_TOOLS, MCP_PATH (override), RETRIES, SLEEP_SECS, FUNNEL_URL
 ```
 
 Or by hand:
 
 ```bash
 BASE="$(tailscale funnel status | grep -oE 'https://[^ ]+' | head -n1)"
-curl -s "$BASE/mcp/PATH" -X POST \
+MCP_PATH="$(grep -E '^MCP_PATH=' /etc/grok-mcp.env | cut -d= -f2- | cut -d, -f1)"
+curl -s "$BASE$MCP_PATH" -X POST \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 # expect 4 tools: ask_grok, get_odds, grok_x_search, ask_gemini
@@ -81,7 +83,8 @@ curl -s "$BASE/mcp/PATH" -X POST \
 - **Tailscale cert 500 after toggling HTTPS/DNS in the admin console:** run
   `sudo systemctl restart tailscaled` to force a netmap refresh, then retry.
 - **Connector tool cache (Grok):** Grok caches the tool list per URL. If you add
-  tools, point Grok at a new path (`/mcp/PATH`, …) to force a refresh.
+  tools, rotate `MCP_PATH` (in the off-repo env file) to a new value and reconnect
+  Grok to force a refresh.
 
 ## What's NOT in this repo (by design)
 
