@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly Grok model-catalog freshness check (drops an alert sentinel on change)
+
+[Timer]
+OnCalendar=Mon *-*-* 04:15:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

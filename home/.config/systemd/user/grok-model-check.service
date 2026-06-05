@@ -1,0 +1,6 @@
+[Unit]
+Description=Check the xAI catalog for new Grok models vs the pinned DEFAULT_MODEL
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/grok-model-check.sh /root/astra-config
