@@ -23,7 +23,7 @@
       "Bash(rm -rf:*)",
       "Bash(sudo rm -rf:*)",
       "Read(/etc/grok-mcp.env)",
-      "Read(./.env)", "Read(./.env.*)",
+      "Read(./.env)", "Read(./.env.local)", "Read(./.env.*.local)",
       "Read(/root/*.key)", "Read(/root/*.crt)"
     ]
   },
