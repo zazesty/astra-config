@@ -11,7 +11,7 @@
 set -euo pipefail
 
 EXPECTED_TOOLS="${EXPECTED_TOOLS:-4}"
-MCP_PATH="${MCP_PATH:-/mcp}"        # /mcp and /mcp/PATH are both valid mounts
+MCP_PATH="${MCP_PATH:-/mcp/PATH}"     # ONLY mount; bare /mcp retired 2026-06-05 (was REDACTED)
 RETRIES="${RETRIES:-15}"           # ~15 tries
 SLEEP_SECS="${SLEEP_SECS:-3}"      # x 3s = up to ~45s for Funnel to come live
 

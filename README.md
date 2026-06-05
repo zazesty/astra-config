@@ -64,7 +64,7 @@ Or by hand:
 
 ```bash
 BASE="$(tailscale funnel status | grep -oE 'https://[^ ]+' | head -n1)"
-curl -s "$BASE/mcp" -X POST \
+curl -s "$BASE/mcp/PATH" -X POST \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 # expect 4 tools: ask_grok, get_odds, grok_x_search, ask_gemini
