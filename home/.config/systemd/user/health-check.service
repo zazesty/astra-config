@@ -1,0 +1,6 @@
+[Unit]
+Description=Probe the grok-mcp funnel and email on sustained failure
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/health-check.sh /root/astra-config

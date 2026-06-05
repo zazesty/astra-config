@@ -17,6 +17,9 @@ set -uo pipefail
 REPO="${1:-/root/astra-config}"
 LOG="${ASTRA_PUSH_LOG:-/root/.astra-push.log}"
 FAIL="${ASTRA_PUSH_FAIL:-/root/.astra-push.failed}"
+FAILCOUNT="${ASTRA_PUSH_FAILCOUNT:-/root/.astra-push.failcount}"
+FAILS_BEFORE_EMAIL="${FAILS_BEFORE_EMAIL:-2}"   # email on the Nth consecutive nightly failure
+NOTIFY="$(dirname "$0")/notify-email.sh"
 cd "$REPO" || { echo "push-if-ahead: repo $REPO not found" >&2; exit 1; }
 
 stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -27,14 +30,14 @@ git fetch -q origin "$BRANCH" 2>/dev/null || true   # refresh origin/BRANCH; tol
 
 if [ -z "$(git rev-list "origin/$BRANCH..$BRANCH" 2>/dev/null)" ]; then
   log "OK   nothing to push ($BRANCH at origin)"
-  rm -f "$FAIL"
+  rm -f "$FAIL" "$FAILCOUNT"
   echo "push-if-ahead: nothing to push ($BRANCH already at origin)"
   exit 0
 fi
 
 if out="$(git push origin "$BRANCH" 2>&1)"; then
   log "OK   pushed $BRANCH -> origin"
-  rm -f "$FAIL"
+  rm -f "$FAIL" "$FAILCOUNT"
   echo "push-if-ahead: pushed $BRANCH to origin"
   exit 0
 fi
@@ -49,5 +52,14 @@ log "FAIL push $BRANCH -> origin :: ${out//$'\n'/ | }"
   printf '%s\n' "$out" | sed 's/^/  /'
   echo "full log: $LOG"
 } > "$FAIL"
-echo "push-if-ahead: FAILED to push $BRANCH (see $LOG ; sentinel $FAIL)" >&2
+
+# Anti-flap: one offline night is normal (push retried next night). Email only
+# once the failure streak hits FAILS_BEFORE_EMAIL consecutive nights — off-box
+# backup is now genuinely stale and the interactive warn net may go unseen.
+n="$(cat "$FAILCOUNT" 2>/dev/null || echo 0)"; n=$((n + 1)); echo "$n" > "$FAILCOUNT"
+if [ "$n" -eq "$FAILS_BEFORE_EMAIL" ]; then
+  cat "$FAIL" | "$NOTIFY" "🔴 astra-config off-box backup STALE (push failed x$n)"
+fi
+
+echo "push-if-ahead: FAILED to push $BRANCH (see $LOG ; sentinel $FAIL ; streak $n)" >&2
 exit 1

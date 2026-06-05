@@ -83,6 +83,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.service" /root/.config/sy
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.timer"   /root/.config/systemd/user/astra-commit.timer
 ln -sfnT "$REPO/home/.config/systemd/user/grok-model-check.service" /root/.config/systemd/user/grok-model-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/grok-model-check.timer"   /root/.config/systemd/user/grok-model-check.timer
+ln -sfnT "$REPO/home/.config/systemd/user/health-check.service" /root/.config/systemd/user/health-check.service
+ln -sfnT "$REPO/home/.config/systemd/user/health-check.timer"   /root/.config/systemd/user/health-check.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -153,6 +155,7 @@ systemctl start "user@$(id -u).service" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable --now astra-commit.timer
 systemctl --user enable --now grok-model-check.timer
+systemctl --user enable --now health-check.timer
 
 # -----------------------------------------------------------------------------
 say "9/10  Tailscale auth + Funnel"
@@ -169,6 +172,11 @@ cat <<EOF
       XAI_API_KEY=xai-...        (https://console.x.ai      — set a spend cap)
       GEMINI_API_KEY=...         (https://aistudio.google.com — RESTRICT key to
                                   the Generative Language API, or it's blocked)
+
+  OPTIONAL (alert emails; absent = alerts safely no-op):
+      RESEND_API_KEY=...         (https://resend.com — sign up with the address
+                                  in NOTIFY_EMAIL_TO so no-domain self-send works)
+      NOTIFY_EMAIL_TO=zazesty@gmail.com
 
   In another shell:  sudo nano /etc/grok-mcp.env
 

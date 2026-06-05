@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly grok-mcp funnel liveness check (emails after 2 consecutive failures)
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
