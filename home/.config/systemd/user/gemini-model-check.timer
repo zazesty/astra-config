@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily Gemini model-alias drift check (gemini-pro-latest cost-jump guard)
+
+[Timer]
+OnCalendar=*-*-* 04:20:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

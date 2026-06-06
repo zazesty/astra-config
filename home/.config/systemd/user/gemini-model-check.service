@@ -1,0 +1,6 @@
+[Unit]
+Description=Check whether gemini-pro-latest still resolves to the expected Gemini family (emails on change)
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/gemini-model-check.sh /root/astra-config
