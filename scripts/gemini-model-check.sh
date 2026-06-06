@@ -46,8 +46,10 @@ set -a; . "$ENV_FILE" 2>/dev/null || true; set +a
 [ -n "${GEMINI_API_KEY:-}" ] || { echo "gemini-model-check: no GEMINI_API_KEY in $ENV_FILE" >&2; exit 1; }
 
 # --- what does the alias actually resolve to right now? ------------------------
+# maxOutputTokens:1 truncates immediately (finishReason MAX_TOKENS) but the
+# response still carries modelVersion — so the probe bills ~1 token/run.
 RESOLVED="$(curl -s "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}" \
-  -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"hi"}]}]}' \
+  -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":1}}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin).get("modelVersion") or "")' 2>/dev/null)"
 [ -n "$RESOLVED" ] || { echo "gemini-model-check: probe failed/empty (offline? bad key? quota?)" >&2; exit 1; }
 
