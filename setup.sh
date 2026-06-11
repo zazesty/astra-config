@@ -166,6 +166,10 @@ say "9/10  Tailscale auth + Funnel"
 tailscale up
 # Public HTTPS -> local MCP server. Persists in tailscaled state, survives reboot.
 tailscale funnel --bg "$FUNNEL_PORT"
+# Toggling HTTPS/Funnel/DNS can leave tailscaled serving a stale cert (intermittent
+# 500 on the funnel URL). Restarting clears it; auth + the --bg funnel config both
+# persist in tailscaled state across the restart, so this is safe to re-run.
+systemctl restart tailscaled
 
 # -----------------------------------------------------------------------------
 say "10/10  PAUSE — paste the two API keys"
