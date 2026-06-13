@@ -203,6 +203,16 @@ say "Smoke-test — curl the funnel + assert tool count (retries while Funnel wa
 # can't pass silently.
 if bash "$REPO/scripts/smoke-test.sh"; then
   say "Done. Rebuild verified end-to-end. ✅"
+  cat <<'EOF'
+
+  ↻ Server side is green — but consumers pointing at the OLD MCP_PATH won't
+    follow automatically. If the path changed (rebuild or rotation), repoint
+    each by hand — these fail SILENTLY when stale:
+      • Claude Code journaling routine — connector URL (cloud routine config)
+      • Claude interactive connector (astra85f) — reconnect to the new URL
+      • Grok connector — reconnect (also busts its per-URL tool cache)
+    Full checklist: README "Rotating the URL (MCP_PATH)".
+EOF
 else
   echo
   echo "⚠️  Smoke-test FAILED — the box is built but the funnel isn't serving the"

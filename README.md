@@ -46,6 +46,36 @@ Both live in `/etc/grok-mcp.env` (chmod 600, **never** in git).
 - Public: the `https://<host>.<tailnet>.ts.net` base is whatever `tailscale funnel status` reports; the MCP server's mount path comes from `MCP_PATH` in the off-repo env file (`/etc/grok-mcp.env`).
 - Local: `127.0.0.1:3000`. Funnel terminates TLS; the node server is plain HTTP on loopback.
 
+## Rotating the URL (MCP_PATH) — update EVERY consumer
+
+The public endpoint is `<funnel base><MCP_PATH>`. The mount path doubles as the
+credential (the endpoint is authless), so we rotate it on purpose — to bust a
+connector's per-URL tool cache, or after a leak. **The path is referenced in
+several places that do NOT auto-update. Miss one and that consumer silently
+breaks** — exactly how the journaling routine stayed dead for a while.
+
+When you change `MCP_PATH` in `/etc/grok-mcp.env`, walk this whole list:
+
+1. **Restart the service** so the new mount takes effect:
+   `sudo systemctl restart grok-mcp.service`.
+2. **Claude Code journaling routine** — update its MCP connector URL to the new
+   path. ⚠️ This one is easy to forget (the URL lives in the cloud routine's
+   connector config, not in this repo) and fails *silently* — it just stops
+   journaling, no error. **Do not skip.**
+3. **Claude interactive connector** (`astra85f`, claude.ai) — reconnect it to the
+   new URL, or its tools quietly disappear from your sessions. Also silent.
+4. **Grok connector** — reconnect Grok to the new URL. Grok caches its tool list
+   *per URL*, so a fresh URL is also how you force it to pick up added/renamed
+   tools — often the very reason you're rotating.
+5. **`~/.claude/settings.local.json`** — the allowlisted `curl ...` permission
+   entries hard-code the path; stale ones only make Claude re-prompt on a manual
+   probe (cosmetic — not a silent break).
+6. **Verify**: `sudo bash scripts/smoke-test.sh` (discovers the path from the env
+   file, so it follows the rotation automatically — a clean run confirms the
+   server side; the consumers above are still on you to update).
+
+Never commit the path or any "authless" wording to git — working tree or history.
+
 ## Verify
 
 `setup.sh` runs this automatically as its final step (`scripts/smoke-test.sh`) and
@@ -74,17 +104,25 @@ curl -s "$BASE$MCP_PATH" -X POST \
 
 ## Gotchas that cost hours
 
+These are documented as a runtime-debugging index; several are also auto-handled
+on a clean rebuild (tagged below) — the tag means "setup.sh does this for you,"
+not "ignore it when debugging a live box or a manual redeploy."
+
 - **nvm node is not on `sudo`'s PATH.** systemd/sudo must use the absolute path
-  `/root/.nvm/versions/node/v22.22.3/bin/node` (the unit already does).
+  `/root/.nvm/versions/node/v22.22.3/bin/node`. *(included in setup.sh — the unit
+  already hard-codes it.)*
 - **`tsc` does not copy `kalshi-series.json`.** After every build, `cp
-  src/kalshi-series.json build/` or `get_odds` breaks (setup.sh does this).
+  src/kalshi-series.json build/` or `get_odds` breaks. *(included in setup.sh on
+  rebuild — but NOT on a manual `tsc` redeploy, where you must do it yourself.)*
 - **Gemini key must be RESTRICTED to the Generative Language API** or every
-  `ask_gemini` call 403s.
+  `ask_gemini` call 403s. *(setup.sh prompts for this; it can't set it for you.)*
 - **Tailscale cert 500 after toggling HTTPS/DNS in the admin console:** run
   `sudo systemctl restart tailscaled` to force a netmap refresh, then retry.
-- **Connector tool cache (Grok):** Grok caches the tool list per URL. If you add
-  tools, rotate `MCP_PATH` (in the off-repo env file) to a new value and reconnect
-  Grok to force a refresh.
+  *(included in setup.sh on rebuild; recurs at runtime whenever you toggle the
+  admin console.)*
+
+The Grok per-URL tool-cache gotcha now lives in **Rotating the URL (MCP_PATH)**
+above (step 4), since rotating is the fix.
 
 ## What's NOT in this repo (by design)
 

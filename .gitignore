@@ -66,3 +66,8 @@ out/
 backups/
 *.bak
 *.bak-*
+
+# Claude Code per-machine local settings — can contain the funnel URL/path
+# (the authless credential). Lives outside this repo today; this is belt-and-
+# suspenders so a stray copy into the tree can never be committed.
+settings.local.json
