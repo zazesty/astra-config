@@ -15,6 +15,11 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadOnlyPaths=/root/grok-mcp
+# Writable persistent state for get_news_digest (the floor+extend window's
+# last-run timestamp). ProtectSystem=strict makes everything else read-only;
+# StateDirectory carves out a writable /var/lib/grok-mcp and exports
+# $STATE_DIRECTORY, which the server uses for news-digest-state.json.
+StateDirectory=grok-mcp
 
 [Install]
 WantedBy=multi-user.target
