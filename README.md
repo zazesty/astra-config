@@ -1,9 +1,10 @@
 # astra-config — zaz-astra rebuild runbook
 
 Config backup + reproducible rebuild for host **zaz-astra** (Debian 13).
-Runs the **astra MCP server** (`ad-astra` repo): tools `ask_grok`, `get_odds`,
-`grok_x_search`, `ask_gemini`, exposed publicly via Tailscale Funnel as a custom
-connector for claude.ai / Grok.
+Runs the **astra MCP server** (`ad-astra` repo): tools `get_odds`, `grok_x_search`,
+`ask_panel`, `get_news_digest`, exposed publicly via Tailscale Funnel as a custom
+connector for claude.ai / Grok. (`ask_grok` + `ask_gemini` were merged into
+`ask_panel` on 2026-06-14.)
 
 **Target: clone + `setup.sh` + paste 2 keys = working box in ~30 min.**
 
@@ -122,14 +123,14 @@ for the astra tools, unrelated to firing the routine.)
 ## Verify
 
 `setup.sh` runs this automatically as its final step (`scripts/smoke-test.sh`) and
-**fails the rebuild** if the funnel doesn't serve the expected 3 tools. It retries
+**fails the rebuild** if the funnel doesn't serve the expected 4 tools. It retries
 for ~45s because Funnel can take a few seconds to come live after `tailscale up`.
 Run it anytime:
 
 ```bash
 sudo bash scripts/smoke-test.sh
 # discovers the funnel URL from `tailscale funnel status`, calls tools/list,
-# asserts EXPECTED_TOOLS (default 3): get_odds, grok_x_search, ask_panel
+# asserts EXPECTED_TOOLS (default 4): get_odds, grok_x_search, ask_panel, get_news_digest
 # reads the mount path from MCP_PATH in the off-repo env file (/etc/grok-mcp.env)
 # tunables: EXPECTED_TOOLS, MCP_PATH (override), RETRIES, SLEEP_SECS, FUNNEL_URL
 ```
@@ -142,7 +143,7 @@ MCP_PATH="$(grep -E '^MCP_PATH=' /etc/grok-mcp.env | cut -d= -f2- | cut -d, -f1)
 curl -s "$BASE$MCP_PATH" -X POST \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-# expect 3 tools: get_odds, grok_x_search, ask_panel
+# expect 4 tools: get_odds, grok_x_search, ask_panel, get_news_digest
 ```
 
 ## Gotchas that cost hours
@@ -158,7 +159,7 @@ not "ignore it when debugging a live box or a manual redeploy."
   src/kalshi-series.json build/` or `get_odds` breaks. *(included in setup.sh on
   rebuild — but NOT on a manual `tsc` redeploy, where you must do it yourself.)*
 - **Gemini key must be RESTRICTED to the Generative Language API** or every
-  `ask_gemini` call 403s. *(setup.sh prompts for this; it can't set it for you.)*
+  Gemini call (now via `ask_panel`) 403s. *(setup.sh prompts for this; it can't set it for you.)*
 - **Tailscale cert 500 after toggling HTTPS/DNS in the admin console:** run
   `sudo systemctl restart tailscaled` to force a netmap refresh, then retry.
   *(included in setup.sh on rebuild; recurs at runtime whenever you toggle the
