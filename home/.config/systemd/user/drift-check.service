@@ -1,0 +1,6 @@
+[Unit]
+Description=Check that zaz-astra still reproduces from the astra-config rebuild
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/drift-check.sh /root/astra-config

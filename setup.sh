@@ -87,6 +87,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/gemini-model-check.service" /root/.con
 ln -sfnT "$REPO/home/.config/systemd/user/gemini-model-check.timer"   /root/.config/systemd/user/gemini-model-check.timer
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.service" /root/.config/systemd/user/health-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.timer"   /root/.config/systemd/user/health-check.timer
+ln -sfnT "$REPO/home/.config/systemd/user/drift-check.service" /root/.config/systemd/user/drift-check.service
+ln -sfnT "$REPO/home/.config/systemd/user/drift-check.timer"   /root/.config/systemd/user/drift-check.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -173,6 +175,7 @@ systemctl --user enable --now astra-commit.timer
 systemctl --user enable --now grok-model-check.timer
 systemctl --user enable --now gemini-model-check.timer
 systemctl --user enable --now health-check.timer
+systemctl --user enable --now drift-check.timer
 
 # Journaling scheduler: install the hourly 1-6am PT root crontab. This is the
 # only root crontab on this box, so a plain install is correct on a fresh rebuild.

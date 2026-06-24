@@ -123,6 +123,26 @@ not from `/etc/grok-mcp.env`. (The README's MCP_PATH step about the "journaling
 routine connector URL" is a *different* thing: the cloud routine's MCP connector
 for the astra tools, unrelated to firing the routine.)
 
+## Drift guard
+
+A daily check (`scripts/drift-check.sh`, user timer `drift-check.timer` at 05:30 PT)
+that asserts the box still reproduces from this repo, and drops a sentinel the
+**SessionStart banner** (`drift-banner.sh`) surfaces into the Claude session — so the
+assistant notices unreproduced state and offers to mirror it in. (This is the gap
+that left the journaling trigger un-backed-up until it was wired in.) It's
+Claude-facing on purpose; grok-mcp manual-backup hygiene stays operator-facing in
+`warn-uncommitted.sh` — the same split as the [backup model](#backup-model).
+
+Checks (config-completeness only — grok-mcp push state is deliberately *not* here):
+
+1. Tracked symlinks still resolve into the repo (broken / repointed / missing source).
+2. Every enabled systemd user timer / custom system unit has a tracked unit file.
+3. The live root crontab matches `home/journal-trigger/crontab.txt`.
+4. Every live `/etc/grok-mcp.env` key exists in `.env.example` (names only, never values).
+
+Intentional, not-yet-mirrored drift? `bash scripts/drift-check.sh --ack` records the
+current finding-set as accepted and silences the banner until the finding-set changes.
+
 ## Verify
 
 `setup.sh` runs this automatically as its final step (`scripts/smoke-test.sh`) and
@@ -194,6 +214,8 @@ scripts/commit-if-changed.sh          # commit repo iff dirty (hook + timer use 
 scripts/push-if-ahead.sh              # push to origin iff local is ahead (nightly timer only; off-box backup floor 24h)
 scripts/warn-uncommitted.sh           # ~/.bashrc interactive reminder: warn if grok-mcp has uncommitted changes
 scripts/smoke-test.sh                 # curl funnel + assert tool count; setup.sh's final self-check (retries while Funnel warms up)
+scripts/drift-check.sh                # daily: assert the box still reproduces from this repo; drops a sentinel on drift
+scripts/drift-banner.sh               # SessionStart hook: surface the drift sentinel into Claude's context
 .githooks/pre-commit                  # aborts commits containing key-shaped strings
 .env.example                          # template for /etc/grok-mcp.env
 setup.sh                              # idempotent rebuild

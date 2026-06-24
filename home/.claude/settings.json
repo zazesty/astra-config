@@ -32,7 +32,8 @@
       {
         "hooks": [
           { "type": "command", "command": "/root/astra-config/scripts/commit-if-changed.sh /root/astra-config" },
-          { "type": "command", "command": "/root/astra-config/scripts/grok-model-banner.sh" }
+          { "type": "command", "command": "/root/astra-config/scripts/grok-model-banner.sh" },
+          { "type": "command", "command": "/root/astra-config/scripts/drift-banner.sh" }
         ]
       }
     ]
