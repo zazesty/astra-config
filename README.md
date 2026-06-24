@@ -39,8 +39,11 @@ sudo nano /etc/grok-mcp.env      # fill XAI_API_KEY and GEMINI_API_KEY, save
 |-----|-------------|-------|
 | `XAI_API_KEY`    | https://console.x.ai | Format `xai-...`. **Set a spend cap.** |
 | `GEMINI_API_KEY` | https://aistudio.google.com → "Get API key" | **RESTRICT the key to the Generative Language API** in Google Cloud, or calls are blocked. Set a spend cap. |
+| `OPENROUTER_API_KEY` | https://openrouter.ai/keys | Format `sk-or-...`. **Required for the default `GEMINI_TRANSPORT=openrouter`** (the live setting); also register `GEMINI_API_KEY` as a BYOK provider key in the OpenRouter dashboard. Set a spend cap. To skip it, run `GEMINI_TRANSPORT=direct` on just the first two keys. |
 
-Both live in `/etc/grok-mcp.env` (chmod 600, **never** in git).
+These live in `/etc/grok-mcp.env` (chmod 600, **never** in git). The first two
+alone get you a working box on `GEMINI_TRANSPORT=direct`; the live default
+`openrouter` wants the third.
 
 Two *optional* extra inputs power the journaling auto-trigger — the routine
 `/fire` URL + token, pasted into `~/.config/journal-trigger/` at step 10. The box

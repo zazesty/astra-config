@@ -195,10 +195,15 @@ systemctl restart tailscaled
 say "10/10  PAUSE — paste the two API keys"
 cat <<EOF
 
-  Edit /etc/grok-mcp.env and fill in BOTH keys (it was scaffolded blank):
+  Edit /etc/grok-mcp.env and fill in the keys (it was scaffolded blank):
       XAI_API_KEY=xai-...        (https://console.x.ai      — set a spend cap)
       GEMINI_API_KEY=...         (https://aistudio.google.com — RESTRICT key to
                                   the Generative Language API, or it's blocked)
+      OPENROUTER_API_KEY=sk-or-... (https://openrouter.ai/keys — REQUIRED for the
+                                  default GEMINI_TRANSPORT=openrouter; also add the
+                                  GEMINI_API_KEY as a BYOK provider key in the
+                                  OpenRouter dashboard. To run with just the first
+                                  two keys instead, set GEMINI_TRANSPORT=direct.)
 
   OPTIONAL (alert emails; absent = alerts safely no-op):
       RESEND_API_KEY=...         (https://resend.com — sign up with the address
