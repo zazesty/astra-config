@@ -29,7 +29,6 @@ SECRET_FILE="${CONFIG_DIR}/secret"      # routine /fire bearer token (mode 600)
 ENDPOINT_FILE="${CONFIG_DIR}/endpoint"  # routine /fire URL          (mode 600)
 LOG="${HOME}/.local/state/journal-cron.log"
 
-PROMPT="Write today's journal entry per CLAUDE.md."
 BETA_HEADER="experimental-cc-routine-2026-04-01"
 TZPT="America/Los_Angeles"
 
@@ -78,7 +77,12 @@ if [ ! -r "$SECRET_FILE" ] || [ ! -r "$ENDPOINT_FILE" ]; then
 fi
 URL=$(cat "$ENDPOINT_FILE")
 TOKEN=$(cat "$SECRET_FILE")
-PAYLOAD=$(jq -nc --arg t "$PROMPT" '{text:$t}')
+# No `text` payload: the routine's saved prompt (the same one the old daily
+# SCHEDULE trigger ran with no payload) + the repo's SessionStart hooks +
+# CLAUDE.md fully drive the entry. A commanding "write the entry" text overrides
+# the session's own judgment and can force a duplicate when one already exists,
+# so we send an empty body and let the saved prompt decide.
+PAYLOAD='{}'
 
 RESP=$(curl -sS -m 30 -w $'\n%{http_code}' -X POST "$URL" \
   -H "Authorization: Bearer ${TOKEN}" \
