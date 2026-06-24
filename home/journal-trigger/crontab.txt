@@ -1,0 +1,10 @@
+# zazesty/Journaling usage-gated trigger -- hourly 1am-6am PT.
+#
+# CRON_TZ makes cron evaluate the schedule in Pacific; the runner also computes
+# PT internally, so the two always agree regardless of the box's system TZ.
+# flock -n serializes ticks against a single lockfile: if a previous (slow) tick
+# still holds the lock, this tick exits immediately instead of overlapping.
+# The runner self-logs to journal-cron.log; 2>> captures any catastrophic stderr.
+CRON_TZ=America/Los_Angeles
+TZ=America/Los_Angeles
+0 1-6 * * * flock -n /root/.local/state/journal-trigger.lock /root/journal-trigger/journal-trigger.sh 2>>/root/.local/state/journal-cron.log

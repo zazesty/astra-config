@@ -111,6 +111,12 @@ esac
 BASHRC_WARN
 fi
 
+# Journaling usage-gated trigger: scripts symlinked Stow-style (canonical copies
+# live in the repo). Secrets are scaffolded in step 7, crontab installed in step 8.
+mkdir -p /root/journal-trigger
+ln -sfnT "$REPO/home/journal-trigger/usage-gate.sh"      /root/journal-trigger/usage-gate.sh
+ln -sfnT "$REPO/home/journal-trigger/journal-trigger.sh" /root/journal-trigger/journal-trigger.sh
+
 # -----------------------------------------------------------------------------
 say "6/10  Git hooks + script perms + push credential helper"
 # Identity for commits made by the auto-commit hook/timer + manual commits.
@@ -120,7 +126,7 @@ git config --global user.email "zazesty@gmail.com"
 # mark it safe so the hooks/timer never refuse to operate on it.
 git config --global --add safe.directory "$REPO"
 git -C "$REPO" config core.hooksPath .githooks
-chmod +x "$REPO"/.githooks/* "$REPO"/scripts/*.sh
+chmod +x "$REPO"/.githooks/* "$REPO"/scripts/*.sh "$REPO"/home/journal-trigger/*.sh
 
 # Off-box auto-push (nightly, via astra-commit.service -> push-if-ahead.sh) needs
 # a credential it can use unattended. credential.helper=store reads a plaintext
@@ -146,6 +152,14 @@ if [ ! -f /etc/grok-mcp.env ]; then
   chmod 600 /etc/grok-mcp.env
 fi
 
+# Journaling /fire trigger creds — separate from the MCP env, and OUTSIDE the repo
+# (never committed). Blank scaffold at mode 600; you paste the real values in
+# step 10. Until then the trigger logs missing_secret_or_endpoint and fires nothing.
+install -d -m 700 /root/.config/journal-trigger
+install -d -m 755 /root/.local/state
+[ -f /root/.config/journal-trigger/secret ]   || install -m 600 /dev/null /root/.config/journal-trigger/secret
+[ -f /root/.config/journal-trigger/endpoint ] || install -m 600 /dev/null /root/.config/journal-trigger/endpoint
+
 # -----------------------------------------------------------------------------
 say "8/10  Enable units (system + user nightly commit timer)"
 systemctl daemon-reload
@@ -159,6 +173,12 @@ systemctl --user enable --now astra-commit.timer
 systemctl --user enable --now grok-model-check.timer
 systemctl --user enable --now gemini-model-check.timer
 systemctl --user enable --now health-check.timer
+
+# Journaling scheduler: install the hourly 1-6am PT root crontab. This is the
+# only root crontab on this box, so a plain install is correct on a fresh rebuild.
+# (Edits to crontab.txt require re-running this line — a symlink can't drive the
+# cron spool. The scripts it calls ARE symlinks, so script edits need no re-install.)
+crontab "$REPO/home/journal-trigger/crontab.txt"
 
 # -----------------------------------------------------------------------------
 say "9/10  Tailscale auth + Funnel"
@@ -186,6 +206,15 @@ cat <<EOF
       NOTIFY_EMAIL_TO=zazesty@gmail.com
 
   In another shell:  sudo nano /etc/grok-mcp.env
+
+  OPTIONAL (journaling auto-trigger; absent = the cron runs but fires nothing):
+      In Claude Code on the web, create/locate the Routine for zazesty/Journaling,
+      add an API trigger, and copy its URL + generate its token (shown ONCE). Then,
+      pasting each value alone (Enter, then Ctrl-D):
+        cat > /root/.config/journal-trigger/endpoint   # the /fire URL
+        cat > /root/.config/journal-trigger/secret      # the sk-ant-oat01-... token
+      (Both files were scaffolded blank at mode 600 in step 7. No restart needed —
+       the next cron tick picks them up.)
 
 EOF
 read -rp "Press Enter once BOTH keys are saved in /etc/grok-mcp.env... " _

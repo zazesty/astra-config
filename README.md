@@ -41,6 +41,11 @@ sudo nano /etc/grok-mcp.env      # fill XAI_API_KEY and GEMINI_API_KEY, save
 
 Both live in `/etc/grok-mcp.env` (chmod 600, **never** in git).
 
+Two *optional* extra inputs power the journaling auto-trigger — the routine
+`/fire` URL + token, pasted into `~/.config/journal-trigger/` at step 10. The box
+rebuilds fully without them; journaling just won't fire until they're present.
+See [Journaling auto-trigger](#journaling-auto-trigger).
+
 ## Endpoints
 
 - Public: the `https://<host>.<tailnet>.ts.net` base is whatever `tailscale funnel status` reports; the MCP server's mount path comes from `MCP_PATH` in the off-repo env file (`/etc/grok-mcp.env`).
@@ -75,6 +80,44 @@ When you change `MCP_PATH` in `/etc/grok-mcp.env`, walk this whole list:
    server side; the consumers above are still on you to update).
 
 Never commit the path or any "authless" wording to git — working tree or history.
+
+## Journaling auto-trigger
+
+Replaces the old once-daily Claude Code on the web *scheduled* trigger with a
+usage-gated, POST-driven scheduler on this box. Cron decides **when**; the actual
+journaling session still runs in the cloud (billed to the plan), where
+`zazesty/Journaling`'s `CLAUDE.md` + SessionStart hooks write the entry. The box
+only POSTs the routine's `/fire` webhook.
+
+- **Scripts** — canonical in `home/journal-trigger/`, symlinked into
+  `/root/journal-trigger/` (Stow-style; script edits need no re-install):
+  - `usage-gate.sh` — reads the OAuth token from `~/.claude/.credentials.json`,
+    queries the **undocumented** `api.anthropic.com/api/oauth/usage`. Exit 0 iff
+    `seven_day.utilization < 0.5 × hours-into-7day-window` **and**
+    `five_hour.utilization < 80`. Any non-200 (incl. 429) or shape change →
+    **fail closed** (skip), no retries.
+  - `journal-trigger.sh` — each tick runs the gate; pass → POST `/fire`, fail →
+    skip. **No daily floor** — a fully-throttled night legitimately writes
+    nothing. Flags: `--dry-run`, `--force` (one-shot end-to-end test, ignores the
+    gate). Self-logs to `~/.local/state/journal-cron.log` (one line per tick).
+  - `crontab.txt` — hourly **01–06 PT** (`CRON_TZ`), `flock -n` so a slow tick
+    never overlaps the next. Installed into the root crontab by `setup.sh` step 8.
+- **Secrets** — paste at rebuild step 10, mode 600, **never in git** (they live in
+  `~/.config`, outside this repo):
+  - `~/.config/journal-trigger/endpoint` — the routine `/fire` URL.
+  - `~/.config/journal-trigger/secret`   — its `sk-ant-oat01-…` bearer token.
+
+  Get both by adding an **API trigger** to the `zazesty/Journaling` Routine at
+  [claude.ai/code/routines](https://claude.ai/code/routines) (token shown ONCE).
+- **Self-throttling is intentional:** each fire raises the usage the gate reads,
+  so active nights naturally back off. No extra cooldown is layered on top.
+
+⚠️ This trigger's `/fire` token is a **separate credential** from the MCP
+`MCP_PATH` rotation above — `/fire` posts to the fixed `api.anthropic.com`
+endpoint, not the funnel. Rotate/revoke it from the routine's API-trigger modal,
+not from `/etc/grok-mcp.env`. (The README's MCP_PATH step about the "journaling
+routine connector URL" is a *different* thing: the cloud routine's MCP connector
+for the astra tools, unrelated to firing the routine.)
 
 ## Verify
 
@@ -127,6 +170,7 @@ above (step 4), since rotating is the fix.
 ## What's NOT in this repo (by design)
 
 - `/etc/grok-mcp.env` — secrets.
+- `~/.config/journal-trigger/{secret,endpoint}` — journaling `/fire` token + URL (mode 600).
 - `/root/*.crt /*.key` — Tailscale-managed cert state (Funnel re-issues its own).
 - `/swapfile` — recreated by setup.sh, not stored.
 - `node_modules/`, `build/` — rebuilt from the app repo.
@@ -139,6 +183,9 @@ etc/sysctl.d/99-swap.conf             # vm.swappiness=10
 home/.config/systemd/user/            # nightly auto-commit service + timer
 home/.claude/settings.json            # Claude Code permissions + SessionStart hook (symlinked into place)
 home/.bashrc                          # operator shell rc (interactive warn snippet + nvm); symlinked into place
+home/journal-trigger/usage-gate.sh    # journaling usage gate (OAuth /usage; fail-closed, no retries)
+home/journal-trigger/journal-trigger.sh  # gated /fire POST scheduler (symlinked into /root/journal-trigger/)
+home/journal-trigger/crontab.txt      # hourly 1-6am PT root crontab (installed by setup.sh step 8)
 scripts/commit-if-changed.sh          # commit repo iff dirty (hook + timer use it)
 scripts/push-if-ahead.sh              # push to origin iff local is ahead (nightly timer only; off-box backup floor 24h)
 scripts/warn-uncommitted.sh           # ~/.bashrc interactive reminder: warn if grok-mcp has uncommitted changes
