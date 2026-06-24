@@ -97,8 +97,11 @@ only POSTs the routine's `/fire` webhook.
   `/root/journal-trigger/` (Stow-style; script edits need no re-install):
   - `usage-gate.sh` — reads the OAuth token from `~/.claude/.credentials.json`,
     queries the **undocumented** `api.anthropic.com/api/oauth/usage`. Exit 0 iff
-    `seven_day.utilization < 0.5 × hours-into-7day-window` **and**
-    `five_hour.utilization < 80`. Any non-200 (incl. 429) or shape change →
+    `seven_day.utilization < weekly_target` **and** `five_hour.utilization < 80`,
+    where `weekly_target = 0.5 × hours-into-7day-window` normally, but is lifted to
+    a flat **95%** in the **last 5h before the weekly reset** (Sat ~04:00 PT) so the
+    otherwise-wasted weekly budget fills ("use it or lose it" — the 5-hr ceiling
+    still applies, so it can't spike). Any non-200 (incl. 429) or shape change →
     **fail closed** (skip), no retries.
   - `journal-trigger.sh` — each tick runs the gate; pass → POST `/fire`, fail →
     skip. **No daily floor** — a fully-throttled night legitimately writes
