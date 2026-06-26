@@ -27,3 +27,8 @@ export NVM_DIR="$HOME/.nvm"
 case $- in
   *i*) /root/astra-config/scripts/warn-uncommitted.sh ;;
 esac
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+[[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
+# <<< grok installer <<<
