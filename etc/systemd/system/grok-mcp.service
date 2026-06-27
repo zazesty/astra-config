@@ -15,6 +15,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadOnlyPaths=/root/grok-mcp
+ReadWritePaths=/root/memory
 # Writable persistent state for get_news_digest (the floor+extend window's
 # last-run timestamp). ProtectSystem=strict makes everything else read-only;
 # StateDirectory carves out a writable /var/lib/grok-mcp and exports
