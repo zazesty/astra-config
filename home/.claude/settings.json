@@ -1,5 +1,6 @@
 {
   "theme": "auto",
+  "autoMemoryDirectory": "/root/memory",
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
