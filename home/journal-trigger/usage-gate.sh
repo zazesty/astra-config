@@ -6,9 +6,18 @@
 #   exit 1  -> gate FAILS  (over pace / over ceiling / any error -> fail closed)
 #
 # Reads the OAuth access token from ~/.claude/.credentials.json and queries the
-# undocumented usage endpoint. NO retries: any non-200 (incl. 429) or unexpected
-# response fails CLOSED with a logged warning. The daily-floor path in
-# journal-trigger.sh is what guarantees an entry regardless of this gate.
+# undocumented usage endpoint. The stored access token is short-lived (~8h) and
+# is only refreshed when an interactive Claude Code session runs; on the idle
+# mornings this gate exists to catch, it has usually expired -> the endpoint 401s.
+# So the gate now SELF-REFRESHES: if the token is expired (or the usage call
+# 401s), it exchanges the stored refresh token for a new one and retries once,
+# writing the rotated pair back to ~/.claude/.credentials.json atomically. This
+# mirrors how concurrent Claude Code sessions already share+rotate that file, and
+# only runs at 01-06 PT when no interactive session is awake to race it.
+# Any OTHER non-200 (429, 5xx, shape change) still fails CLOSED with a logged warning.
+#
+# Manual ops: `usage-gate.sh --refresh` forces a token refresh and reports, without
+# touching the gate decision (useful to re-prime the credential by hand).
 #
 # Field mapping (confirmed live against the real response, not guessed):
 #   .seven_day.utilization  -> weekly %      (0-100 scale)
@@ -32,6 +41,10 @@ set -u
 
 CRED="${HOME}/.claude/.credentials.json"
 USAGE_URL="https://api.anthropic.com/api/oauth/usage"
+TOKEN_URL="https://api.anthropic.com/v1/oauth/token"
+# Public Claude Code OAuth client id (ships in the distributed CLI; NOT a secret).
+OAUTH_CLIENT_ID="9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+EXPIRY_BUFFER=120          # refresh proactively when within this many seconds of expiry
 LOG="${HOME}/.local/state/journal-cron.log"
 
 FIVE_HOUR_CEIL=80          # 5-hour utilization ceiling (percent)
@@ -41,10 +54,72 @@ WEEKLY_FINAL_WINDOW_H=5    # "use it or lose it" window before the weekly reset
 WEEKLY_FINAL_CEIL=95       # in that window, lift the weekly allowance to this flat %
 
 RAW=0
-[ "${1:-}" = "--raw" ] && RAW=1
+REFRESH_ONLY=0
+case "${1:-}" in
+  --raw)     RAW=1 ;;
+  --refresh) REFRESH_ONLY=1 ;;
+esac
 
 mkdir -p "$(dirname "$LOG")"
 warn() { printf '%s [usage-gate] WARN %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
+note() { printf '%s [usage-gate] INFO %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
+
+# Exchange the stored refresh token for a fresh access/refresh pair and write the
+# result back to $CRED atomically (temp file + mv, mode 600, .bak kept). Updates
+# the global TOKEN on success. Returns 0/1; never aborts the caller. A FAILED
+# request does not rotate anything server-side, so retrying later is safe.
+do_refresh() {
+  local rt resp new_at new_rt exp_in new_exp tmp
+  rt=$(jq -r '.claudeAiOauth.refreshToken // empty' "$CRED" 2>/dev/null)
+  [ -z "$rt" ] && { warn "refresh: no refresh token in $CRED"; return 1; }
+
+  resp=$(curl -sS -m 30 -X POST "$TOKEN_URL" \
+    -H 'content-type: application/json' \
+    -d "$(jq -nc --arg rt "$rt" --arg cid "$OAUTH_CLIENT_ID" \
+            '{grant_type:"refresh_token", refresh_token:$rt, client_id:$cid}')" \
+    2>>"$LOG") || { warn "refresh: curl failed"; return 1; }
+
+  new_at=$(printf '%s' "$resp" | jq -r '.access_token  // empty' 2>/dev/null)
+  new_rt=$(printf '%s' "$resp" | jq -r '.refresh_token // empty' 2>/dev/null)
+  exp_in=$(printf '%s' "$resp" | jq -r '.expires_in    // empty' 2>/dev/null)
+  if [ -z "$new_at" ] || [ -z "$new_rt" ]; then
+    warn "refresh: bad response: $(printf '%s' "$resp" | tr -d '\n' | head -c 160)"
+    return 1
+  fi
+  [ -z "$exp_in" ] && exp_in=28800   # default 8h if the server omits expires_in
+  new_exp=$(( ( $(date +%s) + exp_in ) * 1000 ))
+
+  tmp="${CRED}.tmp.$$"
+  if ! jq --arg at "$new_at" --arg rt "$new_rt" --argjson exp "$new_exp" \
+        '.claudeAiOauth.accessToken=$at
+         | .claudeAiOauth.refreshToken=$rt
+         | .claudeAiOauth.expiresAt=$exp' \
+        "$CRED" >"$tmp" 2>>"$LOG"; then
+    warn "refresh: jq merge failed"; rm -f "$tmp"; return 1
+  fi
+  # Only swap in a file that is valid JSON and still carries a token.
+  if ! jq -e '.claudeAiOauth.accessToken' "$tmp" >/dev/null 2>&1; then
+    warn "refresh: validation failed, not swapping"; rm -f "$tmp"; return 1
+  fi
+  cp -p "$CRED" "${CRED}.bak" 2>/dev/null
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$CRED" || { warn "refresh: atomic mv failed"; rm -f "$tmp"; return 1; }
+  TOKEN="$new_at"
+  note "refresh: token rotated ok (expires in ${exp_in}s)"
+  return 0
+}
+
+# Fetch the usage endpoint with the current $TOKEN. Sets BODY/HTTP/JSON/CURL_RC.
+fetch_usage() {
+  BODY=$(curl -sS -m 20 -w $'\n%{http_code}' \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "anthropic-beta: oauth-2025-04-20" \
+    -H "anthropic-version: 2023-06-01" \
+    "$USAGE_URL" 2>>"$LOG")
+  CURL_RC=$?
+  HTTP=$(printf '%s' "$BODY" | tail -n1)
+  JSON=$(printf '%s' "$BODY" | sed '$d')
+}
 
 # Emit a fail-closed summary line and exit nonzero.
 fail_closed() { # $1 = reason
@@ -56,15 +131,27 @@ fail_closed() { # $1 = reason
 TOKEN=$(jq -r '.claudeAiOauth.accessToken // empty' "$CRED" 2>/dev/null)
 if [ -z "$TOKEN" ]; then warn "no access token in $CRED"; fail_closed no_token; fi
 
-# --- fetch (no retries) --------------------------------------------------
-BODY=$(curl -sS -m 20 -w $'\n%{http_code}' \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "anthropic-beta: oauth-2025-04-20" \
-  -H "anthropic-version: 2023-06-01" \
-  "$USAGE_URL" 2>>"$LOG")
-CURL_RC=$?
-HTTP=$(printf '%s' "$BODY" | tail -n1)
-JSON=$(printf '%s' "$BODY" | sed '$d')
+# Manual `--refresh`: force a rotation, report, and exit (no gate decision).
+if [ "$REFRESH_ONLY" = 1 ]; then
+  if do_refresh; then echo "refresh: ok"; exit 0; else echo "refresh: failed (see $LOG)"; exit 1; fi
+fi
+
+# Proactive refresh: if the stored token is already expired (or within
+# EXPIRY_BUFFER of it), rotate before we bother the usage endpoint.
+EXP_MS=$(jq -r '.claudeAiOauth.expiresAt // empty' "$CRED" 2>/dev/null)
+NOW_MS=$(( $(date +%s) * 1000 ))
+if [ -n "$EXP_MS" ] && [ "$EXP_MS" -le $(( NOW_MS + EXPIRY_BUFFER * 1000 )) ]; then
+  do_refresh || warn "proactive refresh failed; trying usage with existing token"
+fi
+
+# --- fetch (self-refresh once on 401) ------------------------------------
+fetch_usage
+# A 401 means the token died despite the expiry check (clock skew or server-side
+# revocation). Refresh once and retry. Any other non-200 still fails closed.
+if [ "$CURL_RC" -eq 0 ] && [ "$HTTP" = "401" ]; then
+  warn "usage 401; attempting one refresh + retry"
+  do_refresh && fetch_usage
+fi
 
 [ "$RAW" = 1 ] && printf '%s\n' "$JSON" >&2
 

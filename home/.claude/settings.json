@@ -2,7 +2,7 @@
   "theme": "auto",
   "autoMemoryDirectory": "/root/memory",
   "permissions": {
-    "defaultMode": "acceptEdits",
+    "defaultMode": "auto",
     "allow": [
       "Read", "Glob", "Grep",
       "Bash(sudo:*)",
