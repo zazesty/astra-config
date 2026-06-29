@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the memory harvester hourly
+
+[Timer]
+OnCalendar=*-*-* *:07:00 America/Los_Angeles
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

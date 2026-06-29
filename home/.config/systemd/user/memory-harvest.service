@@ -1,0 +1,6 @@
+[Unit]
+Description=Memory auto-update harvester (extract facts from session transcripts)
+
+[Service]
+Type=oneshot
+ExecStart=/root/.nvm/versions/node/v22.22.3/bin/node /root/astra-config/scripts/memory-harvest.mjs /root/astra-config

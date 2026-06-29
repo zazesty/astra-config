@@ -89,6 +89,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/health-check.service" /root/.config/sy
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.timer"   /root/.config/systemd/user/health-check.timer
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.service" /root/.config/systemd/user/drift-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.timer"   /root/.config/systemd/user/drift-check.timer
+ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.service" /root/.config/systemd/user/memory-harvest.service
+ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.timer"   /root/.config/systemd/user/memory-harvest.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -176,6 +178,7 @@ systemctl --user enable --now grok-model-check.timer
 systemctl --user enable --now gemini-model-check.timer
 systemctl --user enable --now health-check.timer
 systemctl --user enable --now drift-check.timer
+systemctl --user enable --now memory-harvest.timer
 
 # Journaling scheduler: install the hourly 1-6am PT root crontab. This is the
 # only root crontab on this box, so a plain install is correct on a fresh rebuild.

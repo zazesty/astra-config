@@ -194,6 +194,24 @@ not "ignore it when debugging a live box or a manual redeploy."
 The Grok per-URL tool-cache gotcha now lives in **Rotating the URL (MCP_PATH)**
 above (step 4), since rotating is the fix.
 
+## Memory auto-update harvester
+
+Reliable backstop for the shared `/root/memory/` KB: a **systemd user timer**
+(`memory-harvest.timer`, hourly at :07 PT) runs `scripts/memory-harvest.mjs`, which
+scans Claude session transcripts, substance-gates for real work (edits/deploys/decisions),
+extracts 0–3 high-confidence facts via OpenRouter (`gemini-3.1-flash-lite`), and upserts
+through the local `memory_upsert` MCP tool (which auto-regenerates `MEMORY.md` +
+`index.md`).
+
+- **State cursor** — `/root/.local/state/grok-mcp/memory-harvest.json` (outside the repo
+  to avoid auto-commit churn).
+- **Dry-run first** — `MEMORY_HARVEST_DRYRUN=1 node scripts/memory-harvest.mjs` writes
+  candidates to `harvest-dryrun.log` without upserting. Flip live by running the timer
+  without the env var (or drop it from the unit `Environment=` when ready).
+- **Conflicts** — flagged with `needs-review` tag + Resend alert; never silent overwrite.
+- **Requires** — `OPENROUTER_API_KEY` in `/etc/grok-mcp.env`; `grok-mcp.service` running
+  on loopback. No URL rotation (no new MCP tools).
+
 ## What's NOT in this repo (by design)
 
 - `/etc/grok-mcp.env` — secrets.
@@ -219,6 +237,8 @@ scripts/warn-uncommitted.sh           # ~/.bashrc interactive reminder: warn if 
 scripts/smoke-test.sh                 # curl funnel + assert tool count; setup.sh's final self-check (retries while Funnel warms up)
 scripts/drift-check.sh                # daily: assert the box still reproduces from this repo; drops a sentinel on drift
 scripts/drift-banner.sh               # SessionStart hook: surface the drift sentinel into Claude's context
+scripts/memory-harvest.mjs            # hourly: extract memory deltas from Claude transcripts → MCP upsert
+home/.config/systemd/user/memory-harvest.{service,timer}  # harvester schedule (:07 PT)
 .githooks/pre-commit                  # aborts commits containing key-shaped strings
 .env.example                          # template for /etc/grok-mcp.env
 setup.sh                              # idempotent rebuild
