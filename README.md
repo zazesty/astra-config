@@ -149,14 +149,14 @@ current finding-set as accepted and silences the banner until the finding-set ch
 ## Verify
 
 `setup.sh` runs this automatically as its final step (`scripts/smoke-test.sh`) and
-**fails the rebuild** if the funnel doesn't serve the expected 9 tools. It retries
+**fails the rebuild** if the funnel doesn't serve the expected 10 tools. It retries
 for ~45s because Funnel can take a few seconds to come live after `tailscale up`.
 Run it anytime:
 
 ```bash
 sudo bash scripts/smoke-test.sh
 # discovers the funnel URL from `tailscale funnel status`, calls tools/list,
-# asserts EXPECTED_TOOLS (default 9): get_odds, ask_panel, grok_x_search, get_news_digest, ask_oracle + 4 memory_*
+# asserts EXPECTED_TOOLS (default 10): get_odds, ask_panel, grok_x_search, get_news_digest, ask_oracle, get_metrics + 4 memory_*
 # reads the mount path from MCP_PATH in the off-repo env file (/etc/grok-mcp.env)
 # tunables: EXPECTED_TOOLS, MCP_PATH (override), RETRIES, SLEEP_SECS, FUNNEL_URL
 ```
@@ -169,7 +169,7 @@ MCP_PATH="$(grep -E '^MCP_PATH=' /etc/grok-mcp.env | cut -d= -f2- | cut -d, -f1)
 curl -s "$BASE$MCP_PATH" -X POST \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-# expect 9 tools (5 original + memory_search/retrieve/upsert/list)
+# expect 10 tools (6 original + memory_search/retrieve/upsert/list)
 ```
 
 ## Gotchas that cost hours
