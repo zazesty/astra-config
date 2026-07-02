@@ -15,6 +15,7 @@ const ENV_FILE = "/etc/grok-mcp.env";
 const STATE_DIR = "/root/.local/state/grok-mcp";
 const STATE_FILE = join(STATE_DIR, "memory-harvest.json");
 const DRYRUN_LOG = join(STATE_DIR, "harvest-dryrun.log");
+const CONFLICT_LOG = join(STATE_DIR, "memory-conflicts.log");
 const NODE = "/root/.nvm/versions/node/v22.22.3/bin/node";
 const TRANSCRIPT_BASE = "/root/.claude/projects/-root";
 const LIVE_SESSION_MS = 15 * 60 * 1000;
@@ -365,11 +366,14 @@ async function main() {
         log(`dry-run candidate: ${targetId}`);
       } else if (c.conflicts_with) {
         const up = await mcpCall(mcpPath, "memory_upsert", payload);
-        notify(
-          "memory-harvest conflict flagged",
-          `fact=${targetId} conflicts_with=${c.conflicts_with}\n${c.description}`,
+        // Conflicts are routine bookkeeping (fact is upserted + tagged needs-review),
+        // not an operational failure — log them, don't email. Email stays reserved
+        // for genuine errors (extraction/schema/fatal).
+        appendFileSync(
+          CONFLICT_LOG,
+          `${stamp()} session=${sessionId} fact=${targetId} conflicts_with=${c.conflicts_with} v${up.version}\n  ${c.description || ""}\n`,
         );
-        log(`upsert conflict ${targetId} (v${up.version})`);
+        log(`upsert conflict ${targetId} (v${up.version}) — logged to ${CONFLICT_LOG}`);
       } else {
         const up = await mcpCall(mcpPath, "memory_upsert", payload);
         log(`upsert ${targetId} (v${up.version})`);
