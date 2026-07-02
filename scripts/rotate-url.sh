@@ -10,8 +10,10 @@
 # git and never echoed into a tracked file).
 #
 # Usage:  sudo bash scripts/rotate-url.sh [version-suffix]
-#   version-suffix defaults to the next /vN (e.g. /v11 -> /v12). Pass e.g. "/v20"
-#   to override. Env knobs pass through to smoke-test.sh (EXPECTED_TOOLS, RETRIES…).
+#   The /vN suffix marks the TOOL-SURFACE version, NOT a rotation count. A pure
+#   cache-bust rotation only needs a fresh random hex segment, so /vN is PRESERVED
+#   by default. Pass a new tag (e.g. "/v12") ONLY when the tool surface actually
+#   changed. Env knobs pass through to smoke-test.sh (EXPECTED_TOOLS, RETRIES…).
 #
 set -euo pipefail
 
@@ -26,14 +28,13 @@ command -v openssl >/dev/null || { echo "rotate-url: openssl required"; exit 1; 
 OLD="$(grep -E '^MCP_PATH=' "$ENV" | head -n1 | cut -d= -f2- | cut -d, -f1)"
 [ -n "$OLD" ] || { echo "rotate-url: no MCP_PATH in $ENV"; exit 1; }
 
-# Next version tag: bump the trailing /vN unless one is passed as $1.
+# /vN marks the tool-surface version, not a rotation count — PRESERVE it by default
+# (the fresh random hex below is what busts caches). Pass $1 only on a surface change.
 CUR_TAG="$(printf '%s' "$OLD" | grep -oE '/v[0-9]+$' || true)"
 if [ -n "${1:-}" ]; then
   NEW_TAG="$1"
-elif [ -n "$CUR_TAG" ]; then
-  NEW_TAG="/v$(( ${CUR_TAG#/v} + 1 ))"
 else
-  NEW_TAG="/v1"
+  NEW_TAG="$CUR_TAG"   # empty if the old path had no /vN suffix
 fi
 
 NEW="/mcp/v$(openssl rand -hex 4)-$(openssl rand -hex 4)${NEW_TAG}"

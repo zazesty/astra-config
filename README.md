@@ -64,6 +64,14 @@ key, so a leaked path can't run up unbounded cost.) **The path is referenced in
 several places that do NOT auto-update. Miss one and that consumer silently
 breaks** — exactly how the journaling routine stayed dead for a while.
 
+> ⚠️ **A plain restart/deploy needs a connector re-add too — even with no rotation.**
+> Restarting `grok-mcp.service` drops the live session every remote connector holds,
+> and neither claude.ai nor Grok auto-reconnects. This was masked for a long time
+> because tool-adding deploys forced a rotation (and thus a reconnect); the first
+> bugfix restart that *didn't* rotate (2026-06-29) silently broke every connector
+> until they were re-added. **After ANY restart, re-add the connectors** — a same-URL
+> re-add is enough, you don't have to rotate.
+
 **Fastest path:** `sudo bash scripts/rotate-url.sh` automates the box side —
 generates a fresh path, backs up + rewrites the env, restarts the service, smoke-tests
 through the Funnel, and prints the new URL + the consumer checklist below. It bumps the
