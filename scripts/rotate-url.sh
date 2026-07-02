@@ -39,7 +39,9 @@ else
   NEW_TAG="/v1"
 fi
 
-NEW="/mcp/v$(openssl rand -hex 4)-$(openssl rand -hex 4)${NEW_TAG}"
+# 12 hex chars (~48 bits) — shorter than the old 2-segment form, still a strong
+# secret (the mount path is the only credential in front of the API keys).
+NEW="/mcp/$(openssl rand -hex 6)${NEW_TAG}"
 
 echo "rotate-url: $(printf '%s' "$OLD" | sed 's/[a-z0-9]/x/g') -> $(printf '%s' "$NEW" | sed 's/[a-z0-9]/x/g')"
 
