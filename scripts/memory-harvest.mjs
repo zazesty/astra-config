@@ -321,8 +321,10 @@ For replace/merge, return the FULL reconciled description (one line) and content
   try {
     return await callModel("google/gemini-3.1-pro-preview");
   } catch (e1) {
-    log(`reconcile pro failed (${e1.message}), trying flash-lite`);
-    return await callModel("google/gemini-3.1-flash-lite");
+    log(`reconcile pro failed (${e1.message}), trying 2.5-flash`);
+    // Fallback is full flash (google/gemini-2.5-flash), NOT flash-lite — there is no
+    // non-lite 3.1 flash slug, so 2.5-flash is the real flash tier for a judgment call.
+    return await callModel("google/gemini-2.5-flash");
   }
 }
 
