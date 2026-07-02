@@ -69,8 +69,10 @@ breaks** — exactly how the journaling routine stayed dead for a while.
 > and neither claude.ai nor Grok auto-reconnects. This was masked for a long time
 > because tool-adding deploys forced a rotation (and thus a reconnect); the first
 > bugfix restart that *didn't* rotate (2026-06-29) silently broke every connector
-> until they were re-added. **After ANY restart, re-add the connectors** — a same-URL
-> re-add is enough, you don't have to rotate.
+> until they were re-added. **After ANY restart, rotate the URL and reconnect all
+> three connectors** — Grok caches per URL, so re-adding the *same* url won't refresh
+> it; a fresh path (`rotate-url.sh`) is the reliable fix. A debounced email reminder
+> (`grok-restart-reminder.timer`) nudges you after each settled restart.
 
 **Fastest path:** `sudo bash scripts/rotate-url.sh` automates the box side —
 generates a fresh path, backs up + rewrites the env, restarts the service, smoke-tests

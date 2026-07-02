@@ -28,13 +28,15 @@ command -v openssl >/dev/null || { echo "rotate-url: openssl required"; exit 1; 
 OLD="$(grep -E '^MCP_PATH=' "$ENV" | head -n1 | cut -d= -f2- | cut -d, -f1)"
 [ -n "$OLD" ] || { echo "rotate-url: no MCP_PATH in $ENV"; exit 1; }
 
-# /vN marks the tool-surface version, not a rotation count — PRESERVE it by default
-# (the fresh random hex below is what busts caches). Pass $1 only on a surface change.
+# Bump the trailing /vN each rotation (a loose, monotonic rotation tag) unless an
+# explicit tag is passed as $1. The fresh random hex is what actually busts caches.
 CUR_TAG="$(printf '%s' "$OLD" | grep -oE '/v[0-9]+$' || true)"
 if [ -n "${1:-}" ]; then
   NEW_TAG="$1"
+elif [ -n "$CUR_TAG" ]; then
+  NEW_TAG="/v$(( ${CUR_TAG#/v} + 1 ))"
 else
-  NEW_TAG="$CUR_TAG"   # empty if the old path had no /vN suffix
+  NEW_TAG="/v1"
 fi
 
 NEW="/mcp/v$(openssl rand -hex 4)-$(openssl rand -hex 4)${NEW_TAG}"

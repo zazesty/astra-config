@@ -9,6 +9,10 @@ WorkingDirectory=/root/grok-mcp
 EnvironmentFile=/etc/grok-mcp.env
 Environment=PORT=3000
 ExecStart=/root/.nvm/versions/node/v22.22.3/bin/node /root/grok-mcp/build/index.js
+# Stamp a restart marker (epoch) for the debounced restart reminder. Leading '-'
+# so a failure here never blocks the service from starting. Writes into the
+# StateDirectory carved out below (the rest of the fs is read-only).
+ExecStartPost=-/bin/sh -c 'date +%%s > "$STATE_DIRECTORY/restart-marker"'
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true

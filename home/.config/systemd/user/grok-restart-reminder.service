@@ -1,0 +1,6 @@
+[Unit]
+Description=Debounced grok-mcp restart reminder (rotate URL + reconnect connectors)
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/restart-reminder.sh

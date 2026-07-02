@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll for a settled grok-mcp restart and send one reminder
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
