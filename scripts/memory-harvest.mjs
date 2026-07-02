@@ -256,6 +256,72 @@ Rules:
   }
 }
 
+// Self-heal a flagged conflict: given the existing fact + the new contradicting
+// claim + the session evidence, decide the correct CURRENT state and return a
+// reconciled fact. Conflicts are rare, so a stronger model than the extractor is
+// worth it. Returns {resolution: keep_existing|replace|merge, description, content, reason}.
+async function reconcileConflict(orKey, existing, candidate, delta) {
+  const prompt = `You are reconciling a CONFLICT in a shared knowledge base. Decide the correct CURRENT state of one fact.
+
+EXISTING fact (id=${existing.id}) — authoritative unless the new evidence clearly supersedes it:
+description: ${existing.description || ""}
+---
+${(existing.content || "").slice(0, 6000)}
+
+NEW claim (extracted from a recent work session) flagged as contradicting the existing fact:
+description: ${candidate.description || ""}
+---
+${(candidate.content || "").slice(0, 6000)}
+
+Evidence from the session (what actually happened):
+${(delta || "").slice(-4000)}
+
+Choose resolution:
+- "keep_existing": the new claim is wrong, stale, or less accurate — discard it, keep the existing fact.
+- "replace": the new claim clearly supersedes the existing fact (newer VERIFIED state) — existing is now wrong.
+- "merge": both hold partial truth — combine into one coherent, current fact.
+For replace/merge, return the FULL reconciled description (one line) and content (clean markdown body, NO frontmatter, NO "CONFLICT NOTE") for the correct current state. Prefer the most recent VERIFIED state; never assert speculation as settled. For keep_existing, echo the existing description/content unchanged. reason: one line.`;
+
+  const schema = {
+    type: "object",
+    properties: {
+      resolution: { type: "string", enum: ["keep_existing", "replace", "merge"] },
+      description: { type: "string" },
+      content: { type: "string" },
+      reason: { type: "string" },
+    },
+    required: ["resolution", "description", "content", "reason"],
+    additionalProperties: false,
+  };
+
+  async function callModel(model) {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${orKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "conflict_resolution", strict: true, schema },
+        },
+      }),
+    });
+    if (!res.ok) throw new Error(`OpenRouter ${model} http ${res.status}`);
+    const j = await res.json();
+    const text = j.choices?.[0]?.message?.content;
+    if (!text) throw new Error(`OpenRouter ${model}: empty content`);
+    return JSON.parse(text);
+  }
+
+  try {
+    return await callModel("google/gemini-3.1-flash");
+  } catch (e1) {
+    log(`reconcile flash failed (${e1.message}), trying flash-lite`);
+    return await callModel("google/gemini-3.1-flash-lite");
+  }
+}
+
 function notify(subject, body) {
   try {
     execSync(`bash "${join(REPO, "scripts/notify-email.sh")}" "${subject.replace(/"/g, '\\"')}"`, {
@@ -365,15 +431,57 @@ async function main() {
         appendFileSync(DRYRUN_LOG, `\n=== ${stamp()} session=${sessionId} ===\n${JSON.stringify(payload, null, 2)}\n`);
         log(`dry-run candidate: ${targetId}`);
       } else if (c.conflicts_with) {
-        const up = await mcpCall(mcpPath, "memory_upsert", payload);
-        // Conflicts are routine bookkeeping (fact is upserted + tagged needs-review),
-        // not an operational failure — log them, don't email. Email stays reserved
-        // for genuine errors (extraction/schema/fatal).
-        appendFileSync(
-          CONFLICT_LOG,
-          `${stamp()} session=${sessionId} fact=${targetId} conflicts_with=${c.conflicts_with} v${up.version}\n  ${c.description || ""}\n`,
-        );
-        log(`upsert conflict ${targetId} (v${up.version}) — logged to ${CONFLICT_LOG}`);
+        // Self-heal: reconcile the conflict instead of piling up a needs-review flag.
+        // Retrieve the existing fact, let a model decide the correct current state,
+        // write the reconciled fact, and log the decision as an audit trail (no email).
+        // Any failure degrades safely to flag-and-log (needs-review) so nothing is lost.
+        let existing = null;
+        try {
+          existing = await mcpCall(mcpPath, "memory_retrieve", { id: c.conflicts_with });
+        } catch (e) {
+          log(`reconcile: retrieve ${c.conflicts_with} failed: ${e.message}`);
+        }
+        let rec = null;
+        if (existing && existing.content) {
+          try {
+            rec = await reconcileConflict(orKey, existing, c, delta);
+          } catch (e) {
+            log(`reconcile: model failed for ${c.conflicts_with}: ${e.message}`);
+          }
+        }
+
+        if (rec && rec.resolution === "keep_existing") {
+          appendFileSync(
+            CONFLICT_LOG,
+            `${stamp()} session=${sessionId} RESOLVED=keep_existing fact=${c.conflicts_with}\n  reason: ${rec.reason}\n  rejected new claim: ${c.description || ""}\n`,
+          );
+          log(`reconcile ${c.conflicts_with}: keep_existing — ${rec.reason}`);
+        } else if (rec && (rec.resolution === "replace" || rec.resolution === "merge") && rec.content
+                   && !containsSecretLeak(rec.content) && !containsSecretLeak(rec.description)) {
+          const merged = {
+            name: existing.id || c.conflicts_with,
+            description: rec.description || existing.description || c.description || "",
+            content: rec.content,
+            // resolved → drop needs-review; keep the union of both facts' tags
+            tags: [...new Set([...(existing.tags || []), ...(c.tags || [])])].filter(t => t !== "needs-review"),
+            related: [...new Set([...(existing.related || []), ...(c.related || [])])],
+          };
+          const up = await mcpCall(mcpPath, "memory_upsert", merged);
+          appendFileSync(
+            CONFLICT_LOG,
+            `${stamp()} session=${sessionId} RESOLVED=${rec.resolution} fact=${merged.name} v${up.version}\n  reason: ${rec.reason}\n`,
+          );
+          log(`reconcile ${merged.name}: ${rec.resolution} (v${up.version}) — ${rec.reason}`);
+        } else {
+          // Couldn't reconcile (retrieve/model failed, or unusable output) — degrade to
+          // flag-and-log with needs-review so a human can settle it. Still no email.
+          const up = await mcpCall(mcpPath, "memory_upsert", payload);
+          appendFileSync(
+            CONFLICT_LOG,
+            `${stamp()} session=${sessionId} UNRESOLVED fact=${targetId} conflicts_with=${c.conflicts_with} v${up.version} (auto-reconcile unavailable — needs-review)\n  ${c.description || ""}\n`,
+          );
+          log(`conflict ${targetId} logged UNRESOLVED (needs-review)`);
+        }
       } else {
         const up = await mcpCall(mcpPath, "memory_upsert", payload);
         log(`upsert ${targetId} (v${up.version})`);
