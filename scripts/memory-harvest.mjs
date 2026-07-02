@@ -314,10 +314,14 @@ For replace/merge, return the FULL reconciled description (one line) and content
     return JSON.parse(text);
   }
 
+  // Reconciliation is a rare (≈1/2wk) but consequential judgment — a wrong call can
+  // corrupt a good memory — so use pro here, not the cheap extractor model. Cost is
+  // pennies at this frequency. Slugs verified valid on OpenRouter 2026-07-02 (there is
+  // no "google/gemini-3.1-flash" slug — only flash-lite / pro-preview).
   try {
-    return await callModel("google/gemini-3.1-flash");
+    return await callModel("google/gemini-3.1-pro-preview");
   } catch (e1) {
-    log(`reconcile flash failed (${e1.message}), trying flash-lite`);
+    log(`reconcile pro failed (${e1.message}), trying flash-lite`);
     return await callModel("google/gemini-3.1-flash-lite");
   }
 }
