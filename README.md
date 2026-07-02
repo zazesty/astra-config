@@ -58,8 +58,9 @@ See [Journaling auto-trigger](#journaling-auto-trigger).
 ## Rotating the URL (MCP_PATH) — update EVERY consumer
 
 The public endpoint is `<funnel base><MCP_PATH>`. The mount path doubles as the
-credential (the endpoint is authless), so we rotate it on purpose — to bust a
-connector's per-URL tool cache, or after a leak. **The path is referenced in
+credential, so we rotate it on purpose — to bust a connector's per-URL tool
+cache, or after a leak. (Be sure an API spend limit is in place on every provider
+key, so a leaked path can't run up unbounded cost.) **The path is referenced in
 several places that do NOT auto-update. Miss one and that consumer silently
 breaks** — exactly how the journaling routine stayed dead for a while.
 
@@ -89,7 +90,7 @@ When you change `MCP_PATH` in `/etc/grok-mcp.env`, walk this whole list:
    file, so it follows the rotation automatically — a clean run confirms the
    server side; the consumers above are still on you to update).
 
-Never commit the path or any "authless" wording to git — working tree or history.
+Never commit the path, or any wording describing the endpoint's auth posture, to git — working tree or history.
 
 ## Journaling auto-trigger
 
