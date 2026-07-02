@@ -63,6 +63,12 @@ connector's per-URL tool cache, or after a leak. **The path is referenced in
 several places that do NOT auto-update. Miss one and that consumer silently
 breaks** — exactly how the journaling routine stayed dead for a while.
 
+**Fastest path:** `sudo bash scripts/rotate-url.sh` automates the box side —
+generates a fresh path, backs up + rewrites the env, restarts the service, smoke-tests
+through the Funnel, and prints the new URL + the consumer checklist below. It bumps the
+`/vN` suffix automatically (pass one to override). The cloud reconnects (steps 2–4) are
+still manual. The by-hand procedure:
+
 When you change `MCP_PATH` in `/etc/grok-mcp.env`, walk this whole list:
 
 1. **Restart the service** so the new mount takes effect:
