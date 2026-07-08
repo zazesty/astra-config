@@ -91,6 +91,10 @@ ln -sfnT "$REPO/home/.config/systemd/user/drift-check.service" /root/.config/sys
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.timer"   /root/.config/systemd/user/drift-check.timer
 ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.service" /root/.config/systemd/user/memory-harvest.service
 ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.timer"   /root/.config/systemd/user/memory-harvest.timer
+ln -sfnT "$REPO/home/.config/systemd/user/journal-oauth-watch.service" /root/.config/systemd/user/journal-oauth-watch.service
+ln -sfnT "$REPO/home/.config/systemd/user/journal-oauth-watch.timer"   /root/.config/systemd/user/journal-oauth-watch.timer
+ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.service" /root/.config/systemd/user/grok-restart-reminder.service
+ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.timer"   /root/.config/systemd/user/grok-restart-reminder.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -193,6 +197,8 @@ systemctl --user enable --now gemini-model-check.timer
 systemctl --user enable --now health-check.timer
 systemctl --user enable --now drift-check.timer
 systemctl --user enable --now memory-harvest.timer
+systemctl --user enable --now journal-oauth-watch.timer
+systemctl --user enable --now grok-restart-reminder.timer
 
 # Journaling scheduler: install the hourly 1-6am PT root crontab. This is the
 # only root crontab on this box, so a plain install is correct on a fresh rebuild.

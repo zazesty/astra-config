@@ -60,8 +60,12 @@ if [ "$FORCE" = 1 ]; then
   FIRE_REASON=forced
 elif [ "$GATE_RC" -eq 0 ]; then
   FIRE_REASON=gate_pass
+  # Clear any oauth-dead clock when the gate is healthy again.
+  /root/astra-config/scripts/journal-oauth-watch.sh >/dev/null 2>&1 || true
 else
   log_line "${CTX} decision=skip"
+  # Accumulate auth-fail duration; email if ≥48h (fail-open if watch errors).
+  /root/astra-config/scripts/journal-oauth-watch.sh >/dev/null 2>&1 || true
   exit 0
 fi
 

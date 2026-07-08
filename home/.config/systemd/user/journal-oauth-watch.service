@@ -1,0 +1,6 @@
+[Unit]
+Description=Watch journaling Claude OAuth; email if broken ≥48h
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/journal-oauth-watch.sh

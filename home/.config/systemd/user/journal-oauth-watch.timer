@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily check that journaling OAuth is not dead ≥48h
+
+[Timer]
+OnCalendar=*-*-* 12:15:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target
