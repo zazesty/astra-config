@@ -1,5 +1,5 @@
 [Unit]
-Description=Debounced grok-mcp restart reminder (rotate URL + reconnect connectors)
+Description=Debounced grok-mcp restart reminder (check connectors; rotate as needed)
 
 [Service]
 Type=oneshot

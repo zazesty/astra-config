@@ -4,37 +4,93 @@
   "permissions": {
     "defaultMode": "auto",
     "allow": [
-      "Read", "Glob", "Grep",
+      "Read",
+      "Glob",
+      "Grep",
       "Bash(sudo:*)",
       "Bash(git:*)",
-      "Bash(npm:*)", "Bash(npx:*)", "Bash(node:*)", "Bash(tsc:*)",
-      "Bash(systemctl:*)", "Bash(journalctl:*)", "Bash(loginctl:*)", "Bash(tailscale:*)",
-      "Bash(ls:*)", "Bash(cat:*)", "Bash(cd:*)", "Bash(echo:*)", "Bash(printf:*)",
-      "Bash(mkdir:*)", "Bash(cp:*)", "Bash(mv:*)", "Bash(rm:*)", "Bash(ln:*)", "Bash(chmod:*)",
-      "Bash(grep:*)", "Bash(find:*)", "Bash(sed:*)", "Bash(awk:*)",
-      "Bash(head:*)", "Bash(tail:*)", "Bash(wc:*)", "Bash(sort:*)", "Bash(uniq:*)",
-      "Bash(cut:*)", "Bash(tr:*)", "Bash(tee:*)", "Bash(xargs:*)", "Bash(paste:*)",
-      "Bash(diff:*)", "Bash(stat:*)", "Bash(readlink:*)", "Bash(realpath:*)",
-      "Bash(test:*)", "Bash(command:*)", "Bash(which:*)", "Bash(date:*)",
-      "Bash(python3:*)", "Bash(curl:*)",
-      "Bash(du:*)", "Bash(df:*)", "Bash(free:*)", "Bash(swapon:*)", "Bash(sysctl:*)",
-      "Bash(apt-get:*)", "Bash(apt-mark:*)"
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(tsc:*)",
+      "Bash(systemctl:*)",
+      "Bash(journalctl:*)",
+      "Bash(loginctl:*)",
+      "Bash(tailscale:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(cd:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "Bash(ln:*)",
+      "Bash(chmod:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(cut:*)",
+      "Bash(tr:*)",
+      "Bash(tee:*)",
+      "Bash(xargs:*)",
+      "Bash(paste:*)",
+      "Bash(diff:*)",
+      "Bash(stat:*)",
+      "Bash(readlink:*)",
+      "Bash(realpath:*)",
+      "Bash(test:*)",
+      "Bash(command:*)",
+      "Bash(which:*)",
+      "Bash(date:*)",
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(free:*)",
+      "Bash(swapon:*)",
+      "Bash(sysctl:*)",
+      "Bash(apt-get:*)",
+      "Bash(apt-mark:*)"
     ],
     "deny": [
       "Bash(rm -rf:*)",
       "Bash(sudo rm -rf:*)",
       "Read(/etc/grok-mcp.env)",
-      "Read(./.env)", "Read(./.env.local)", "Read(./.env.*.local)",
-      "Read(/root/*.key)", "Read(/root/*.crt)"
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
+      "Read(/root/*.key)",
+      "Read(/root/*.crt)"
     ]
   },
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "/root/astra-config/scripts/commit-if-changed.sh /root/astra-config" },
-          { "type": "command", "command": "/root/astra-config/scripts/grok-model-banner.sh" },
-          { "type": "command", "command": "/root/astra-config/scripts/drift-banner.sh" }
+          {
+            "type": "command",
+            "command": "/root/astra-config/scripts/commit-if-changed.sh /root/astra-config"
+          },
+          {
+            "type": "command",
+            "command": "/root/astra-config/scripts/grok-model-banner.sh"
+          },
+          {
+            "type": "command",
+            "command": "/root/astra-config/scripts/drift-banner.sh"
+          },
+          {
+            "type": "command",
+            "command": "/root/astra-config/scripts/restart-banner.sh"
+          }
         ]
       }
     ]

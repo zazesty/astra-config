@@ -96,6 +96,20 @@ ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.timer"   /root/.config/
 mkdir -p /root/.claude
 ln -sfnT "$REPO/home/.claude/settings.json" /root/.claude/settings.json
 
+# Design specs → /root (agents + humans). Canonical in docs/specs/; A+C also in grok-mcp/docs.
+say "specs  Install design docs into /root"
+mkdir -p /root
+if [ -d "$REPO/docs/specs" ]; then
+  for f in "$REPO"/docs/specs/*.md; do
+    [ -f "$f" ] || continue
+    base="$(basename "$f")"
+    # Do not clobber a newer live copy (e.g. mid-edit on the box).
+    if [ ! -f "/root/$base" ] || [ "$f" -nt "/root/$base" ]; then
+      cp -a "$f" "/root/$base"
+    fi
+  done
+fi
+
 # ~/.bashrc is tracked in the repo (carries the interactive grok-mcp warn snippet +
 # nvm setup). Symlink it into place; replaces the fresh-box default .bashrc.
 ln -sfnT "$REPO/home/.bashrc" /root/.bashrc

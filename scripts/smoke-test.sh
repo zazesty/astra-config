@@ -10,7 +10,7 @@
 # =============================================================================
 set -euo pipefail
 
-EXPECTED_TOOLS="${EXPECTED_TOOLS:-10}"
+EXPECTED_TOOLS="${EXPECTED_TOOLS:-11}"
 # Mount path comes from the off-repo env file (MCP_PATH); never hardcode it
 # here. First MCP_PATH entry is used.
 SECRET_ENV="${GROK_ENV:-/etc/grok-mcp.env}"
