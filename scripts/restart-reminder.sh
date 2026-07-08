@@ -33,17 +33,35 @@ is_num "$prev" || prev=0
 [ "$prev" -ge "$last" ] && exit 0
 
 when="$(date -d "@$last" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo "@$last")"
+
+# Option B: post-restart smoke against MCP_PATH from env + public funnel.
+# Redact the secret path from the alert (smoke-test prints the full endpoint).
+SMOKE_LINE="smoke: not run"
+SMOKE_RC=1
+if [ -x /root/astra-config/scripts/smoke-test.sh ]; then
+  SMOKE_OUT="$(RETRIES=3 SLEEP_SECS=3 bash /root/astra-config/scripts/smoke-test.sh 2>&1)" || SMOKE_RC=$?
+  if [ "${SMOKE_RC:-0}" -eq 0 ]; then
+    SMOKE_LINE="$(printf '%s\n' "$SMOKE_OUT" | grep -E 'smoke-test: PASS' | tail -1 | sed -E 's|https://[^ ]+|/…/MCP_PATH|g')"
+    [ -n "$SMOKE_LINE" ] || SMOKE_LINE="smoke: PASS (funnel+env path)"
+  else
+    SMOKE_LINE="$(printf '%s\n' "$SMOKE_OUT" | grep -E 'smoke-test: FAIL|FAIL —' | tail -1 | sed -E 's|https://[^ ]+|/…/MCP_PATH|g')"
+    [ -n "$SMOKE_LINE" ] || SMOKE_LINE="smoke: FAIL (funnel or MCP_PATH)"
+  fi
+fi
+
 {
   echo "⚡ GROK-MCP RESTART REMINDER (settled as of $(date -u +%Y-%m-%dT%H:%M:%SZ))"
   echo "   Last restart: $when"
+  echo "   Box funnel (env MCP_PATH): $SMOKE_LINE"
   echo "   Policy: CHECK connectors after every restart; ROTATE only as needed."
+  echo "   • Funnel PASS only proves the box path — NOT that claude.ai/Grok/journaling still point at it."
   echo "   • If claude.ai / Grok / journaling still work → do nothing."
   echo "   • If a consumer is dead → re-add; if still dead or Grok tool list stale →"
   echo "       sudo bash /root/astra-config/scripts/rotate-url.sh"
   echo "     then re-add journaling, claude.ai, and Grok."
   echo "   • New/changed tools always need a rotation (Grok per-URL tool cache)."
-  echo "   Dismiss: rm -f $ALERT   (or it clears on next clean cycle when you --ack via no-op)"
+  echo "   Dismiss: rm -f $ALERT"
 } > "$ALERT"
 
 echo "$last" > "$SENT"
-echo "restart-reminder: wrote in-session alert -> $ALERT"
+echo "restart-reminder: wrote in-session alert -> $ALERT ($SMOKE_LINE)"
