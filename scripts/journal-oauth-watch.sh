@@ -42,6 +42,22 @@ if [ "$GATE_RC" -eq 0 ] || [ "$DECISION" = pass ]; then
     log "oauth ok again (gate pass) — clearing fail-since / alert stamps"
   fi
   rm -f "$SINCE_F" "$SENT_F"
+  # Proactive refresh rotation while healthy: mints new access+refresh so the
+  # chain doesn't go stale. Headless `claude -p` does NOT rewrite credentials
+  # when access is still valid (verified 2026-07-08); explicit --refresh does.
+  LAST_REF="${STATE_DIR}/journal-oauth-last-refresh"
+  now="$(date +%s)"
+  last_r="$(cat "$LAST_REF" 2>/dev/null || echo 0)"
+  is_num "$last_r" || last_r=0
+  # At most once per 12h from this watch path (timer is daily; journal ticks also call us).
+  if [ $((now - last_r)) -ge $((12 * 3600)) ]; then
+    if "$GATE" --refresh >>"$LOG" 2>&1; then
+      echo "$now" >"$LAST_REF"
+      log "proactive --refresh ok (extends refresh chain)"
+    else
+      log "proactive --refresh failed (will rely on next gate/login)"
+    fi
+  fi
   exit 0
 fi
 
