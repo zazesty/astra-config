@@ -82,6 +82,11 @@ if ! bash "$HERE/smoke-test.sh"; then
   exit 1
 fi
 
+# Keep Grok Build loopback MCP pointed at the new path (local ~/.grok only).
+if [ -x "$HERE/sync-grok-build-astra-mcp.sh" ]; then
+  bash "$HERE/sync-grok-build-astra-mcp.sh" || echo "rotate-url: WARN sync-grok-build-astra-mcp failed" >&2
+fi
+
 BASE="$(tailscale funnel status | grep -oE 'https://[^ ]+' | head -n1)"
 cat <<EOF
 
@@ -94,6 +99,7 @@ Reconnect ALL consumers to the new URL (none of these auto-update):
   2) Grok connector                            — re-add with new URL (busts its per-URL cache)
   3) Claude Code journaling routine connector  — update URL (fails SILENTLY if missed)
   ( ~/.claude/settings.local.json curl allowlist entries, if any, are cosmetic. )
+  4) Grok Build local astra MCP is auto-synced (loopback); restart the Grok session to reload tools.
 
 Old env backed up at: $BACKUP
 EOF
