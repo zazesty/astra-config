@@ -10,7 +10,6 @@
 # =============================================================================
 set -euo pipefail
 
-EXPECTED_TOOLS="${EXPECTED_TOOLS:-11}"
 # Mount path comes from the off-repo env file (MCP_PATH); never hardcode it
 # here. First MCP_PATH entry is used.
 SECRET_ENV="${GROK_ENV:-/etc/grok-mcp.env}"
@@ -20,6 +19,48 @@ fi
 [ -n "${MCP_PATH:-}" ] || { echo "smoke-test: FAIL — MCP_PATH not set (need $SECRET_ENV or MCP_PATH env)"; exit 1; }
 RETRIES="${RETRIES:-15}"           # ~15 tries
 SLEEP_SECS="${SLEEP_SECS:-3}"      # x 3s = up to ~45s for Funnel to come live
+GROK_MCP_ROOT="${GROK_MCP_ROOT:-/root/grok-mcp}"
+
+# --- node is guaranteed by setup; use it to parse the SSE/JSON robustly -------
+NODE="$(command -v node || true)"
+[ -n "$NODE" ] || NODE="/root/.nvm/versions/node/v22.22.3/bin/node"
+[ -x "$NODE" ] || { echo "smoke-test: FAIL — node not found for JSON parse"; exit 1; }
+
+# Expected tool count: prefer explicit EXPECTED_TOOLS override; else derive from
+# grok-mcp's toolSurface module (single source of truth). Fallback: count
+# registerTool("…") in src/. Last resort hardcode 11 only if tree missing.
+derive_expected_tools() {
+  local built="$GROK_MCP_ROOT/build/toolSurface.js"
+  if [ -f "$built" ]; then
+    "$NODE" --input-type=module -e "import { MCP_TOOL_COUNT } from 'file://${built}'; console.log(MCP_TOOL_COUNT)" 2>/dev/null && return
+  fi
+  local src="$GROK_MCP_ROOT/src"
+  if [ -d "$src" ]; then
+    "$NODE" -e '
+      const fs = require("fs"), path = require("path");
+      const root = process.argv[1];
+      const names = new Set();
+      function walk(d) {
+        for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+          const p = path.join(d, ent.name);
+          if (ent.isDirectory()) walk(p);
+          else if (ent.name.endsWith(".ts")) {
+            const t = fs.readFileSync(p, "utf8");
+            for (const m of t.matchAll(/registerTool\(\s*["'\'']([a-z0-9_]+)["'\'']/g)) names.add(m[1]);
+          }
+        }
+      }
+      walk(root);
+      if (!names.size) process.exit(2);
+      console.log(names.size);
+    ' "$src" 2>/dev/null && return
+  fi
+  echo "11"
+}
+
+if [ -z "${EXPECTED_TOOLS:-}" ]; then
+  EXPECTED_TOOLS="$(derive_expected_tools)" || EXPECTED_TOOLS=11
+fi
 
 # --- Resolve the public funnel base URL (works on any tailnet, not hardcoded) -
 BASE="${FUNNEL_URL:-}"
@@ -30,11 +71,6 @@ fi
 [ -n "$BASE" ] || { echo "smoke-test: FAIL — could not determine funnel URL (is Funnel on?)"; exit 1; }
 BASE="${BASE%/}"
 ENDPOINT="$BASE$MCP_PATH"
-
-# --- node is guaranteed by setup; use it to parse the SSE/JSON robustly -------
-NODE="$(command -v node || true)"
-[ -n "$NODE" ] || NODE="/root/.nvm/versions/node/v22.22.3/bin/node"
-[ -x "$NODE" ] || { echo "smoke-test: FAIL — node not found for JSON parse"; exit 1; }
 
 echo "smoke-test: probing $ENDPOINT (expecting $EXPECTED_TOOLS tools)"
 

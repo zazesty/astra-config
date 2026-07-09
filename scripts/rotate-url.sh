@@ -94,12 +94,11 @@ rotate-url: DONE. New endpoint (secret — do not paste into git/chat logs you s
 
   ${BASE}${NEW}
 
-Reconnect ALL consumers to the new URL (none of these auto-update):
-  1) claude.ai interactive connector (Astra)   — reconnect to new URL
-  2) Grok connector                            — re-add with new URL (busts its per-URL cache)
-  3) Claude Code journaling routine connector  — update URL (fails SILENTLY if missed)
-  ( ~/.claude/settings.local.json curl allowlist entries, if any, are cosmetic. )
-  4) Grok Build local astra MCP is auto-synced (loopback); restart the Grok session to reload tools.
-
 Old env backed up at: $BACKUP
 EOF
+
+# Human checklist (smoke already ran; sync already ran). Path-redacted; no secrets.
+if [ -x "$HERE/post-rotate-checklist.sh" ]; then
+  echo
+  bash "$HERE/post-rotate-checklist.sh" || true
+fi

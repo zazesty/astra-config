@@ -34,25 +34,58 @@ is_num "$prev" || prev=0
 
 when="$(date -d "@$last" '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || echo "@$last")"
 
-# Option B: post-restart smoke against MCP_PATH from env + public funnel.
-# Redact the secret path from the alert (smoke-test prints the full endpoint).
+# E3: post-restart smoke can false-FAIL if Funnel/edge is still settling even
+# after the debounce window, or if the unit is mid-restart. Preflight service,
+# use longer retries, and on first fail wait + re-smoke once before writing FAIL.
 SMOKE_LINE="smoke: not run"
 SMOKE_RC=1
-if [ -x /root/astra-config/scripts/smoke-test.sh ]; then
-  SMOKE_OUT="$(RETRIES=3 SLEEP_SECS=3 bash /root/astra-config/scripts/smoke-test.sh 2>&1)" || SMOKE_RC=$?
-  if [ "${SMOKE_RC:-0}" -eq 0 ]; then
-    SMOKE_LINE="$(printf '%s\n' "$SMOKE_OUT" | grep -E 'smoke-test: PASS' | tail -1 | sed -E 's|https://[^ ]+|/…/MCP_PATH|g')"
-    [ -n "$SMOKE_LINE" ] || SMOKE_LINE="smoke: PASS (funnel+env path)"
+SMOKE_ATTEMPTS=0
+SVC_STATE="$(systemctl is-active grok-mcp.service 2>/dev/null || echo unknown)"
+
+run_smoke() {
+  local retries="$1" sleep_s="$2"
+  SMOKE_ATTEMPTS=$((SMOKE_ATTEMPTS + 1))
+  SMOKE_OUT="$(RETRIES="$retries" SLEEP_SECS="$sleep_s" bash /root/astra-config/scripts/smoke-test.sh 2>&1)" && return 0
+  return 1
+}
+
+redact_smoke() {
+  printf '%s\n' "$1" | sed -E 's|https://[^ ]+|/…/MCP_PATH|g'
+}
+
+if [ "$SVC_STATE" != "active" ]; then
+  SMOKE_LINE="smoke: SKIP (grok-mcp.service is $SVC_STATE — not active yet)"
+  SMOKE_RC=1
+elif [ -x /root/astra-config/scripts/smoke-test.sh ]; then
+  # Debounce already waited DEBOUNCE_SECS; still give Funnel room (8×3s ≈ 24s).
+  if run_smoke 8 3; then
+    SMOKE_RC=0
   else
-    SMOKE_LINE="$(printf '%s\n' "$SMOKE_OUT" | grep -E 'smoke-test: FAIL|FAIL —' | tail -1 | sed -E 's|https://[^ ]+|/…/MCP_PATH|g')"
+    # Second chance after a quiet pause — absorbs edge cert / path blips.
+    sleep 15
+    if run_smoke 5 3; then
+      SMOKE_RC=0
+      SMOKE_LINE_NOTE=" (recovered on 2nd attempt after 15s)"
+    else
+      SMOKE_RC=1
+    fi
+  fi
+  if [ "${SMOKE_RC:-0}" -eq 0 ]; then
+    SMOKE_LINE="$(redact_smoke "$SMOKE_OUT" | grep -E 'smoke-test: PASS' | tail -1)"
+    [ -n "$SMOKE_LINE" ] || SMOKE_LINE="smoke: PASS (funnel+env path)"
+    SMOKE_LINE="${SMOKE_LINE}${SMOKE_LINE_NOTE:-}"
+  else
+    SMOKE_LINE="$(redact_smoke "$SMOKE_OUT" | grep -E 'smoke-test: FAIL|FAIL —' | tail -1)"
     [ -n "$SMOKE_LINE" ] || SMOKE_LINE="smoke: FAIL (funnel or MCP_PATH)"
   fi
 fi
 
 {
   echo "⚡ GROK-MCP RESTART REMINDER (settled as of $(date -u +%Y-%m-%dT%H:%M:%SZ))"
-  echo "   Last restart: $when"
+  echo "   Last restart: $when (epoch $last)"
+  echo "   Service: grok-mcp.service is $SVC_STATE"
   echo "   Box funnel (env MCP_PATH): $SMOKE_LINE"
+  echo "   Smoke rounds: $SMOKE_ATTEMPTS (EXPECTED_TOOLS auto-derived from toolSurface unless overridden)"
   echo "   Policy: CHECK connectors after every restart; ROTATE only as needed."
   echo "   • Funnel PASS only proves the box path — NOT that claude.ai/Grok/journaling still point at it."
   echo "   • If claude.ai / Grok / journaling still work → do nothing."
