@@ -6,11 +6,13 @@
 # The actual journaling session runs in Claude Code on the web (billed to the
 # plan), where the repo's CLAUDE.md + SessionStart hooks write the entry.
 #
-# Policy (2026-07-08):
-#   • Gate PASS  → fire (0–n times per night as ticks allow; "more if usage permits")
-#   • Gate FAIL usage (over pace / 5h ceiling) + no fire yet today (PT) → still fire
-#     once ("at least once nightly" floor). Marked fire_reason=nightly_floor.
-#   • Gate FAIL auth (http_401 / refresh dead) → never fire; oauth-watch accumulates.
+# Policy (2026-07-08, revised):
+#   • Gate PASS (we know usage is under pace) → fire every tick 1–6am
+#     ("more if usage permits").
+#   • Gate FAIL usage (we KNOW over weekly pace / 5h ceiling) → NEVER fire.
+#   • Gate FAIL auth (we DON'T know usage — 401 / refresh dead) → fire at most
+#     ONCE per PT day (nightly floor while blind), then skip remaining ticks.
+#     fire_reason=auth_unknown_floor. oauth-watch still tracks ≥48h email.
 #
 # Usage: journal-trigger.sh [--dry-run] [--force]
 #   --dry-run  do everything except the actual POST (logs decision as DRYRUN)
@@ -26,6 +28,7 @@ CONFIG_DIR="${HOME}/.config/journal-trigger"
 SECRET_FILE="${CONFIG_DIR}/secret"      # routine /fire bearer token (mode 600)
 ENDPOINT_FILE="${CONFIG_DIR}/endpoint"  # routine /fire URL          (mode 600)
 LOG="${HOME}/.local/state/journal-cron.log"
+# PT date of last successful fire (used for auth-unknown floor = once/night).
 FIRED_TODAY="${HOME}/.local/state/journal-fired-pt-date"
 
 BETA_HEADER="experimental-cc-routine-2026-04-01"
@@ -54,7 +57,7 @@ mark_fired_today() {
   printf '%s\n' "$TODAY_PT" >"$FIRED_TODAY"
 }
 
-# Auth-shaped gate failures must never take the nightly floor (no usage signal).
+# Auth-shaped failures = usage unknown (cannot read /usage).
 is_auth_fail_reason() {
   case "$1" in
     http_401|http_403|refresh_failed|no_token|missing_cred*) return 0 ;;
@@ -75,25 +78,26 @@ if [ "$FORCE" = 1 ]; then
   FIRE_REASON=forced
 elif [ "$GATE_RC" -eq 0 ]; then
   FIRE_REASON=gate_pass
+  # Healthy oauth path: clear dead-clock + opportunistic --refresh (≤1/12h).
   /root/astra-config/scripts/journal-oauth-watch.sh >/dev/null 2>&1 || true
 elif is_auth_fail_reason "$GATE_REASON"; then
-  log_line "${CTX} decision=skip"
+  # Usage UNKNOWN — floor: at most one fire tonight, then skip.
   /root/astra-config/scripts/journal-oauth-watch.sh >/dev/null 2>&1 || true
-  exit 0
-elif already_fired_today; then
-  # Usage over pace / ceiling, but we already met the nightly floor.
-  log_line "${CTX} decision=skip skip_reason=usage_throttle_floor_met"
-  exit 0
-else
-  # Usage throttle but zero fires so far today → floor fire.
-  FIRE_REASON=nightly_floor
+  if already_fired_today; then
+    log_line "${CTX} decision=skip skip_reason=auth_unknown_floor_met"
+    exit 0
+  fi
+  FIRE_REASON=auth_unknown_floor
   log_line "${CTX} decision=floor_eligible fire_reason=${FIRE_REASON}"
+else
+  # Usage KNOWN and over budget — never fire.
+  log_line "${CTX} decision=skip skip_reason=usage_over_budget"
+  exit 0
 fi
 
 # --- fire ----------------------------------------------------------------
 if [ "$DRY_RUN" = 1 ]; then
   log_line "${CTX} decision=fire fire_reason=${FIRE_REASON} post_http=DRYRUN"
-  # dry-run does not mark fired-today (so a real tick can still floor)
   exit 0
 fi
 
@@ -105,9 +109,7 @@ URL=$(cat "$ENDPOINT_FILE")
 TOKEN=$(cat "$SECRET_FILE")
 # No `text` payload: the routine's saved prompt (the same one the old daily
 # SCHEDULE trigger ran with no payload) + the repo's SessionStart hooks +
-# CLAUDE.md fully drive the entry. A commanding "write the entry" text overrides
-# the session's own judgment and can force a duplicate when one already exists,
-# so we send an empty body and let the saved prompt decide.
+# CLAUDE.md fully drive the entry.
 PAYLOAD='{}'
 
 RESP=$(curl -sS -m 30 -w $'\n%{http_code}' -X POST "$URL" \
