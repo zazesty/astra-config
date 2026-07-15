@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Grok-journal pause reminder (Sun 17:00 PT; no-ops before 2026-07-19)
+
+[Timer]
+# Afternoon/evening PT — Sunday 5pm America/Los_Angeles
+OnCalendar=Sun *-*-* 17:00:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

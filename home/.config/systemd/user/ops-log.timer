@@ -1,0 +1,9 @@
+[Unit]
+Description=Ops log snapshot every 6 hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:05:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

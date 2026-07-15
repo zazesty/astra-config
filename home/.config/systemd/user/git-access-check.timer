@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily git PAT repo-access probe (12:30 PT)
+
+[Timer]
+OnCalendar=*-*-* 12:30:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

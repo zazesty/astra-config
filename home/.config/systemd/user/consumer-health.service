@@ -1,0 +1,6 @@
+[Unit]
+Description=MCP/journal consumer drift probe (agent-run)
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/agent-run.sh consumer-health

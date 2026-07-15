@@ -1,0 +1,6 @@
+[Unit]
+Description=Check box GitHub PAT can push expected repos (agent-run)
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/agent-run.sh git-access-check

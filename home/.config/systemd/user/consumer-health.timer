@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily consumer-health probe (12:45 PT)
+
+[Timer]
+OnCalendar=*-*-* 12:45:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

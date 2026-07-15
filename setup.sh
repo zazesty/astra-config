@@ -199,6 +199,12 @@ systemctl --user enable --now drift-check.timer
 systemctl --user enable --now memory-harvest.timer
 systemctl --user enable --now journal-oauth-watch.timer
 systemctl --user enable --now grok-restart-reminder.timer
+systemctl --user enable --now grok-journal-pause-reminder.timer
+systemctl --user enable --now ops-log.timer
+systemctl --user enable --now git-access-check.timer
+systemctl --user enable --now consumer-health.timer
+# Ensure agent job scripts executable after rebuild
+chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
 
 # Journaling scheduler: install the hourly 1-6am PT root crontab. This is the
 # only root crontab on this box, so a plain install is correct on a fresh rebuild.

@@ -1,0 +1,6 @@
+[Unit]
+Description=Machine-readable ops snapshot (agent-run ops-log)
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/agent-run.sh ops-log

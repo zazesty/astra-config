@@ -1,0 +1,6 @@
+[Unit]
+Description=Weekly email: Grok journal API autopilot still paused? (agent-run)
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/agent-run.sh pause-reminder

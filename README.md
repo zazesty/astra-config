@@ -120,9 +120,11 @@ only POSTs the routine's `/fire` webhook.
     still applies, so it can't spike). Any non-200 (incl. 429) or shape change →
     **fail closed** (skip), no retries.
   - `journal-trigger.sh` — each tick runs the gate; pass → POST `/fire`, fail →
-    skip. **No daily floor** — a fully-throttled night legitimately writes
-    nothing. Flags: `--dry-run`, `--force` (one-shot end-to-end test, ignores the
-    gate). Self-logs to `~/.local/state/journal-cron.log` (one line per tick).
+    skip (usage over budget **or** auth/usage-unknown). **No daily floor** —
+    zero-entry nights are OK; auth-unknown never forces a once-per-day fire.
+    Hard stop: auto ticks no-op at/after **2026-07-19 21:00 PT**. Flags:
+    `--dry-run`, `--force` (one-shot admin/e2e; ignores gate + hard stop).
+    Self-logs to `~/.local/state/journal-cron.log` (one line per tick).
   - `crontab.txt` — hourly **01–06 PT** (`CRON_TZ`), `flock -n` so a slow tick
     never overlaps the next. Installed into the root crontab by `setup.sh` step 8.
 - **Secrets** — paste at rebuild step 10, mode 600, **never in git** (they live in
