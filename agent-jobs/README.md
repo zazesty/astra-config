@@ -22,6 +22,9 @@ Optional: `AGENT_TIMEOUT_SECS` (default 300), `AGENT_EMAIL_ON_FAIL=1` for generi
 | `git-access-check` | daily 12:30 PT | PAT can see+push expected repos |
 | `consumer-health` | daily 12:45 PT | Smoke + Grok Build path + journal trigger/fire stale |
 | `pause-reminder` | Sun 17:00 PT | Grok journal autopilot still paused? |
+| `hermes-finance-watch` | *(no timer yet)* | Budget hardcap/pace/anomaly; fixture dry-run until PayPal Link |
+
+Hermes-Finance code lives in `/root/hermes-finance` (not this repo). Job invokes `python3 -m hermes_finance watch`. Live email: `HERMES_LIVE=1` or `notify_enabled` in state config. See `/root/hermes-finance/README.md`.
 
 ## New private GitHub repo checklist
 
