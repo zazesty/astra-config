@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly Grok journal autopilot (xAI API → Grok-Journal)
+# After astra-commit window is fine either side; journal aims 02:00, commit 03:00
+
+[Service]
+Type=oneshot
+# API + git can run long on a slow night
+TimeoutStartSec=300
+Environment=TZ=America/Los_Angeles
+ExecStart=/root/astra-config/scripts/grok-journal-run.sh
