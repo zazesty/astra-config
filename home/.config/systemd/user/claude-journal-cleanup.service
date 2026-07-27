@@ -1,0 +1,7 @@
+[Unit]
+Description=Phased Claude journal cron archive (8-16) / delete (8-30)
+
+[Service]
+Type=oneshot
+Environment=TZ=America/Los_Angeles
+ExecStart=/root/astra-config/scripts/claude-journal-cleanup.sh /root/astra-config

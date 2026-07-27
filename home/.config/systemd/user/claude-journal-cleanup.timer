@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily check: Claude journal archive 2026-08-16 / delete 2026-08-30 PT
+
+[Timer]
+# Afternoon PT so emails are readable same day
+OnCalendar=*-*-* 15:00:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

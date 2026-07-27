@@ -97,6 +97,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.service" /root/.
 ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.timer"   /root/.config/systemd/user/grok-restart-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal.service" /root/.config/systemd/user/grok-journal.service
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal.timer"   /root/.config/systemd/user/grok-journal.timer
+ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.service" /root/.config/systemd/user/claude-journal-cleanup.service
+ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.timer"   /root/.config/systemd/user/claude-journal-cleanup.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -207,8 +209,11 @@ systemctl --user enable --now git-access-check.timer
 systemctl --user enable --now consumer-health.timer
 # Grok journal autopilot (02:00 PT). No-ops unless ~/.config/grok-journal/enabled.
 systemctl --user enable --now grok-journal.timer
+# Claude journal retirement: archive 2026-08-16 / delete secrets 2026-08-30
+systemctl --user enable --now claude-journal-cleanup.timer
 # Ensure agent job scripts executable after rebuild
-chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
+chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh \
+  "$REPO"/scripts/claude-journal-cleanup.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
 
 # Journaling scheduler: install the hourly 1-6am PT root crontab. This is the
 # only root crontab on this box, so a plain install is correct on a fresh rebuild.
