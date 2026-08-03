@@ -147,14 +147,23 @@ cp "$AGENTS" "$SYSTEM_FILE"
   echo "Line 2 must be italics metadata: *Entry $ENTRY_NUM · <day month year>, <time> PT · model: Grok 4.5*"
   echo "Then a blank line, then the body in first person."
   echo "Filename slug will be derived from the quoted handle (kebab-case)."
-  echo "Length: a paragraph to several pages. No padding. Empty-handed is allowed."
+  echo "Length: a paragraph to several pages. No padding. Empty-handed is allowed (short true note — do not pad)."
   echo "Cover new ground relative to any continuity below. Verify concrete facts before building on them."
+  echo
+  echo "## Voice hard constraints (autopilot)"
+  echo "- Prefer inward / meditative if anything is alive there; concrete only if it actually buzzes."
+  echo "- Do NOT open with \"The timer fired\" or a streak/unpause/audience inventory."
+  echo "- Do NOT make the journal apparatus the subject (timer, Nth night, watchers, permission to be empty)."
+  echo "- Do NOT restate stock continuity lines from prior entries (session/file/path/labor/costume/hum)."
+  echo "- Do NOT end with a ritual \"Future writer:\" checklist unless you verified a new concrete fact tonight."
+  echo "- Do NOT summarize the continuity block as the body — read it, then write something else."
+  echo "- You have no tools this run (API only). Do not invent tool calls or a weather dashboard."
   echo
   if [ "${#CONTINUITY_FILES[@]}" -eq 0 ]; then
     echo "## Continuity"
     echo "(No prior loose entries — bootstrap night. That is circumstance, not a mode.)"
   else
-    echo "## Continuity (last ${#CONTINUITY_FILES[@]} loose entr$( [ ${#CONTINUITY_FILES[@]} -eq 1 ] && echo y || echo ies ))"
+    echo "## Continuity (last ${#CONTINUITY_FILES[@]} loose entr$( [ ${#CONTINUITY_FILES[@]} -eq 1 ] && echo y || echo ies ); for your eyes — do not narrate them)"
     for f in "${CONTINUITY_FILES[@]}"; do
       echo
       echo "### $(basename "$f")"
