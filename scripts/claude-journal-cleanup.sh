@@ -77,21 +77,29 @@ do_archive() {
     log "archive: journal-oauth-watch.timer already off or missing"
   fi
 
+  # 2b) Claude transcript memory-harvest (idempotent; may already be off early)
+  if systemctl --user disable --now memory-harvest.timer 2>/dev/null; then
+    log "archive: disabled memory-harvest.timer (Claude transcript harvester)"
+  else
+    log "archive: memory-harvest.timer already off or missing"
+  fi
+
   # 3) Memory Claude streamline — archive phase (plan marker; no personal KB wipe)
   PLAN="$STATE_DIR/memory-claude-streamline-plan.md"
   {
     echo "# Memory Claude streamline — ARCHIVE phase ($TODAY_PT PT)"
     echo
-    echo "Goal: dual-harness → Grok-primary. Shared /root/memory personal facts STAY."
+    echo "Goal: drop Claude-only machinery. Shared /root/memory personal facts STAY."
     echo
-    echo "## Do on/after archive"
-    echo "- AGENTS.md / docs: Grok Build primary; drop Claude-as-equal co-primary."
-    echo "- Disable/no-op Claude-only harvest paths if still armed."
+    echo "## Done / do on archive"
+    echo "- Journal crontab + oauth-watch off."
+    echo "- memory-harvest.timer off (Claude transcript miner; may have been disabled early)."
     echo "- Tag Claude-machinery-only facts for delete-phase supersede (not personal data)."
     echo
     echo "## Delete phase ($DELETE_ON)"
     echo "- Purge journal secrets + runtime (this script)."
-    echo "- Formal streamline erase markers; never bulk-delete personal KB."
+    echo "- Confirm harvest units still disabled; formal streamline erase markers."
+    echo "- Never bulk-delete personal KB."
   } >"$PLAN"
   printf '%s\n' "$TODAY_PT" >"$STATE_DIR/memory-streamline-archived-on"
   log "archive: wrote memory streamline plan → $PLAN"
@@ -167,17 +175,24 @@ do_delete() {
 
   # Memory Claude streamline — formal erase (machinery only)
   # Personal /root/memory facts are NEVER bulk-deleted here.
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  if systemctl --user disable --now memory-harvest.timer 2>/dev/null; then
+    log "delete: re-disabled memory-harvest.timer"
+  else
+    log "delete: memory-harvest.timer already off or missing"
+  fi
+
   STREAMLINE_NOTE="$STATE_DIR/memory-claude-streamline-deleted.md"
   {
     echo "# Memory Claude streamline — DELETE phase ($TODAY_PT PT)"
     echo
     echo "Journal secrets + Claude journal runtime: purged by this script."
+    echo "memory-harvest.timer: disabled (Claude transcript miner)."
     echo "Personal memory KB (/root/memory user-* / hermes / ops facts): RETAINED."
     echo
     echo "Agent follow-up if not already done:"
     echo "- Confirm no Claude-only harvester still writing."
     echo "- Supersede obsolete Claude dual-harness howto facts (status=superseded), not delete personal data."
-    echo "- OPERATOR.md + AGENTS.md already Grok-primary."
   } >"$STREAMLINE_NOTE"
   printf '%s\n' "$TODAY_PT" >"$STATE_DIR/memory-streamline-deleted-on"
   log "delete: memory streamline erase marker → $STREAMLINE_NOTE"

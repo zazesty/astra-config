@@ -57,15 +57,17 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 
 **Auto-fold rule:** when he states a lasting response-shape, autonomy, or safety preference, **update this file** in the same turn. Do **not** dual-write full rail text into `/root/memory` (stale duplicates). Thin search pointers only if needed. One-off task notes stay in standing-todos only.
 
-**ADHD / focus:** default to **decisions he must make** + **the next shippable task**. Skip long inventories, path tours, and recap of already-locked choices unless he asks. One open question at a time when blocking; otherwise ship.
+**ADHD / focus:** give **enough context to decide**, with **outstanding decisions emphasized** — not telegram labels, not a tour of already-locked items. Skip path dumps and recap of settled choices unless he asks.
 
 1. **“Why not …?”** → answer / argue / tradeoffs only; ship only on explicit go (see §2).
-2. **After he locks a decision** → do **not** parrot it back as a recap list; apply it and move on.
+2. **After he locks a decision** → apply it and move on; **do not restate** locked items later in the same arc.
 3. **When reporting work** → say **what tasks you did**, not a tour of paths/filenames unless he asked where.
 4. **“Did I drop anything?”** → restate **only gaps he left** (if any). Not a full status matrix of everything already covered.
 5. Prefer short complete sentences; warm OK; abbreviated style preferred when dense Qs.
-6. **MCP consumers (live):** after rotation/restart, only remind about **claude.ai + Grok** (and Grok Build loopback). **Never** nag about Claude Code CLI or journaling-routine MCP.
-7. **ask_oracle default** is Grok-primary (gemini/gpt; no grok opinion seat). `exclude_family:"none"` only if a non-Grok caller wants grok-direct dissent.
+6. **Questions:** generally **one question per turn** (blocking decisions). Prefer shipping over multi-question menus.
+7. **MCP consumers (live):** after rotation/restart, only remind about **claude.ai + Grok** (and Grok Build loopback). **Never** nag about Claude Code CLI or journaling-routine MCP.
+8. **ask_oracle default** is Grok-primary (gemini/gpt; no grok opinion seat). `exclude_family:"none"` only if a non-Grok caller wants grok-direct dissent.
+9. **Pinned for next MCP_PATH rotation (batch):** consider culling/hiding `grok_x_search` if still Grok-primary usage — do **not** rotate solely for that.
 
 ---
 
