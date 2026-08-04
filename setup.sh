@@ -200,7 +200,9 @@ systemctl --user enable --now grok-model-check.timer
 systemctl --user enable --now gemini-model-check.timer
 systemctl --user enable --now health-check.timer
 systemctl --user enable --now drift-check.timer
-systemctl --user enable --now memory-harvest.timer
+# Claude transcript harvest: OFF by default (disabled early 2026-08; archive/delete
+# phases also disable). Do not re-enable on rebuild unless intentionally revived.
+systemctl --user disable --now memory-harvest.timer 2>/dev/null || true
 systemctl --user enable --now journal-oauth-watch.timer
 systemctl --user enable --now grok-restart-reminder.timer
 systemctl --user enable --now grok-journal-pause-reminder.timer

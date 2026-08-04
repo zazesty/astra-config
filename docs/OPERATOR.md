@@ -120,7 +120,7 @@ Status and todos are **not** each other. Status is recomputed; todos are curated
 
 ## 6. Heartbeats already owned by the box
 
-Timers (not a 24/7 LLM): ops-log, health-check, memory-harvest, model checks, consumer-health, git-access-check, grok-journal, journal-oauth-watch, astra-commit/push, etc.
+Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, git-access-check, grok-journal, astra-commit/push, etc. (Claude journal oauth-watch + memory-harvest: off / self-destruct schedule.)
 
 **Hermes-finance-watch** exists as agent-job but **no timer yet** — not in the “important stuff already covered” set until armed.
 
