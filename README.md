@@ -45,11 +45,6 @@ These live in `/etc/grok-mcp.env` (chmod 600, **never** in git). The first two
 alone get you a working box on `GEMINI_TRANSPORT=direct`; the live default
 `openrouter` wants the third.
 
-Two *optional* extra inputs power the journaling auto-trigger — the routine
-`/fire` URL + token, pasted into `~/.config/journal-trigger/` at step 10. The box
-rebuilds fully without them; journaling just won't fire until they're present.
-See [Journaling auto-trigger](#journaling-auto-trigger).
-
 ## Endpoints
 
 - Public: the `https://<host>.<tailnet>.ts.net` base is whatever `tailscale funnel status` reports; the MCP server's mount path comes from `MCP_PATH` in the off-repo env file (`/etc/grok-mcp.env`).
@@ -91,58 +86,21 @@ When you change `MCP_PATH` in `/etc/grok-mcp.env`, walk this list:
 
 Never commit the path, or any wording describing the endpoint's auth posture, to git — working tree or history.
 
-## Journaling auto-trigger
+## Journaling (historical — not a live consumer)
 
-Replaces the old once-daily Claude Code on the web *scheduled* trigger with a
-usage-gated, POST-driven scheduler on this box. Cron decides **when**; the actual
-journaling session still runs in the cloud (billed to the plan), where
-`zazesty/Journaling`'s `CLAUDE.md` + SessionStart hooks write the entry. The box
-only POSTs the routine's `/fire` webhook.
+Claude Code journaling auto-trigger + cloud routine MCP are **retired / self-destruct**
+(archive **2026-08-16**, secrets delete **2026-08-30** via `claude-journal-cleanup`).
+Do **not** reconnect journaling after MCP rotation. Live consumers = **claude.ai + Grok**
+(+ Grok Build loopback). Source under `home/journal-trigger/` remains in git as archive
+only until cleanup finishes.
 
-- **Scripts** — canonical in `home/journal-trigger/`, symlinked into
-  `/root/journal-trigger/` (Stow-style; script edits need no re-install):
-  - `usage-gate.sh` — reads the OAuth token from `~/.claude/.credentials.json`,
-    queries the **undocumented** `api.anthropic.com/api/oauth/usage`. Exit 0 iff
-    `seven_day.utilization < weekly_target` **and** `five_hour.utilization < 80`,
-    where `weekly_target = 0.5 × hours-into-7day-window` normally, but is lifted to
-    a flat **95%** in the **last 5h before the weekly reset** (Sat ~04:00 PT) so the
-    otherwise-wasted weekly budget fills ("use it or lose it" — the 5-hr ceiling
-    still applies, so it can't spike). Any non-200 (incl. 429) or shape change →
-    **fail closed** (skip), no retries.
-  - `journal-trigger.sh` — each tick runs the gate; pass → POST `/fire`, fail →
-    skip (usage over budget **or** auth/usage-unknown). **No daily floor** —
-    zero-entry nights are OK; auth-unknown never forces a once-per-day fire.
-    Hard stop: auto ticks no-op at/after **2026-07-19 21:00 PT**. Flags:
-    `--dry-run`, `--force` (one-shot admin/e2e; ignores gate + hard stop).
-    Self-logs to `~/.local/state/journal-cron.log` (one line per tick).
-  - `crontab.txt` — hourly **01–06 PT** (`CRON_TZ`), `flock -n` so a slow tick
-    never overlaps the next. Installed into the root crontab by `setup.sh` step 8.
-- **Secrets** — paste at rebuild step 10, mode 600, **never in git** (they live in
-  `~/.config`, outside this repo):
-  - `~/.config/journal-trigger/endpoint` — the routine `/fire` URL.
-  - `~/.config/journal-trigger/secret`   — its `sk-ant-oat01-…` bearer token.
-
-  Get both by adding an **API trigger** to the `zazesty/Journaling` Routine at
-  [claude.ai/code/routines](https://claude.ai/code/routines) (token shown ONCE).
-- **Self-throttling is intentional:** each fire raises the usage the gate reads,
-  so active nights naturally back off. No extra cooldown is layered on top.
-
-⚠️ This trigger's `/fire` token is a **separate credential** from the MCP
-`MCP_PATH` rotation above — `/fire` posts to the fixed `api.anthropic.com`
-endpoint, not the funnel. Rotate/revoke it from the routine's API-trigger modal,
-not from `/etc/grok-mcp.env`. (The README's MCP_PATH step about the "journaling
-routine connector URL" is a *different* thing: the cloud routine's MCP connector
-for the astra tools, unrelated to firing the routine.)
+Nightly journaling for *you* is **Grok-Journal** (`grok-journal.timer`), not Claude.
 
 ## Drift guard
 
 A daily check (`scripts/drift-check.sh`, user timer `drift-check.timer` at 05:30 PT)
-that asserts the box still reproduces from this repo, and drops a sentinel the
-**SessionStart banner** (`drift-banner.sh`) surfaces into the Claude session — so the
-assistant notices unreproduced state and offers to mirror it in. (This is the gap
-that left the journaling trigger un-backed-up until it was wired in.) It's
-Claude-facing on purpose; grok-mcp manual-backup hygiene stays operator-facing in
-`warn-uncommitted.sh` — the same split as the [backup model](#backup-model).
+that asserts the box still reproduces from this repo. Operator-facing backup nags live
+in `warn-uncommitted.sh` (SSH login) — see [backup model](#backup-model).
 
 Checks (config-completeness only — grok-mcp push state is deliberately *not* here):
 
