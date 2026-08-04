@@ -6,7 +6,7 @@
 #   url = http://127.0.0.1:3000${MCP_PATH}
 # MCP_PATH is read from /etc/grok-mcp.env (secret; never printed fully).
 #
-# Full tool surface (memory_* + ask_oracle + research_fanout + …).
+# Full tool surface (memory_* + ask_consortium + research_fanout + …).
 # Re-run after every MCP_PATH rotation (rotate-url.sh calls this automatically).
 #
 # Usage: sudo bash scripts/sync-grok-build-astra-mcp.sh
@@ -77,7 +77,7 @@ if curl -sS --max-time 8 -o /tmp/astra-mcp-probe.out -w '' -X POST "$URL" \
      -H 'Content-Type: application/json' \
      -H 'Accept: application/json, text/event-stream' \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'; then
-  if grep -q 'research_fanout\|memory_search\|ask_oracle' /tmp/astra-mcp-probe.out 2>/dev/null; then
+  if grep -q 'research_fanout\|memory_search\|ask_consortium' /tmp/astra-mcp-probe.out 2>/dev/null; then
     count="$(grep -oE '"name":"[^"]+"' /tmp/astra-mcp-probe.out 2>/dev/null | wc -l | tr -d ' ')"
     echo "sync-grok-build-astra-mcp: loopback tools/list OK (name-hits≈${count})"
   else

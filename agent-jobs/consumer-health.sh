@@ -66,7 +66,7 @@ PY
          -H 'Accept: application/json, text/event-stream' \
          -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' 2>/dev/null; then
       findings+=("grok_build: loopback tools/list curl failed")
-    elif ! grep -qE 'memory_search|ask_oracle|research_fanout' /tmp/consumer-health-mcp.out 2>/dev/null; then
+    elif ! grep -qE 'memory_search|ask_consortium|ask_oracle|research_fanout' /tmp/consumer-health-mcp.out 2>/dev/null; then
       findings+=("grok_build: loopback tools/list missing expected tools")
     fi
   fi

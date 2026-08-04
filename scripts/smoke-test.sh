@@ -59,7 +59,7 @@ derive_expected_tools() {
 }
 
 if [ -z "${EXPECTED_TOOLS:-}" ]; then
-  EXPECTED_TOOLS="$(derive_expected_tools)" || EXPECTED_TOOLS=11
+  EXPECTED_TOOLS="$(derive_expected_tools)" || EXPECTED_TOOLS=10
 fi
 
 # --- Resolve the public funnel base URL (works on any tailnet, not hardcoded) -

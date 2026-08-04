@@ -1,7 +1,7 @@
 # astra-config — zaz-astra rebuild runbook
 
 Config backup + reproducible rebuild for host **zaz-astra** (Debian 13).
-Runs the **astra MCP server** (`ad-astra` repo): tools `get_odds`, `grok_x_search`,
+Runs the **astra MCP server** (`ad-astra` repo): tools `get_odds`, `ask_panel`, `ask_consortium`,
 `ask_panel`, `get_news_digest`, exposed publicly via Tailscale Funnel as a custom
 connector for claude.ai / Grok. (`ask_grok` + `ask_gemini` were merged into
 `ask_panel` on 2026-06-14.)
@@ -122,7 +122,7 @@ Run it anytime:
 ```bash
 sudo bash scripts/smoke-test.sh
 # discovers the funnel URL from `tailscale funnel status`, calls tools/list,
-# asserts EXPECTED_TOOLS (default 10): get_odds, ask_panel, grok_x_search, get_news_digest, ask_oracle, get_metrics + 4 memory_*
+# asserts EXPECTED_TOOLS (auto from toolSurface, currently 10): get_odds, ask_panel, get_news_digest, ask_consortium, get_metrics, research_fanout + 4 memory_*
 # reads the mount path from MCP_PATH in the off-repo env file (/etc/grok-mcp.env)
 # tunables: EXPECTED_TOOLS, MCP_PATH (override), RETRIES, SLEEP_SECS, FUNNEL_URL
 ```
