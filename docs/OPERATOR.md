@@ -67,7 +67,8 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 6. **Questions:** generally **one question per turn** (blocking decisions). Prefer shipping over multi-question menus.
 7. **MCP consumers (live):** after rotation/restart, only remind about **claude.ai + Grok** (and Grok Build loopback). **Never** nag about Claude Code CLI or journaling-routine MCP.
 8. **ask_oracle default** is Grok-primary (gemini/gpt; no grok opinion seat). `exclude_family:"none"` only if a non-Grok caller wants grok-direct dissent.
-9. **Pinned for next MCP_PATH rotation (batch):** consider culling/hiding `grok_x_search` if still Grok-primary usage — do **not** rotate solely for that.
+9. **Pinned for next MCP_PATH rotation (batch):** (a) add GPT seat to `ask_panel`, (b) cull/hide `grok_x_search` if still wanted, (c) description refresh — one rotation, not three. Do **not** rotate solely for polish.
+10. **Claude transcript memory-harvest: OFF permanently** (disabled early 2026-08; setup must not re-arm; cleanup archive/delete re-disable). Do not relitigate; in-session `memory_*` only for durable high-conf facts. No auto-harvest of design-chat.
 
 ---
 
