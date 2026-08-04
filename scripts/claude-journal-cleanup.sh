@@ -94,6 +94,8 @@ do_archive() {
     echo "## Done / do on archive"
     echo "- Journal crontab + oauth-watch off."
     echo "- memory-harvest.timer off (Claude transcript miner; may have been disabled early)."
+    echo "- Docs cull: mark astra-config README journaling / Claude SessionStart sections historical"
+    echo "  (or fold into archive notes) so rebuild docs match live consumers."
     echo "- Tag Claude-machinery-only facts for delete-phase supersede (not personal data)."
     echo
     echo "## Delete phase ($DELETE_ON)"
