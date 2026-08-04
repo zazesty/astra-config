@@ -111,6 +111,7 @@ Source: `permission-autonomy-preference` (spirit, even when not on Claude Code).
 | **Operator rails** | `/root/OPERATOR.md` (this file) | Who you’re allowed to be |
 | **Standing todos** | `~/.local/state/astra/standing-todos.json` · `standing-todos.sh` | Open *work intent* |
 | **Box status** | `box-status.sh` → `~/.local/state/astra/box-status.json` | Live *facts* (regenerate) |
+| **Agent pulse** | `scripts/agent-pulse.sh` | Short where-am-I for agents (on demand; not auto-injected) |
 | **Memory KB** | `/root/memory` · `memory_*` MCP | Durable facts, prefs, architecture |
 | **Handoff** | `/root/composer_handoff.md` | grok-mcp product queue only |
 | **Env map** | `~/.local/state/astra/env-map.md` (private) | Secret *locations*, never values |
