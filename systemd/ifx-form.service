@@ -1,0 +1,18 @@
+[Unit]
+Description=IFX cycle log form (127.0.0.1; Funnel secret path)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root
+Environment=HOME=/root
+Environment=IFX_FORM_PORT=8767
+# Bind Funnel path before serving
+ExecStartPre=/root/astra-config/scripts/ifx-form-funnel.sh
+ExecStart=/usr/bin/python3 /root/astra-config/scripts/ifx-form-server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

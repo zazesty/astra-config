@@ -1,0 +1,225 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --border: #2d3a4d;
+  --text: #e7ecf3;
+  --muted: #9aa8bc;
+  --accent: #5b9fd4;
+  --accent-soft: rgba(91, 159, 212, 0.12);
+  --ok: #3ecf8e;
+  --warn: #e8b84a;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 16px;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+header.site {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+header.site .inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0.9rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brand span { color: var(--accent); }
+
+nav a {
+  color: var(--muted);
+  margin-left: 1rem;
+  font-size: 0.92rem;
+}
+
+nav a:hover, nav a.active { color: var(--accent); }
+
+h1 {
+  font-size: 1.85rem;
+  line-height: 1.25;
+  margin: 1.5rem 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin: 2rem 0 0.6rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+  color: #fff;
+}
+
+h3 {
+  font-size: 1.05rem;
+  margin: 1.4rem 0 0.4rem;
+  color: #fff;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin-bottom: 1.5rem;
+}
+
+p, li { color: var(--text); }
+ul, ol { padding-left: 1.3rem; }
+li { margin: 0.35rem 0; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.card.highlight {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(91, 159, 212, 0.35);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.sms {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  background: #0b1016;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  color: #d5e4f5;
+  margin: 0.6rem 0 1rem;
+}
+
+.flow-step {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  align-items: start;
+}
+
+.step-num {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid rgba(91, 159, 212, 0.4);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.95rem;
+}
+
+th, td {
+  border: 1px solid var(--border);
+  padding: 0.65rem 0.8rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 600;
+  width: 32%;
+}
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.links-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.btn {
+  display: inline-block;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.92rem;
+}
+
+.btn:hover { border-color: var(--accent); text-decoration: none; color: var(--accent); }
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b1016;
+  font-weight: 600;
+}
+
+.btn.primary:hover { filter: brightness(1.08); color: #0b1016; }
+
+@media print {
+  body { background: #fff; color: #111; }
+  header.site { position: static; background: #fff; border-color: #ccc; }
+  .card, .sms { background: #f7f7f7; color: #111; border-color: #ccc; }
+  a { color: #0645ad; }
+  h2, h3, .brand { color: #111; }
+}

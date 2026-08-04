@@ -1,0 +1,19 @@
+[Unit]
+Description=Budget Bot Plaid webhook receiver (near-instant sync)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/hermes-finance
+Environment=HERMES_FINANCE_STATE=/root/.local/state/hermes-finance
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/hermes-finance.env
+ExecStartPre=-/bin/bash /root/astra-config/scripts/hermes-plaid-webhook-funnel.sh
+ExecStart=/usr/bin/python3 -m hermes_finance plaid-webhook-serve --no-funnel
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

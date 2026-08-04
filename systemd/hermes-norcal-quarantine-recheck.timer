@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Mon 10:00 PT — NorCal quarantine scale recheck
+
+[Timer]
+OnCalendar=Mon *-*-* 10:00:00
+Persistent=true
+AccuracySec=5min
+Unit=hermes-norcal-quarantine-recheck.service
+
+[Install]
+WantedBy=timers.target

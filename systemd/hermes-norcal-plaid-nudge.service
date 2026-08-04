@@ -1,0 +1,11 @@
+[Unit]
+Description=Budget Bot weekly email: retry 1st Nor Cal Plaid Link
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/hermes-finance
+Environment=HERMES_FINANCE_STATE=/root/.local/state/hermes-finance
+EnvironmentFile=-/etc/grok-mcp.env
+EnvironmentFile=-/etc/hermes-finance.env
+ExecStart=/root/astra-config/agent-jobs/hermes-norcal-plaid-nudge.sh

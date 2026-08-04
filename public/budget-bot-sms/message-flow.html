@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Message Flow &amp; Campaign Collateral — Budget Bot SMS</title>
+  <meta name="description" content="Twilio A2P campaign message flow, sample messages, and opt-in collateral for Budget Bot SMS." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <a class="brand" href="index.html">Budget <span>Bot</span></a>
+      <nav>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a href="message-flow.html" class="active">Message Flow</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="badge">Twilio campaign collateral</div>
+    <h1>Message Flow &amp; Opt-In Collateral</h1>
+    <p class="meta">
+      Program / brand name: <strong>Budget Bot</strong> · Operator: Zavdi<br />
+      Use case: Sole Proprietor / STARTER — account notifications (personal budget alerts)<br />
+      Contact: <a href="mailto:zazesty@gmail.com">zazesty@gmail.com</a><br />
+      Privacy: <a href="privacy.html">privacy.html</a> ·
+      Terms: <a href="terms.html">terms.html</a> ·
+      Index: <a href="index.html">index.html</a>
+    </p>
+
+    <div class="card highlight">
+      <strong>How end users consent (double opt-in, SMS only):</strong>
+      Enrollment is never passive. The subscriber either texts a keyword
+      (<strong>BUDGET</strong> or <strong>START</strong>) or receives a one-time welcome
+      invitation. In both cases they must reply <strong>YES</strong> after seeing
+      required disclosures before any program alerts are sent.
+    </div>
+
+    <h2>Program summary (for TCR / Twilio reviewers)</h2>
+    <table>
+      <tr><th>Item</th><th>Detail</th></tr>
+      <tr>
+        <td>Who sends</td>
+        <td><strong>Budget Bot</strong> (operated by sole proprietor Zavdi)</td>
+      </tr>
+      <tr>
+        <td>Who receives</td>
+        <td>Only the mobile number that completed double opt-in for this program</td>
+      </tr>
+      <tr>
+        <td>Why messages are sent</td>
+        <td>
+          Account-notification SMS for personal budget coaching:
+          hardcap near-limit warning, hardcap breach, and spending pace warning.
+          Not marketing, promotions, or third-party advertising.
+        </td>
+      </tr>
+      <tr>
+        <td>Number type</td>
+        <td>U.S. long code (10DLC) on this campaign’s Messaging Service</td>
+      </tr>
+      <tr>
+        <td>Opt-in methods (all listed)</td>
+        <td>
+          (1) Keyword: text <strong>BUDGET</strong> or <strong>START</strong> → welcome with disclosures → reply <strong>YES</strong><br />
+          (2) Invitation: one-time welcome from Budget Bot long code → reply <strong>YES</strong>
+        </td>
+      </tr>
+      <tr>
+        <td>Opt-out</td>
+        <td>Text <strong>STOP</strong> (also CANCEL, END, QUIT, UNSUBSCRIBE if using Twilio defaults)</td>
+      </tr>
+      <tr>
+        <td>Help</td>
+        <td>Text <strong>HELP</strong> or email <a href="mailto:zazesty@gmail.com">zazesty@gmail.com</a></td>
+      </tr>
+      <tr>
+        <td>Message frequency</td>
+        <td>Varies; typically fewer than 10 messages per month</td>
+      </tr>
+      <tr>
+        <td>Fees</td>
+        <td>Message and data rates may apply</td>
+      </tr>
+      <tr>
+        <td>Privacy Policy (public)</td>
+        <td>
+          <a href="https://zaz-astra.tail5d74e1.ts.net/budget-bot/privacy.html">https://zaz-astra.tail5d74e1.ts.net/budget-bot/privacy.html</a>
+          — states mobile numbers are <strong>not</strong> sold or shared for third-party marketing
+        </td>
+      </tr>
+      <tr>
+        <td>Terms &amp; Conditions (public)</td>
+        <td>
+          <a href="https://zaz-astra.tail5d74e1.ts.net/budget-bot/terms.html">https://zaz-astra.tail5d74e1.ts.net/budget-bot/terms.html</a>
+        </td>
+      </tr>
+    </table>
+
+    <h2>End-to-end opt-in flow (every path)</h2>
+
+    <div class="flow-step">
+      <div class="step-num">1A</div>
+      <div>
+        <h3>Path A — Keyword request</h3>
+        <p>Subscriber texts one of these keywords to the Budget Bot long code:</p>
+        <div class="sms">BUDGET</div>
+        <p>or</p>
+        <div class="sms">START</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-num">1B</div>
+      <div>
+        <h3>Path B — Program invitation</h3>
+        <p>
+          Budget Bot may send a one-time welcome invitation to a mobile number the program owner
+          intends to enroll (for example the sole proprietor’s own phone). This is not silent enrollment;
+          the recipient must still complete Step 2.
+        </p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div>
+        <h3>Welcome / Call-to-Action (Budget Bot → subscriber)</h3>
+        <p>
+          Same welcome for Path A and Path B. Includes brand identity, purpose, frequency,
+          “message and data rates may apply,” HELP/STOP, Privacy + Terms links, and an explicit YES request.
+        </p>
+        <div class="sms">Budget Bot: Hi — this is Budget Bot (operated by Zavdi). You are being offered personal budget alert texts: hardcap warnings, hardcap breaches, and pace warnings only (not marketing).
+Msg frequency varies (typically fewer than 10/mo). Msg &amp; data rates may apply.
+Reply YES to agree and enroll. Reply STOP to cancel, HELP for help.
+Privacy: https://zaz-astra.tail5d74e1.ts.net/budget-bot/privacy.html
+Terms: https://zaz-astra.tail5d74e1.ts.net/budget-bot/terms.html</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div>
+        <h3>Active consent (subscriber → Budget Bot)</h3>
+        <p>Clear opt-in keyword the customer texts (not pre-checked; affirmative action required):</p>
+        <div class="sms">YES</div>
+        <p>No hardcap/pace program alerts are sent until this YES is received.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div>
+        <h3>Opt-in confirmation (enrollment complete)</h3>
+        <div class="sms">Budget Bot: You’re confirmed for Budget Bot SMS. We’ll text only for hardcap/pace budget alerts you requested.
+Msg frequency varies (typically &lt;10/mo). Msg &amp; data rates may apply.
+Reply STOP to cancel, HELP for help.
+Privacy: https://zaz-astra.tail5d74e1.ts.net/budget-bot/privacy.html
+Terms: https://zaz-astra.tail5d74e1.ts.net/budget-bot/terms.html</div>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="step-num">5</div>
+      <div>
+        <h3>Example program alerts (after opt-in only)</h3>
+        <div class="sms">Budget Bot: Hardcap warning — spend is near your $[LIMIT] monthly limit ([PERCENT]% used). Reply STOP to cancel, HELP for help. Msg &amp; data rates may apply.</div>
+        <div class="sms">Budget Bot: Hardcap breach — spend exceeded your $[LIMIT] monthly limit. Reply STOP to cancel, HELP for help. Msg &amp; data rates may apply.</div>
+        <div class="sms">Budget Bot: Pace warning — current spend pace may exceed your $[LIMIT] monthly hardcap. Reply STOP to cancel, HELP for help. Msg &amp; data rates may apply.</div>
+      </div>
+    </div>
+
+    <h2>HELP and STOP auto-replies</h2>
+    <h3>HELP</h3>
+    <div class="sms">Budget Bot: Budget Bot sends hardcap &amp; pace budget alerts only. Msg frequency varies. Msg &amp; data rates may apply. Reply STOP to cancel. Help: zazesty@gmail.com Privacy: https://zaz-astra.tail5d74e1.ts.net/budget-bot/privacy.html</div>
+
+    <h3>STOP</h3>
+    <div class="sms">Budget Bot: You are unsubscribed from Budget Bot SMS. No more messages will be sent. Reply START or BUDGET if you want to re-subscribe later.</div>
+
+    <h2>Required disclosures checklist</h2>
+    <ul>
+      <li>Program / brand name: Budget Bot (Zavdi)</li>
+      <li>What messages are: personal hardcap / pace budget account notifications only</li>
+      <li>Message frequency: varies; typically fewer than 10 per month</li>
+      <li>“Message and data rates may apply”</li>
+      <li>HELP and STOP instructions</li>
+      <li>Public Privacy Policy + Terms links (this domain)</li>
+      <li>Mobile numbers not shared with third parties for their marketing (Privacy Policy)</li>
+      <li>Active consent: YES required; not pre-checked / not silent enrollment</li>
+      <li>Confirmation message after YES</li>
+    </ul>
+
+    <div class="card">
+      <strong>For Twilio Console:</strong> paste the full “Message Flow” text from
+      <a href="RESUBMIT.md">RESUBMIT.md</a> into the campaign Message Flow field
+      (do not paste only this URL). Keep this page as public evidence reviewers can open.
+    </div>
+
+    <div class="links-row">
+      <a class="btn primary" href="privacy.html">Open Privacy Policy</a>
+      <a class="btn primary" href="terms.html">Open Terms &amp; Conditions</a>
+      <a class="btn" href="RESUBMIT.md">Resubmit kit (Console paste)</a>
+    </div>
+  </main>
+
+  <footer class="wrap">
+    © 2026 Budget Bot · Public campaign collateral for SMS registration
+  </footer>
+</body>
+</html>

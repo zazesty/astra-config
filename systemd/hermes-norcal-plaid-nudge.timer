@@ -1,0 +1,12 @@
+[Unit]
+Description=Friday 11:00 PT — Budget Bot NorCal/Plaid check email
+
+[Timer]
+# Local timezone (box is America/Los_Angeles)
+OnCalendar=Fri *-*-* 11:00:00
+Persistent=true
+AccuracySec=1min
+Unit=hermes-norcal-plaid-nudge.service
+
+[Install]
+WantedBy=timers.target

@@ -4,10 +4,13 @@
 #
 # Phases (America/Los_Angeles dates, inclusive):
 #   archive  — on/after 2026-08-16: stop live firing surface (crontab + oauth-watch)
+#              + start memory dual-harness → Grok-primary streamline (plan marker)
 #   delete   — on/after 2026-08-30: purge local secrets + runtime state
+#              + execute memory Claude streamline erase (Claude-only machinery; NOT personal KB)
 #
 # Does NOT delete astra-config source (home/journal-trigger/*) — git is the
-# permanent archive. Re-run is idempotent. --force-phase=archive|delete for admin.
+# permanent archive. Does NOT wipe /root/memory personal facts.
+# Re-run is idempotent. --force-phase=archive|delete for admin.
 # =============================================================================
 set -euo pipefail
 
@@ -74,21 +77,42 @@ do_archive() {
     log "archive: journal-oauth-watch.timer already off or missing"
   fi
 
-  # 3) Note: scripts stay in astra-config; secrets stay until delete phase
+  # 3) Memory Claude streamline — archive phase (plan marker; no personal KB wipe)
+  PLAN="$STATE_DIR/memory-claude-streamline-plan.md"
+  {
+    echo "# Memory Claude streamline — ARCHIVE phase ($TODAY_PT PT)"
+    echo
+    echo "Goal: dual-harness → Grok-primary. Shared /root/memory personal facts STAY."
+    echo
+    echo "## Do on/after archive"
+    echo "- AGENTS.md / docs: Grok Build primary; drop Claude-as-equal co-primary."
+    echo "- Disable/no-op Claude-only harvest paths if still armed."
+    echo "- Tag Claude-machinery-only facts for delete-phase supersede (not personal data)."
+    echo
+    echo "## Delete phase ($DELETE_ON)"
+    echo "- Purge journal secrets + runtime (this script)."
+    echo "- Formal streamline erase markers; never bulk-delete personal KB."
+  } >"$PLAN"
+  printf '%s\n' "$TODAY_PT" >"$STATE_DIR/memory-streamline-archived-on"
+  log "archive: wrote memory streamline plan → $PLAN"
+
+  # 4) Note: scripts stay in astra-config; secrets stay until delete phase
   printf '%s\n' "$TODAY_PT" >"$ARCHIVE_MARKER"
   {
     echo "Claude journal live surface ARCHIVED on $TODAY_PT PT."
+    echo "Memory Claude streamline: ARCHIVE plan written (not a personal-KB wipe)."
     echo
     echo "Done:"
     echo "  • root crontab lines invoking journal-trigger removed"
     echo "  • journal-oauth-watch.timer disabled"
+    echo "  • memory streamline plan marker"
     echo
     echo "Kept until delete phase ($DELETE_ON):"
     echo "  • ~/.config/journal-trigger/{secret,endpoint}"
     echo "  • ~/.local/state/journal-* logs"
     echo "  • astra-config/home/journal-trigger/* (git archive forever)"
     echo
-    echo "Delete phase scheduled: $DELETE_ON PT (secrets + runtime state purge)."
+    echo "Delete phase scheduled: $DELETE_ON PT (secrets + runtime + streamline erase)."
     echo "Box: $(hostname) $(stamp)"
   } | bash "$NOTIFY" "Claude journal cron archived ($TODAY_PT)" || true
 
@@ -141,9 +165,27 @@ do_delete() {
     log "delete: re-stripped crontab"
   fi
 
+  # Memory Claude streamline — formal erase (machinery only)
+  # Personal /root/memory facts are NEVER bulk-deleted here.
+  STREAMLINE_NOTE="$STATE_DIR/memory-claude-streamline-deleted.md"
+  {
+    echo "# Memory Claude streamline — DELETE phase ($TODAY_PT PT)"
+    echo
+    echo "Journal secrets + Claude journal runtime: purged by this script."
+    echo "Personal memory KB (/root/memory user-* / hermes / ops facts): RETAINED."
+    echo
+    echo "Agent follow-up if not already done:"
+    echo "- Confirm no Claude-only harvester still writing."
+    echo "- Supersede obsolete Claude dual-harness howto facts (status=superseded), not delete personal data."
+    echo "- OPERATOR.md + AGENTS.md already Grok-primary."
+  } >"$STREAMLINE_NOTE"
+  printf '%s\n' "$TODAY_PT" >"$STATE_DIR/memory-streamline-deleted-on"
+  log "delete: memory streamline erase marker → $STREAMLINE_NOTE"
+
   printf '%s\n' "$TODAY_PT" >"$DELETE_MARKER"
   {
     echo "Claude journal local secrets + runtime state DELETED on $TODAY_PT PT."
+    echo "Memory Claude streamline: formal erase marker written (personal KB retained)."
     echo
     echo "Removed: ~/.config/journal-trigger secrets, journal-* state files."
     echo "Logs snapshot (if any): $STATE_DIR/archived-state/"

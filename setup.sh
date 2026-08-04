@@ -214,6 +214,19 @@ systemctl --user enable --now claude-journal-cleanup.timer
 # Ensure agent job scripts executable after rebuild
 chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh \
   "$REPO"/scripts/claude-journal-cleanup.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
+chmod +x "$REPO"/scripts/box-status.sh "$REPO"/scripts/standing-todos.sh \
+  "$REPO"/scripts/env-presence.sh 2>/dev/null || true
+# Agent UX state (status/todos/env map) — private; not secrets
+install -d -m 700 /root/.local/state/astra
+install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-presence.sh
+# OPERATOR rails: live copy at /root (memory detail stays in /root/memory)
+if [ -f "$REPO/docs/OPERATOR.md" ]; then
+  cp -a "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
+fi
+# Hermes secrets template only (never a filled file)
+if [ ! -f /etc/hermes-finance.env ]; then
+  echo "  (optional) later: sudo cp $REPO/hermes-finance.env.example /etc/hermes-finance.env && chmod 600 ..."
+fi
 
 # Journaling scheduler: install the hourly 1-6am PT root crontab. This is the
 # only root crontab on this box, so a plain install is correct on a fresh rebuild.

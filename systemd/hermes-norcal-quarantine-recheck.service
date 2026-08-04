@@ -1,0 +1,12 @@
+[Unit]
+Description=Budget Bot: weekly NorCal quarantine re-preview (no promote)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/hermes-finance
+Environment=HOME=/root
+Environment=HERMES_FINANCE_STATE=/root/.local/state/hermes-finance
+EnvironmentFile=-/etc/grok-mcp.env
+EnvironmentFile=-/etc/hermes-finance.env
+ExecStart=/root/astra-config/agent-jobs/hermes-norcal-quarantine-recheck.sh

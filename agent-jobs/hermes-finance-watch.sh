@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# hermes-finance-watch — budget rules + digest/anomaly alerts.
-# Pre-Plaid: runs in fixture mode with dry-run notify by default.
-# Enable live email: set notify_enabled true in ~/.local/state/hermes-finance/config.json
-#   and/or HERMES_LIVE=1
+# hermes-finance-watch — optional backup job (webhooks + 15m poll are primary).
+# No daily digests. Rare hardcap/pace interrupts only when notify_enabled / HERMES_LIVE.
 set -euo pipefail
 
 HERMES_ROOT="${HERMES_ROOT:-/root/hermes-finance}"
@@ -11,9 +9,8 @@ export PYTHONPATH="${HERMES_ROOT}${PYTHONPATH:+:$PYTHONPATH}"
 
 cd "$HERMES_ROOT"
 
-ARGS=(watch --force-digest)
-# Morning-ish: force digest so the first run of the day always archives one.
-# Dedup still prevents re-emailing the same anomaly keys.
+ARGS=(watch)
+# never --force-digest (owner: no daily digests)
 
 if [ "${HERMES_LIVE:-0}" = "1" ]; then
   ARGS+=(--live)

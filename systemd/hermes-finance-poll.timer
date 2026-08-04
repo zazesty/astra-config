@@ -1,0 +1,12 @@
+[Unit]
+Description=Budget Bot Plaid poll backup (every 15m)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Persistent=true
+Unit=hermes-finance-poll.service
+
+[Install]
+WantedBy=timers.target

@@ -6,6 +6,15 @@
 *.pem
 *.log
 
+# ===== Bank / Hermes personal finance data (NEVER GitHub) =====
+# Live txn stores, exports, tokens — even if someone vendors hermes code here.
+**/txns.json
+**/hermes-finance/imports/
+**/*Transactions*.xlsx
+**/*transactions*.csv
+hermes-finance.env
+/etc/hermes-finance.env
+
 # ===== GitHub Node.gitignore template =====
 # Logs
 logs
@@ -71,3 +80,8 @@ backups/
 # (the authless credential). Lives outside this repo today; this is belt-and-
 # suspenders so a stray copy into the tree can never be committed.
 settings.local.json
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
