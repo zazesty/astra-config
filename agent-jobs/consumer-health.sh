@@ -136,7 +136,7 @@ if [ "${#findings[@]}" -gt 0 ]; then
       echo "Report: $REPORT"
       echo "Human checklist: bash $REPO/scripts/post-rotate-checklist.sh"
       echo "Grok Build sync: bash $REPO/scripts/sync-grok-build-astra-mcp.sh"
-      echo "Cloud connectors (journaling / claude.ai / Grok) still need manual re-add after rotation."
+      echo "Cloud connectors (claude.ai / Grok) still need manual re-add after rotation. Not Claude Code / journaling."
     } | bash "$NOTIFY" "🔴 astra consumer-health findings" || true
   fi
   exit 1

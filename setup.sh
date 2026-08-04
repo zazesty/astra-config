@@ -295,10 +295,10 @@ if bash "$REPO/scripts/smoke-test.sh"; then
 
   ↻ Server side is green — but consumers pointing at the OLD MCP_PATH won't
     follow automatically. If the path changed (rebuild or rotation), repoint
-    each by hand — these fail SILENTLY when stale:
-      • Claude Code journaling routine — connector URL (cloud routine config)
-      • Claude interactive connector (astra85f) — reconnect to the new URL
+    live consumers by hand (fail SILENTLY when stale):
+      • claude.ai project connector — reconnect to the new URL
       • Grok connector — reconnect (also busts its per-URL tool cache)
+    Do not chase Claude Code / journaling-routine MCP.
     Full checklist: README "Rotating the URL (MCP_PATH)".
 EOF
 else

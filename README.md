@@ -62,42 +62,32 @@ credential, so we rotate it on purpose — to bust a connector's per-URL tool
 cache, or after a leak. (Be sure an API spend limit is in place on every provider
 key, so a leaked path can't run up unbounded cost.) **The path is referenced in
 several places that do NOT auto-update. Miss one and that consumer silently
-breaks** — exactly how the journaling routine stayed dead for a while.
+breaks.**
 
 > ⚠️ **After ANY restart: CHECK connectors; ROTATE only as needed.**
 > Restarting `grok-mcp.service` can drop live remote MCP sessions (providers often
 > do not auto-reconnect). Engine-only restarts do **not** always break every client
 > (2026-07-08: Gemini stayed up without rotation). If a consumer is dead, re-add;
-> if still stuck (common on Grok), `rotate-url.sh` then re-add all three. **Always
-> rotate** when the tool list/schema changes (Grok caches tools per URL). In-session
-> reminder: `/root/.grok-mcp-restart.alert` via `grok-restart-reminder.timer` +
-> SessionStart `restart-banner.sh` (no routine email).
+> if still stuck (common on Grok), `rotate-url.sh` then re-add **claude.ai + Grok**.
+> **Always rotate** when the tool list/schema changes (Grok caches tools per URL).
+> In-session reminder: `/root/.grok-mcp-restart.alert` via `grok-restart-reminder.timer`
+> (no routine email). Do **not** nag about Claude Code or journaling-routine MCP.
 
 **Fastest path:** `sudo bash scripts/rotate-url.sh` automates the box side —
 generates a fresh path, backs up + rewrites the env, restarts the service, smoke-tests
 through the Funnel, and prints the new URL + the consumer checklist below. It bumps the
-`/vN` suffix automatically (pass one to override). The cloud reconnects (steps 2–4) are
-still manual. The by-hand procedure:
+`/vN` suffix automatically (pass one to override). Cloud reconnects are still manual.
 
-When you change `MCP_PATH` in `/etc/grok-mcp.env`, walk this whole list:
+When you change `MCP_PATH` in `/etc/grok-mcp.env`, walk this list:
 
 1. **Restart the service** so the new mount takes effect:
    `sudo systemctl restart grok-mcp.service`.
-2. **Claude Code journaling routine** — update its MCP connector URL to the new
-   path. ⚠️ This one is easy to forget (the URL lives in the cloud routine's
-   connector config, not in this repo) and fails *silently* — it just stops
-   journaling, no error. **Do not skip.**
-3. **Claude interactive connector** (`astra85f`, claude.ai) — reconnect it to the
-   new URL, or its tools quietly disappear from your sessions. Also silent.
-4. **Grok connector** — reconnect Grok to the new URL. Grok caches its tool list
-   *per URL*, so a fresh URL is also how you force it to pick up added/renamed
-   tools — often the very reason you're rotating.
-5. **`~/.claude/settings.local.json`** — the allowlisted `curl ...` permission
-   entries hard-code the path; stale ones only make Claude re-prompt on a manual
-   probe (cosmetic — not a silent break).
-6. **Verify**: `sudo bash scripts/smoke-test.sh` (discovers the path from the env
-   file, so it follows the rotation automatically — a clean run confirms the
-   server side; the consumers above are still on you to update).
+2. **claude.ai** project connector — reconnect to the new URL (silent if stale).
+3. **Grok** connector — reconnect. Grok caches its tool list *per URL*, so a fresh
+   URL is also how you force added/renamed tools to show up.
+4. **Grok Build loopback** — `sync-grok-build-astra-mcp.sh` if used; restart session.
+5. **Verify**: `sudo bash scripts/smoke-test.sh` (server side). Live consumers above
+   are still on you to update.
 
 Never commit the path, or any wording describing the endpoint's auth posture, to git — working tree or history.
 

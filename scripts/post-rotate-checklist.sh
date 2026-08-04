@@ -8,7 +8,7 @@
 #   • After rotate-url.sh (hooked below if present)
 #   • SessionStart / agent: print this script's stdout into the chat (no popup UI)
 #
-# Claude Code and Grok Build do not get OS notifications from this — agents
+# Grok Build / claude.ai do not get OS notifications from this — agents
 # (or you) run it and paste/read the checklist in the conversation.
 # =============================================================================
 set -uo pipefail
@@ -42,12 +42,14 @@ echo
 
 cat <<'EOF'
 --- Human re-adds (cannot automate from the box) ---
-[ ] Journaling routine MCP URL = current MCP_PATH (stale fails SILENTLY)
-[ ] claude.ai project connector = same path (name can be "Astra V14"; name is cosmetic)
+Live consumers only:
+[ ] claude.ai project connector = current MCP_PATH (name cosmetic)
 [ ] Grok (cloud) connector re-added if tool list stale (Grok caches tools PER URL)
 [ ] Optional: remove old connector aliases (Astra V12/V13/…) to avoid picking a dead URL
 
-Verify with a trivial tool call from each consumer (e.g. memory_list limit 1).
+Do NOT chase: Claude Code CLI / journaling-routine MCP (not live consumers).
+
+Verify with a trivial tool call from each live consumer (e.g. memory_list limit 1).
 Funnel smoke PASS only proves the box — not that cloud UIs point at it.
 
 Dismiss restart alert if present:  rm -f /root/.grok-mcp-restart.alert

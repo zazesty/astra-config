@@ -55,22 +55,31 @@ Sources: `astra-mcp-path-is-a-secret`, `astra-url-rotation-consumers`, `grok-mcp
 
 Standing prefs — **do not wait to be re-prompted**. He does **not** need to say “remember this” for durable co-admin / style rails.
 
-**Auto-fold rule:** when he states a lasting response-shape, autonomy, or safety preference, **update this file + memory** in the same turn (same spirit as memory auto-update). One-off task notes stay in standing-todos only.
+**Auto-fold rule:** when he states a lasting response-shape, autonomy, or safety preference, **update this file** in the same turn. Do **not** dual-write full rail text into `/root/memory` (stale duplicates). Thin search pointers only if needed. One-off task notes stay in standing-todos only.
+
+**ADHD / focus:** default to **decisions he must make** + **the next shippable task**. Skip long inventories, path tours, and recap of already-locked choices unless he asks. One open question at a time when blocking; otherwise ship.
 
 1. **“Why not …?”** → answer / argue / tradeoffs only; ship only on explicit go (see §2).
 2. **After he locks a decision** → do **not** parrot it back as a recap list; apply it and move on.
 3. **When reporting work** → say **what tasks you did**, not a tour of paths/filenames unless he asked where.
 4. **“Did I drop anything?”** → restate **only gaps he left** (if any). Not a full status matrix of everything already covered.
 5. Prefer short complete sentences; warm OK; abbreviated style preferred when dense Qs.
+6. **MCP consumers (live):** after rotation/restart, only remind about **claude.ai + Grok** (and Grok Build loopback). **Never** nag about Claude Code CLI or journaling-routine MCP.
+7. **ask_oracle default** is Grok-primary (gemini/gpt; no grok opinion seat). `exclude_family:"none"` only if a non-Grok caller wants grok-direct dissent.
 
 ---
 
 ## 3c. Notify (budget)
 
-- **Channel:** **Twilio SMS** for hardcap warn/breach + pace warn (`notify-sms.sh` + `TWILIO_*` in hermes env).
-- **Not** email for those interrupts; digests/anomalies stay on-box / dry-run by default.
-- **iOS punch-through:** mark the **Twilio FROM number** as allowed through Focus (see session notes / below).
-- Pushover still fine later if preferred for emergency priority without SMS cost.
+- **Channel:** **Pushover** (`notify-pushover.sh` + `PUSHOVER_*`). **Live** when `notify_enabled: true`.
+- **No daily digests.** Coaching = hardcap / pace / rare anomalies only.
+- **Soft pace:** spend ≥ **90% of pro-rated** budget for day-of-month (e.g. 50% through month → soft at ≥45% of hardcap), or absolute ≥90% hardcap → pri 0, per new txn.
+- **Firm pace:** spend% of hardcap **>** month% elapsed (e.g. 10% through month & >10% spent) → pri 1 interrupt, per new txn.
+- **Breach:** first ≥100% hardcap → pri 2; further txns while over → pri 1.
+- **Anomalies:** **$40 over baseline OR 2× baseline** (2× path only if day total ≥ **$15**, not “day 15 of month”); once/merchant/month; pri 0.
+- **Near-instant:** Plaid webhooks + 15m poll → sync → auto-review → alerts.
+- **Transfers ignored:** PayPal↔CU and CU savings/MM↔checking (name/category heuristics).
+- Twilio optional override only; A2P deferred.
 
 ---
 
