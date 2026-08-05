@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Health Bot — OAuth callback (production)</title>
+  <link rel="stylesheet" href="../../styles.css" />
+  <style>
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
+    .ok { color: var(--ok); }
+    .err { color: #f07178; }
+    pre.box { background: var(--surface); border: 1px solid var(--border); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <a class="brand" href="../../index.html">Health <span>Bot</span></a>
+      <nav><a href="../../privacy.html">Privacy</a></nav>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="badge">OAuth · production</div>
+    <h1 id="title">Completing sign-in…</h1>
+    <p class="meta">Kaiser Patient Access redirect target for <strong>Health Bot</strong> (production). Operated by Zavdi.</p>
+    <div class="card" id="result">
+      <p>Reading authorization response…</p>
+    </div>
+    <p class="meta">You can close this tab after the code is shown. Do not share the authorization code.</p>
+  </main>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get("error");
+      const desc = params.get("error_description") || params.get("error_uri") || "";
+      const code = params.get("code");
+      const state = params.get("state");
+      const el = document.getElementById("result");
+      const title = document.getElementById("title");
+      if (err) {
+        title.textContent = "Authorization failed";
+        title.className = "err";
+        el.innerHTML = "<p class='err'><strong>error:</strong> <span class='mono'>" + err +
+          "</span></p><p class='mono'>" + (desc || "") + "</p>";
+        return;
+      }
+      if (!code) {
+        title.textContent = "Waiting for Kaiser redirect";
+        el.innerHTML = "<p>No <code>code</code> query parameter yet. This URL is the registered production redirect URI.</p>" +
+          "<p class='mono'>https://zaz-astra.tail5d74e1.ts.net/health-bot/oauth/callback</p>";
+        return;
+      }
+      title.textContent = "Authorization received";
+      title.className = "ok";
+      el.innerHTML =
+        "<p class='ok'>Kaiser redirected successfully. Keep this code private.</p>" +
+        "<p><strong>code</strong></p><pre class='box mono' id='code'></pre>" +
+        (state ? "<p><strong>state</strong></p><pre class='box mono' id='state'></pre>" : "") +
+        "<p class='meta'>Next: exchange code for tokens on-box (Health Bot CLI) — never paste into chat logs.</p>";
+      document.getElementById("code").textContent = code;
+      if (state) document.getElementById("state").textContent = state;
+      // Optional: hand off to local capture service if running (same machine only via funnel proxy later)
+      try {
+        fetch("/health-bot/oauth/capture", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ env: "production", code: code, state: state, ts: new Date().toISOString() })
+        }).catch(function () {});
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>

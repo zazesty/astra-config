@@ -79,7 +79,7 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 - **Soft pace:** spend ≥ **90% of pro-rated** budget for day-of-month (e.g. 50% through month → soft at ≥45% of hardcap), or absolute ≥90% hardcap → pri 0, per new txn.
 - **Firm pace:** spend% of hardcap **>** month% elapsed (e.g. 10% through month & >10% spent) → pri 1 interrupt, per new txn.
 - **Breach:** first ≥100% hardcap → pri 2; further txns while over → pri 1.
-- **Anomalies:** **$40 over baseline OR 2× baseline** (2× path only if day total ≥ **$15**, not “day 15 of month”); once/merchant/month; pri 0.
+- **Anomalies:** **$100 over baseline OR 4× baseline** (ratio path only if day total ≥ **$100**); once/merchant/month; pri 0.
 - **Near-instant:** Plaid webhooks + 15m poll → sync → auto-review → alerts.
 - **Transfers ignored:** PayPal↔CU and CU savings/MM↔checking (name/category heuristics).
 - Twilio optional override only; A2P deferred.

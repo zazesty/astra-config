@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Health Bot — OAuth callback (sandbox)</title>
+  <link rel="stylesheet" href="../../../styles.css" />
+  <style>
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-all; }
+    .ok { color: var(--ok); }
+    .err { color: #f07178; }
+    pre.box { background: var(--surface); border: 1px solid var(--border); padding: 1rem; border-radius: 8px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <a class="brand" href="../../../index.html">Health <span>Bot</span></a>
+      <nav><a href="../../../privacy.html">Privacy</a></nav>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="badge">OAuth · sandbox</div>
+    <h1 id="title">Completing sandbox sign-in…</h1>
+    <p class="meta">Kaiser Patient Access <strong>sandbox</strong> redirect for Health Bot. Operated by Zavdi.</p>
+    <div class="card" id="result">
+      <p>Reading authorization response…</p>
+    </div>
+    <p class="meta">Sandbox only — use for portal testing until production is approved.</p>
+  </main>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get("error");
+      const desc = params.get("error_description") || params.get("error_uri") || "";
+      const code = params.get("code");
+      const state = params.get("state");
+      const el = document.getElementById("result");
+      const title = document.getElementById("title");
+      if (err) {
+        title.textContent = "Sandbox authorization failed";
+        title.className = "err";
+        el.innerHTML = "<p class='err'><strong>error:</strong> <span class='mono'>" + err +
+          "</span></p><p class='mono'>" + (desc || "") + "</p>";
+        return;
+      }
+      if (!code) {
+        title.textContent = "Sandbox redirect URI ready";
+        el.innerHTML = "<p>No <code>code</code> yet. Register this exact sandbox redirect URI with Kaiser:</p>" +
+          "<p class='mono'>https://zaz-astra.tail5d74e1.ts.net/health-bot/oauth/sandbox/callback</p>";
+        return;
+      }
+      title.textContent = "Sandbox authorization received";
+      title.className = "ok";
+      el.innerHTML =
+        "<p class='ok'>Sandbox redirect OK. Keep the code private.</p>" +
+        "<p><strong>code</strong></p><pre class='box mono' id='code'></pre>" +
+        (state ? "<p><strong>state</strong></p><pre class='box mono' id='state'></pre>" : "") +
+        "<p class='meta'>Exchange on-box only; do not paste codes into chats or GitHub.</p>";
+      document.getElementById("code").textContent = code;
+      if (state) document.getElementById("state").textContent = state;
+    })();
+  </script>
+</body>
+</html>

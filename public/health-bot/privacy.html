@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Health Bot — Privacy Policy</title>
+  <meta name="description" content="Privacy policy for Health Bot, a personal member-authorized health companion operated by Zavdi." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site">
+    <div class="inner">
+      <a class="brand" href="index.html">Health <span>Bot</span></a>
+      <nav>
+        <a class="active" href="privacy.html">Privacy</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="badge">Privacy</div>
+    <h1>Privacy Policy</h1>
+    <p class="meta">Last updated: 2026-08-04 · Operated by Zavdi (sole proprietor) ·
+      <a href="mailto:zazesty@gmail.com">zazesty@gmail.com</a>
+    </p>
+
+    <div class="card">
+      <h2>Overview</h2>
+      <p>
+        Health Bot is a <strong>personal, single-user</strong> health companion.
+        It helps the enrolled member review their own clinical information after
+        they authorize access (including via patient-access APIs such as Kaiser
+        Permanente’s Patient Access FHIR APIs), optionally log symptoms or medications,
+        and receive private alerts they configure.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Data we process</h2>
+      <ul>
+        <li>Member-authorized clinical data (e.g. Patient, Observation, DiagnosticReport and related FHIR resources the member grants).</li>
+        <li>Optional notes the member enters (symptoms, medications, free text).</li>
+        <li>Technical logs needed to run sync and alerts (timestamps, error codes — not sold).</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>How we use data</h2>
+      <p>Only for the member’s own private review, trend/pattern notes, and personal notifications they enable. No secondary commercial use.</p>
+    </div>
+
+    <div class="card">
+      <h2>Sharing</h2>
+      <p>
+        We do <strong>not</strong> sell personal or health data.
+        We do <strong>not</strong> share it with third parties for their marketing or advertising.
+        Limited processors may see data only as needed to run infrastructure the member chooses
+        (for example cloud LLM providers for narrative review, or a push service for alerts),
+        under the operator’s control and configuration.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Storage &amp; security</h2>
+      <p>
+        Data is stored under the operator’s private control (self-hosted state with restricted
+        filesystem permissions). Tokens and secrets are kept outside public git repositories.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Your choices</h2>
+      <p>
+        You can revoke API authorization at the source (e.g. Kaiser member portal / connected apps),
+        ask the operator to delete local Health Bot state, and disable personal alerts.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>Contact</h2>
+      <p><a href="mailto:zazesty@gmail.com">zazesty@gmail.com</a></p>
+      <p>Public site: <a href="https://zaz-astra.tail5d74e1.ts.net/health-bot/">https://zaz-astra.tail5d74e1.ts.net/health-bot/</a></p>
+    </div>
+  </main>
+
+  <footer class="wrap">
+    © 2026 Health Bot · <a href="index.html">Home</a> · <a href="privacy.html">Privacy</a>
+  </footer>
+</body>
+</html>

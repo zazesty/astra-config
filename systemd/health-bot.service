@@ -1,0 +1,16 @@
+[Unit]
+Description=Health Bot public site + Kaiser OAuth callback
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/health-bot
+Environment=HEALTH_BOT_ENV=/etc/health-bot.env
+Environment=HEALTH_BOT_STATE=/root/.local/state/health
+Environment=HEALTH_BOT_PUBLIC=/root/astra-config/public/health-bot
+ExecStart=/usr/bin/python3 -m health_bot serve --port 8768
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
