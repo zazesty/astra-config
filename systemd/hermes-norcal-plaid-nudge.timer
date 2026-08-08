@@ -1,9 +1,9 @@
 [Unit]
-Description=Friday 11:00 PT — Budget Bot NorCal/Plaid check email
+Description=Daily 11:00 PT gate — Budget Bot NorCal/Plaid biweekly email
 
 [Timer]
-# Local timezone (box is America/Los_Angeles)
-OnCalendar=Fri *-*-* 11:00:00
+# Local timezone (box is America/Los_Angeles). Script enforces ≥14 days between sends.
+OnCalendar=*-*-* 11:00:00
 Persistent=true
 AccuracySec=1min
 Unit=hermes-norcal-plaid-nudge.service

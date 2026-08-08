@@ -1,5 +1,5 @@
 [Unit]
-Description=Budget Bot weekly email: retry 1st Nor Cal Plaid Link
+Description=Budget Bot biweekly email: NorCal Plaid + opaque naming check
 After=network-online.target
 
 [Service]
