@@ -1,0 +1,8 @@
+[Unit]
+Description=Monthly OR/seat timeout metrics review (vs 2026-08-09 A+B baseline)
+
+[Service]
+Type=oneshot
+# 10m is plenty for pure stats over JSONL
+Environment=AGENT_TIMEOUT_SECS=120
+ExecStart=/root/astra-config/scripts/agent-run.sh or-timeout-review
