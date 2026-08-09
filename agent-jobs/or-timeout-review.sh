@@ -10,8 +10,8 @@
 #   DAYS=14 bash agent-jobs/or-timeout-review.sh   # lookback window (default 30)
 #
 # Exit: 0 always (report written); non-zero only on hard script failure.
-# Notify: Pushover pri 0 if a focus bucket timeout_rate is still >50% with n>=5
-#         after the lookback (regression / insufficient improvement).
+# Notify: email-or-nothing if a focus bucket timeout_rate is still >50% with n>=5
+#         after the lookback. NEVER Pushover (ops hygiene, not urgent/critical).
 set -euo pipefail
 
 DAYS="${DAYS:-30}"
@@ -28,7 +28,7 @@ PT=$(TZ=America/Los_Angeles date +%Y-%m-%dT%H:%M:%S%z)
 REPORT_JSON="$OUT_DIR/latest.json"
 REPORT_MD="$OUT_DIR/latest.md"
 JSONL="$OUT_DIR/reviews.jsonl"
-NOTIFY="${ASTRA_REPO:-/root/astra-config}/scripts/notify-pushover.sh"
+NOTIFY_EMAIL="${ASTRA_REPO:-/root/astra-config}/scripts/notify-email.sh"
 
 export DAYS METRICS_DIR BASELINE OUT_DIR TS PT REPORT_JSON REPORT_MD JSONL
 
@@ -203,10 +203,15 @@ if alerts:
     )
 PY
 
-# Optional soft pushover if still unhealthy (pri 0 — not interrupt)
-if [[ -f "$OUT_DIR/alert.flag" && "$(cat "$OUT_DIR/alert.flag")" == "1" && -x "$NOTIFY" ]]; then
-  # notify-pushover.sh TITLE MESSAGE [priority]
-  bash "$NOTIFY" "OR timeout review" "$(head -c 900 "$OUT_DIR/alert.txt" 2>/dev/null || echo still hot)" 0 2>/dev/null || true
+# Optional email if still unhealthy — never Pushover (non-urgent ops report).
+if [[ -f "$OUT_DIR/alert.flag" && "$(cat "$OUT_DIR/alert.flag")" == "1" && -x "$NOTIFY_EMAIL" ]]; then
+  {
+    echo "OR timeout review — focus buckets still hot (>50% timeout, n≥5)."
+    echo
+    cat "$OUT_DIR/alert.txt" 2>/dev/null || true
+    echo
+    echo "Full report: $REPORT_MD"
+  } | bash "$NOTIFY_EMAIL" "OR timeout review: still hot" 2>/dev/null || true
 fi
 
 echo "or-timeout-review: wrote $REPORT_MD"
