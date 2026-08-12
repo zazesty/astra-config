@@ -1,0 +1,7 @@
+[Unit]
+Description=Weekly email: Grok journal last-week read reminder (agent-run)
+
+[Service]
+Type=oneshot
+Environment=TZ=America/Los_Angeles
+ExecStart=/root/astra-config/scripts/agent-run.sh grok-journal-read-reminder

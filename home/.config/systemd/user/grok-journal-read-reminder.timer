@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Grok-journal read reminder (Sat 12:00 PT)
+
+[Timer]
+# Saturday noon America/Los_Angeles
+OnCalendar=Sat *-*-* 12:00:00 America/Los_Angeles
+Persistent=true
+
+[Install]
+WantedBy=timers.target

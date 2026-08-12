@@ -97,6 +97,10 @@ ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.service" /root/.
 ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.timer"   /root/.config/systemd/user/grok-restart-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal.service" /root/.config/systemd/user/grok-journal.service
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal.timer"   /root/.config/systemd/user/grok-journal.timer
+ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-pause-reminder.service" /root/.config/systemd/user/grok-journal-pause-reminder.service
+ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-pause-reminder.timer"   /root/.config/systemd/user/grok-journal-pause-reminder.timer
+ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.service" /root/.config/systemd/user/grok-journal-read-reminder.service
+ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.timer"   /root/.config/systemd/user/grok-journal-read-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.service" /root/.config/systemd/user/claude-journal-cleanup.service
 ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.timer"   /root/.config/systemd/user/claude-journal-cleanup.timer
 
@@ -206,6 +210,7 @@ systemctl --user disable --now memory-harvest.timer 2>/dev/null || true
 systemctl --user enable --now journal-oauth-watch.timer
 systemctl --user enable --now grok-restart-reminder.timer
 systemctl --user enable --now grok-journal-pause-reminder.timer
+systemctl --user enable --now grok-journal-read-reminder.timer
 systemctl --user enable --now ops-log.timer
 systemctl --user enable --now git-access-check.timer
 systemctl --user enable --now consumer-health.timer
@@ -215,6 +220,8 @@ systemctl --user enable --now grok-journal.timer
 systemctl --user enable --now claude-journal-cleanup.timer
 # Ensure agent job scripts executable after rebuild
 chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh \
+  "$REPO"/scripts/grok-journal-read-reminder.sh \
+  "$REPO"/scripts/grok-journal-pause-reminder.sh \
   "$REPO"/scripts/claude-journal-cleanup.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
 chmod +x "$REPO"/scripts/box-status.sh "$REPO"/scripts/standing-todos.sh \
   "$REPO"/scripts/env-presence.sh 2>/dev/null || true
