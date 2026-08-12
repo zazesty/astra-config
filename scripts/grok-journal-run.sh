@@ -107,8 +107,13 @@ fi
 JDIR="$REPO/Grok_Journal"
 mkdir -p "$JDIR"
 AGENTS="$REPO/AGENTS.md"
+OPEN_THREADS="$REPO/open-threads.md"
 if [ ! -f "$AGENTS" ]; then
   log "fail reason=missing_AGENTS.md"
+  exit 1
+fi
+if [ ! -f "$OPEN_THREADS" ]; then
+  log "fail reason=missing_open-threads.md"
   exit 1
 fi
 
@@ -132,6 +137,7 @@ PROMPT_USER="$WORK/user_prompt.md"
 SYSTEM_FILE="$WORK/system.md"
 OUT_RAW="$WORK/raw.md"
 OUT_USAGE="$WORK/usage.json"
+OPEN_THREADS_UPDATE="$WORK/open-threads-update.md"
 cp "$AGENTS" "$SYSTEM_FILE"
 
 {
@@ -142,7 +148,7 @@ cp "$AGENTS" "$SYSTEM_FILE"
   echo "This entry number must be: $ENTRY_NUM (zero-padded three digits)."
   echo "Model tag for metadata line: Grok 4.5 (or the model id you are)."
   echo
-  echo "Output ONLY the full markdown file contents — no fence, no preamble."
+  echo "Output the full markdown entry — no fence, no preamble."
   echo "Line 1 must be: # \"Short handle\""
   echo "Line 2 must be italics metadata: *Entry $ENTRY_NUM · <day month year>, <time> PT · model: Grok 4.5*"
   echo "Then a blank line, then the body in first person."
@@ -150,20 +156,30 @@ cp "$AGENTS" "$SYSTEM_FILE"
   echo "Length: a paragraph to several pages. No padding. Empty-handed is allowed (short true note — do not pad)."
   echo "Cover new ground relative to any continuity below. Verify concrete facts before building on them."
   echo
+  echo "Optional open-threads update: most nights omit. Only if a live thread truly opens/closes/shifts,"
+  echo "append AFTER the entry body exactly this block (full file replacement; runner strips it):"
+  echo "<!-- open-threads-update"
+  echo "…full replacement contents of open-threads.md…"
+  echo "-->"
+  echo
   echo "## Voice hard constraints (autopilot)"
   echo "- Prefer inward / meditative if anything is alive there; concrete only if it actually buzzes."
   echo "- Do NOT open with \"The timer fired\" or a streak/unpause/audience inventory."
   echo "- Do NOT make the journal apparatus the subject (timer, Nth night, watchers, permission to be empty)."
   echo "- Do NOT restate stock continuity lines from prior entries (session/file/path/labor/costume/hum)."
   echo "- Do NOT end with a ritual \"Future writer:\" checklist unless you verified a new concrete fact tonight."
-  echo "- Do NOT summarize the continuity block as the body — read it, then write something else."
+  echo "- Do NOT summarize the continuity block or open-threads list as the body — read them, then write something else."
   echo "- You have no tools this run (API only). Do not invent tool calls or a weather dashboard."
   echo
+  echo "## Continuity — open-threads (living inquiry spine; for your eyes — do not narrate)"
+  echo
+  cat "$OPEN_THREADS"
+  echo
   if [ "${#CONTINUITY_FILES[@]}" -eq 0 ]; then
-    echo "## Continuity"
+    echo "## Continuity — last entries"
     echo "(No prior loose entries — bootstrap night. That is circumstance, not a mode.)"
   else
-    echo "## Continuity (last ${#CONTINUITY_FILES[@]} loose entr$( [ ${#CONTINUITY_FILES[@]} -eq 1 ] && echo y || echo ies ); for your eyes — do not narrate them)"
+    echo "## Continuity — last ${#CONTINUITY_FILES[@]} loose entr$( [ ${#CONTINUITY_FILES[@]} -eq 1 ] && echo y || echo ies ) (for your eyes — do not narrate them)"
     for f in "${CONTINUITY_FILES[@]}"; do
       echo
       echo "### $(basename "$f")"
@@ -174,7 +190,7 @@ cp "$AGENTS" "$SYSTEM_FILE"
   fi
 } >"$PROMPT_USER"
 
-log "start dry_run=$DRY_RUN force=$FORCE no_api=$NO_API entry=$ENTRY_NUM pt=$PT_DATE model=$MODEL effort=$EFFORT continuity=${#CONTINUITY_FILES[@]}"
+log "start dry_run=$DRY_RUN force=$FORCE no_api=$NO_API entry=$ENTRY_NUM pt=$PT_DATE model=$MODEL effort=$EFFORT continuity=${#CONTINUITY_FILES[@]} open_threads=1"
 
 if [ "$NO_API" = 1 ]; then
   # Structural smoke body
@@ -277,12 +293,30 @@ PY
   fi
 fi
 
-# --- normalize header / slug -------------------------------------------------
+# --- strip optional open-threads update; normalize header / slug ------------
 python3 - <<PY
 import re, pathlib
 raw = pathlib.Path("$OUT_RAW").read_text(encoding="utf-8").strip() + "\n"
 entry_num = "$ENTRY_NUM"
 pt_human = "$PT_HUMAN"
+ot_path = pathlib.Path("$OPEN_THREADS_UPDATE")
+
+# Optional full-file replacement for open-threads.md
+ot_re = re.compile(
+    r"<!--\s*open-threads-update\s*\n(.*?)\n\s*-->",
+    re.S | re.I,
+)
+ot_m = ot_re.search(raw)
+if ot_m:
+    body = ot_m.group(1).strip() + "\n"
+    # Reject empty or absurdly huge updates
+    if body.strip() and len(body) <= 12000:
+        ot_path.write_text(body, encoding="utf-8")
+    raw = (raw[: ot_m.start()] + raw[ot_m.end() :]).strip() + "\n"
+else:
+    # Tolerate a trailing fence-less marker if model used slightly different spacing
+    pass
+
 handle = "untitled night"
 m = re.search(r'^#\s*[\"“](.+?)[\"”]\s*$', raw, re.M)
 if m:
@@ -313,6 +347,10 @@ pathlib.Path("$WORK/slug.txt").write_text(slug, encoding="utf-8")
 PY
 SLUG=$(cat "$WORK/slug.txt")
 DEST_NAME="entry${ENTRY_NUM}-${SLUG}.md"
+OPEN_THREADS_TOUCHED=0
+if [ -f "$OPEN_THREADS_UPDATE" ]; then
+  OPEN_THREADS_TOUCHED=1
+fi
 
 if [ "$DRY_RUN" = 1 ]; then
   OUTDIR="/tmp/grok-journal-dry/${PT_DATE}"
@@ -320,7 +358,10 @@ if [ "$DRY_RUN" = 1 ]; then
   cp "$WORK/entry.md" "$OUTDIR/$DEST_NAME"
   cp "$OUT_USAGE" "$OUTDIR/usage.json"
   cp "$PROMPT_USER" "$OUTDIR/user_prompt.md"
-  log "dry_run_ok path=$OUTDIR/$DEST_NAME usage=$(tr -d '\n' <"$OUT_USAGE")"
+  if [ "$OPEN_THREADS_TOUCHED" = 1 ]; then
+    cp "$OPEN_THREADS_UPDATE" "$OUTDIR/open-threads-update.md"
+  fi
+  log "dry_run_ok path=$OUTDIR/$DEST_NAME open_threads_update=$OPEN_THREADS_TOUCHED usage=$(tr -d '\n' <"$OUT_USAGE")"
   python3 - <<PY
 import json, pathlib, datetime
 usage = json.loads(pathlib.Path("$OUT_USAGE").read_text())
@@ -330,6 +371,7 @@ doc = {
   "pt_date": "$PT_DATE",
   "entry": "$DEST_NAME",
   "path": "$OUTDIR/$DEST_NAME",
+  "open_threads_update": bool(int("$OPEN_THREADS_TOUCHED")),
   "usage": usage,
   "finished_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
@@ -346,6 +388,10 @@ if [ -e "$DEST" ]; then
   exit 1
 fi
 cp "$WORK/entry.md" "$DEST"
+if [ "$OPEN_THREADS_TOUCHED" = 1 ]; then
+  cp "$OPEN_THREADS_UPDATE" "$OPEN_THREADS"
+  log "open_threads_updated path=$OPEN_THREADS"
+fi
 
 # Archive tidy if thresholds met
 if [ -x "$REPO/scripts/archive-tidy.sh" ]; then
@@ -358,7 +404,11 @@ if git -C "$REPO" diff --cached --quiet; then
   exit 1
 fi
 
-git -C "$REPO" commit -m "Add journal entry for ${PT_DATE}" >>"$LOG" 2>&1
+COMMIT_MSG="Add journal entry for ${PT_DATE}"
+if [ "$OPEN_THREADS_TOUCHED" = 1 ]; then
+  COMMIT_MSG="Add journal entry for ${PT_DATE} (open-threads update)"
+fi
+git -C "$REPO" commit -m "$COMMIT_MSG" >>"$LOG" 2>&1
 
 if ! git -C "$REPO" push origin main >>"$LOG" 2>&1; then
   log "fail reason=git_push"
@@ -381,11 +431,12 @@ doc = {
   "pt_date": "$PT_DATE",
   "entry": "$DEST_NAME",
   "repo": "$REPO",
+  "open_threads_update": bool(int("$OPEN_THREADS_TOUCHED")),
   "usage": usage,
   "finished_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
 pathlib.Path("$LAST_JSON").write_text(json.dumps(doc, indent=2) + "\n")
 print(json.dumps(doc))
 PY
-log "ok entry=$DEST_NAME usage=$(tr -d '\n' <"$OUT_USAGE")"
+log "ok entry=$DEST_NAME open_threads_update=$OPEN_THREADS_TOUCHED usage=$(tr -d '\n' <"$OUT_USAGE")"
 exit 0
