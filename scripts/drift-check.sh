@@ -48,7 +48,7 @@ symlinks=(
   "/root/journal-trigger/usage-gate.sh|home/journal-trigger/usage-gate.sh"
   "/root/journal-trigger/journal-trigger.sh|home/journal-trigger/journal-trigger.sh"
 )
-for u in astra-commit grok-model-check gemini-model-check health-check drift-check; do
+for u in astra-commit health-check drift-check; do
   for k in service timer; do
     symlinks+=("/root/.config/systemd/user/$u.$k|home/.config/systemd/user/$u.$k")
   done

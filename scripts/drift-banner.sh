@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart hook — surfaces the daily drift-check alert into the Claude Code
 # session. A SessionStart hook's stdout enters Claude's context (same path as
-# commit-if-changed + grok-model-banner), so the assistant sees unreproduced box
+# commit-if-changed), so the assistant sees unreproduced box
 # state and can offer to mirror it into astra-config. No-op (silent) when clean.
 # Always exits 0 so it can never block session start.
 #

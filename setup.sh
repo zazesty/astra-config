@@ -81,10 +81,6 @@ sysctl --system >/dev/null
 mkdir -p /root/.config/systemd/user
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.service" /root/.config/systemd/user/astra-commit.service
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.timer"   /root/.config/systemd/user/astra-commit.timer
-ln -sfnT "$REPO/home/.config/systemd/user/grok-model-check.service" /root/.config/systemd/user/grok-model-check.service
-ln -sfnT "$REPO/home/.config/systemd/user/grok-model-check.timer"   /root/.config/systemd/user/grok-model-check.timer
-ln -sfnT "$REPO/home/.config/systemd/user/gemini-model-check.service" /root/.config/systemd/user/gemini-model-check.service
-ln -sfnT "$REPO/home/.config/systemd/user/gemini-model-check.timer"   /root/.config/systemd/user/gemini-model-check.timer
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.service" /root/.config/systemd/user/health-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.timer"   /root/.config/systemd/user/health-check.timer
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.service" /root/.config/systemd/user/drift-check.service
@@ -200,8 +196,6 @@ XDG_RUNTIME_DIR="/run/user/$(id -u)"; export XDG_RUNTIME_DIR
 systemctl start "user@$(id -u).service" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable --now astra-commit.timer
-systemctl --user enable --now grok-model-check.timer
-systemctl --user enable --now gemini-model-check.timer
 systemctl --user enable --now health-check.timer
 systemctl --user enable --now drift-check.timer
 # Claude transcript harvest: OFF by default (disabled early 2026-08; archive/delete

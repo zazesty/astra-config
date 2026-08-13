@@ -29,6 +29,8 @@ for k in PLAID_CLIENT_ID PLAID_SECRET PLAID_SECRET_SANDBOX PLAID_ENV \
   TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM TWILIO_TO; do
   presence /etc/hermes-finance.env "$k"
 done
+presence /root/.hermes/.env OPENROUTER_API_KEY
+presence /root/.hermes/.env XAI_API_KEY
 file_presence /root/.config/journal-trigger/endpoint
 file_presence /root/.config/journal-trigger/secret
 file_presence /root/.git-credentials
