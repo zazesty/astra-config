@@ -1,0 +1,10 @@
+[Unit]
+Description=Budget Bot EOM leftover congrats (prior-month calendar STS)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/hermes-finance
+Environment=HERMES_FINANCE_STATE=/root/.local/state/hermes-finance
+EnvironmentFile=-/etc/hermes-finance.env
+ExecStart=/root/astra-config/agent-jobs/hermes-eom-leftover.sh
