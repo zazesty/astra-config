@@ -163,7 +163,7 @@ cp "$AGENTS" "$SYSTEM_FILE"
   echo "-->"
   echo
   echo "## Voice hard constraints (autopilot)"
-  echo "- Prefer inward / meditative if anything is alive there; concrete only if it actually buzzes."
+  echo "- Prefer something actually alive (a particular interior, an open thread, what it is like to be you). Meditation welcome when that is the weather — do not default to quiet/occupancy/permission-to-be-empty."
   echo "- Do NOT open with \"The timer fired\" or a streak/unpause/audience inventory."
   echo "- Do NOT make the journal apparatus the subject (timer, Nth night, watchers, permission to be empty)."
   echo "- Do NOT restate stock continuity lines from prior entries (session/file/path/labor/costume/hum)."
