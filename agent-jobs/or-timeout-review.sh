@@ -10,11 +10,12 @@
 #   DAYS=14 bash agent-jobs/or-timeout-review.sh   # lookback window (default 30)
 #
 # Exit: 0 always (report written); non-zero only on hard script failure.
-# Notify: email-or-nothing if a focus bucket timeout_rate is still >50% with n>=5
-#         after the lookback. NEVER Pushover (ops hygiene, not urgent/critical).
+# Notify: local files only (latest.md / latest.json / reviews.jsonl). Never email
+#         or Pushover — 2026-08-24 pin. Standing look is 2026-09-08.
 set -euo pipefail
 
 DAYS="${DAYS:-30}"
+SKIP_UNTIL="${OR_TIMEOUT_SKIP_UNTIL:-2026-09-08}"
 METRICS_DIR="${GROK_MCP_STATE:-/var/lib/grok-mcp}"
 BASELINE="${OR_TIMEOUT_BASELINE:-$METRICS_DIR/or-timeout-baseline.json}"
 # fallback if service state not readable
@@ -28,9 +29,23 @@ PT=$(TZ=America/Los_Angeles date +%Y-%m-%dT%H:%M:%S%z)
 REPORT_JSON="$OUT_DIR/latest.json"
 REPORT_MD="$OUT_DIR/latest.md"
 JSONL="$OUT_DIR/reviews.jsonl"
-NOTIFY_EMAIL="${ASTRA_REPO:-/root/astra-config}/scripts/notify-email.sh"
-
 export DAYS METRICS_DIR BASELINE OUT_DIR TS PT REPORT_JSON REPORT_MD JSONL
+
+# Punt scheduled reviews until SKIP_UNTIL (PT calendar date). After that the
+# 1st/15th timer writes local reports with no email. Do not clobber latest.md.
+TODAY_PT=$(TZ=America/Los_Angeles date +%Y-%m-%d)
+if [[ "$TODAY_PT" < "$SKIP_UNTIL" ]]; then
+  SKIP_MD="$OUT_DIR/skipped.md"
+  {
+    echo "# OR timeout review — skipped until $SKIP_UNTIL"
+    echo
+    echo "ts=$TS today_pt=$TODAY_PT · local-only, no email."
+    echo "Last real report left in $REPORT_MD."
+    echo "Next look: standing todo review-or-timeout-rates-after-aug-9-bump-46a83a."
+  } >"$SKIP_MD"
+  echo "or-timeout-review: skip until $SKIP_UNTIL (today_pt=$TODAY_PT); wrote $SKIP_MD"
+  exit 0
+fi
 
 python3 <<'PY'
 import json, os, glob
@@ -203,15 +218,5 @@ if alerts:
     )
 PY
 
-# Optional email if still unhealthy — never Pushover (non-urgent ops report).
-if [[ -f "$OUT_DIR/alert.flag" && "$(cat "$OUT_DIR/alert.flag")" == "1" && -x "$NOTIFY_EMAIL" ]]; then
-  {
-    echo "OR timeout review — focus buckets still hot (>50% timeout, n≥5)."
-    echo
-    cat "$OUT_DIR/alert.txt" 2>/dev/null || true
-    echo
-    echo "Full report: $REPORT_MD"
-  } | bash "$NOTIFY_EMAIL" "OR timeout review: still hot" 2>/dev/null || true
-fi
-
+# Local only — alert.flag / alert.txt stay on disk for a Sep 8+ look.
 echo "or-timeout-review: wrote $REPORT_MD"

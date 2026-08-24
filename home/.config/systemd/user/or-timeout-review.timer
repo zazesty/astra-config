@@ -2,8 +2,7 @@
 Description=OR timeout metrics review (1st + 15th of month, PT)
 
 [Timer]
-# Twice a month so the first post-ship check lands within ~2 weeks
-# (shipped 2026-08-09 → next fire 2026-08-15), then ongoing cadence.
+# Twice a month. Job is local-log only (no email). Script skips until 2026-09-08.
 OnCalendar=*-*-01,15 10:15:00 America/Los_Angeles
 Persistent=true
 

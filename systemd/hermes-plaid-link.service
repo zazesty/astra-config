@@ -1,0 +1,19 @@
+[Unit]
+Description=Budget Bot Plaid update-mode Link server (24h email repair URLs)
+After=network-online.target hermes-plaid-webhook.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/hermes-finance
+Environment=HERMES_FINANCE_STATE=/root/.local/state/hermes-finance
+Environment=PYTHONUNBUFFERED=1
+Environment=PLAID_REPAIR_PORT=8765
+EnvironmentFile=-/etc/hermes-finance.env
+ExecStart=/usr/bin/python3 -m hermes_finance plaid-repair-serve --port 8765
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

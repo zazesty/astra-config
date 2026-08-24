@@ -25,7 +25,7 @@ Optional: `AGENT_TIMEOUT_SECS` (default 300), `AGENT_EMAIL_ON_FAIL=1` for generi
 | `grok-journal` | **02:00 PT** (`grok-journal.timer` → `scripts/grok-journal-run.sh`) | Nightly Grok journal via xAI API (needs `~/.config/grok-journal/enabled`) |
 | `hermes-finance-watch` | *(no timer yet)* | Budget hardcap/pace/anomaly; fixture dry-run until PayPal Link |
 | `hermes-eom-leftover` | **1st 09:00 PT** (`hermes-eom-leftover.timer`) | Prior-month leftover = calendar STS; Pushover congrats if > $0 |
-| `or-timeout-review` | **1st + 15th 10:15 PT** | Compare panel/oracle ungrounded-OR timeout rates vs 2026-08-09 A+B baseline; pure stats; **email or nothing** on hot buckets (never Pushover) |
+| `or-timeout-review` | **1st + 15th 10:15 PT** | Compare panel/oracle ungrounded-OR timeout rates vs 2026-08-09 A+B baseline; pure stats; **local log only** (no email/Pushover). Skip until **2026-09-08**. |
 
 Hermes-Finance code lives in `/root/hermes-finance` (not this repo). Job invokes `python3 -m hermes_finance watch`. Live email: `HERMES_LIVE=1` or `notify_enabled` in state config. See `/root/hermes-finance/README.md`.
 
