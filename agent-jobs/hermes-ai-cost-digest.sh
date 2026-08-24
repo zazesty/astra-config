@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Weekly AI *usage* digest — consumption, not prepaid reloads.
-# Email via Resend. Fail-open. Stdout is the Photon/cron body.
+# Email via Resend. Fail-open. Stdout is archived locally (no Photon).
 set -uo pipefail
 export HERMES_FINANCE_STATE="${HERMES_FINANCE_STATE:-$HOME/.local/state/hermes-finance}"
 export PYTHONPATH="/root/hermes-finance${PYTHONPATH:+:$PYTHONPATH}"
