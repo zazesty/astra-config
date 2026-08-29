@@ -152,7 +152,7 @@ Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, g
 
 **Name:** **Budget Bot** (user-facing). Code/state slug may still be `hermes-finance` — see memory `budget-bot-naming`.
 
-- Hardcap **$1000 / calendar month** PT (rolling 30d **pinned later**).
+- Hardcap **$1050 / calendar month** PT (rolling 30d **pinned later**). Daily allotment is hardcap / days_in_period (calendar month length, or 30 on rolling) — not a fixed $35.
 - Goal: **coaching + behavioral optimization**, not accounting export.
 - **Push** near/over hardcap after a purchase, **plus** one EOM leftover congrats (not new-recurring chatter; not daily mail).
 - New recurring proposals: **on-box only** (status/todos), no push.
