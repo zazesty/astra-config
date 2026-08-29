@@ -1,5 +1,5 @@
 [Unit]
-Description=Budget Bot biweekly email: NorCal Plaid + opaque naming check
+Description=Budget Bot biweekly email: are NorCal MasterMoney labels still opaque
 After=network-online.target
 
 [Service]

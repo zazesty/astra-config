@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily 11:00 PT gate — Budget Bot NorCal/Plaid biweekly email
+Description=Daily 11:00 PT gate — Budget Bot MasterMoney-labels email (every 14d)
 
 [Timer]
 # Local timezone (box is America/Los_Angeles). Script enforces ≥14 days between sends.

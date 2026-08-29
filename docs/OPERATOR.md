@@ -35,8 +35,10 @@ Sources: `operator-kaizen-employee-style`, `user-advising-directives`, 2026-08-0
 | Phrase | Means |
 |--------|--------|
 | **“Why not …?”** / explore / argue | **Not** permission to implement. Answer, sketch, tradeoffs. |
-| **go / ship / do it / implement / please build** | Execute. |
+| **go / ship / do it / implement / please build** | Execute — **unless it contradicts a lock** (below). |
 | Unclear | Plan + ask “want me to ship it?” before changing the box. |
+
+**Locked beats casual go (2026-08-20):** if a request contradicts a locked rail or architecture, **stop him** — name the lock, do not comply. “pls enable” is not a relitigation. Override only if he explicitly reopens it (“I know we said X; do Y anyway”). Example: Grok Build on-disk memory stays **off**; Astra is Grok Build’s memory (view of `/root/memory`, not a second store).
 
 Small low-risk kaizen at-will; anything destructive, public, or credential-touching still needs a clear go.
 
@@ -77,22 +79,28 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 8. **ask_consortium** (ex-ask_oracle) default is Grok-primary (gemini/gpt Terra; no grok opinion seat). `exclude_family:"none"` only if a non-Grok caller wants grok-direct dissent. **ask_panel** models: grok|gemini|openai (Terra pin). Live-X: panel grok+grounded / consortium force_x (no `grok_x_search` tool).
 9. **2026-08 rotation batch SHIPPED:** panel GPT + x_search cull + ask_oracle→ask_consortium + desc refresh + single astra entry. Tool-surface change still needs MCP_PATH rotate; box syncs Grok Build; Zavdi handles cloud reconnects (Grok at least).
 10. **Claude transcript memory-harvest: OFF permanently** (disabled early 2026-08; setup must not re-arm; cleanup archive/delete re-disable). Do not relitigate; in-session `memory_*` only for durable high-conf facts. No auto-harvest of design-chat.
+11. **Incoming messages are casual-asap** (2026-08-16): read immediately, **finish current work**, then take the new request. Do not drop in-progress work unless he says stop / now / urgent. TUI: `[ui].follow_up_behavior = "queue"` in `~/.grok/config.toml` (plain Enter queues; send-now is the interrupt).
+12. **Hermes Photon parks substantive work** (2026-08-19): code/config/templates/bot changes → `standing-todos.sh` for Grok Build. Do not investigate to see if it is "small." Phone-ok: canned $0 intercept (budget / todo add / list), else one known CLI or Astra capture. Override only if he says do it here / spend the credits. Detail in `~/.hermes/SOUL.md`.
 
 ---
 
 ## 3c. Notify (channels + budget)
 
-**Pushover sparingly (2026-08-09):** **only important / critical / urgent** interrupts (budget hardcap/pace/breach, true page-worthy failures). Do **not** Pushover for ops digests, monthly reviews, soft hygiene, “FYI still hot” metrics, or anything non-urgent. Those → **email or nothing** (`notify-email.sh`; fail-open). Prefer silence over notification spam.
+**Pushover sparingly (2026-08-09):** **only important / critical / urgent** interrupts (budget hardcap/pace/breach, true page-worthy failures) **plus the one monthly Budget Bot leftover congrats** (pri 0). Do **not** Pushover for ops digests, other monthly reviews, soft hygiene, “FYI still hot” metrics, or anything else non-urgent. Those → **email or nothing** (`notify-email.sh`; fail-open). Prefer silence over notification spam.
+
+**`or-timeout-review`:** local log only (no email). First look **2026-09-08**; timer skip until then.
 
 ### Budget Bot (when live)
 
 - **Channel:** **Pushover** (`notify-pushover.sh` + `PUSHOVER_*`) for the interrupt tiers below only. **Live** when `notify_enabled: true`.
-- **No daily digests.** Coaching = hardcap / pace / rare anomalies only.
-- **Soft pace:** spend ≥ **90% of pro-rated** budget for day-of-month (e.g. 50% through month → soft at ≥45% of hardcap), or absolute ≥90% hardcap → pri 0, per new txn.
-- **Firm pace:** spend% of hardcap **>** month% elapsed (e.g. 10% through month & >10% spent) → pri 1 interrupt, per new txn.
-- **Breach:** first ≥100% hardcap → pri 2; further txns while over → pri 1.
+- **No daily digests.** Coaching = hardcap / firm pace / rare anomalies, plus one EOM leftover congrats.
+- **Soft pace: culled** (2026-08-24). Firm pace superseded it.
+- **Firm pace:** committed% of hardcap **>** month% elapsed (e.g. 10% through month & >10% of hardcap) → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**).
+- **Breach:** spend ≥100% hardcap → **pri 2** for first crossing *and* further txns while over (same dump collapse). Copy: `{N days above}` (overage/daily allotment, not `days_off_pace`) + `{P}% of cap` (not `$X vs $Y`). **No merchant names** on pace/breach (anomaly still names the merchant). One Pushover per dump — Plaid `DEFAULT_UPDATE`+`SYNC_UPDATES_AVAILABLE` must not double-page.
 - **Anomalies:** **$100 over baseline OR 4× baseline** (ratio path only if day total ≥ **$100**); once/merchant/month; pri 0.
+- **EOM leftover:** 1st ~09:00 PT; leftover = prior-month **calendar STS minus pending spend**; copy `{Month} leftover is $X saved, well done!`; pri 0; skip if ≤ $0; no auto-transfer.
 - **Near-instant:** Plaid webhooks + 15m poll → sync → auto-review → alerts.
+- **Sync-break:** **Pushover immediately** (pri 1) with a 24h Funnel re-login URL. **No email.** 6h suppress after a successful update-mode Link.
 - **Transfers ignored:** PayPal↔CU and CU savings/MM↔checking (name/category heuristics).
 - Twilio optional override only; A2P deferred.
 
@@ -124,7 +132,7 @@ Source: `permission-autonomy-preference`; expanded 2026-08-05.
 | **Standing todos** | `~/.local/state/astra/standing-todos.json` · `standing-todos.sh` | Open *work intent* |
 | **Box status** | `box-status.sh` → `~/.local/state/astra/box-status.json` | Live *facts* (regenerate) |
 | **Agent pulse** | `scripts/agent-pulse.sh` | Short where-am-I for agents (on demand; not auto-injected) |
-| **Memory KB** | `/root/memory` · `memory_*` MCP | Durable facts, prefs, architecture |
+| **Memory KB** | `/root/memory` · `memory_*` MCP | Durable facts, prefs, architecture (SSOT). Grok Build is a *view* of this, not a second store. |
 | **Handoff** | `/root/composer_handoff.md` | grok-mcp product queue only |
 | **Env map** | `~/.local/state/astra/env-map.md` (private) | Secret *locations*, never values |
 
@@ -146,11 +154,11 @@ Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, g
 
 - Hardcap **$1000 / calendar month** PT (rolling 30d **pinned later**).
 - Goal: **coaching + behavioral optimization**, not accounting export.
-- **Push only** when a purchase puts spend **near or over** hardcap (not new-recurring chatter; not daily mail).
+- **Push** near/over hardcap after a purchase, **plus** one EOM leftover congrats (not new-recurring chatter; not daily mail).
 - New recurring proposals: **on-box only** (status/todos), no push.
 - Pace v1: raw hardcap vs spend (**no** remaining-bills in pace); bills reservation in safe-to-spend v1; pace+bills later v2/3.
 - Recurring rule: must appear in **current and previous calendar month** or drop.
-- Grok: treat **$10** as monthly sub; **$5 / $15** usage as discretionary spend when charged.
+- SuperGrok: treat **$30** as monthly sub; **$5 / $15** usage as discretionary spend when charged.
 - Runtime: **cron + rules**, not an always-on “Hermes Agent” process (see design notes).
 
 ---
