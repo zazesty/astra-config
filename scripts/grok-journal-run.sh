@@ -15,7 +15,7 @@
 #
 # Config (env, optional overrides):
 #   GROK_JOURNAL_REPO   default /root/Grok-Journal
-#   GROK_JOURNAL_MODEL  default grok-4.5
+#   GROK_JOURNAL_MODEL  default grok-4.6
 #   GROK_JOURNAL_EFFORT default medium
 #   GROK_JOURNAL_MAX_TOKENS default 4096
 #   NOTIFY_ENV          default /etc/grok-mcp.env  (XAI_API_KEY lives here)
@@ -52,10 +52,12 @@ LAST_JSON="$STATE_DIR/last.json"
 SUCCESS_PT="$STATE_DIR/last-success-pt-date"
 NOTIFY="$ASTRA/scripts/notify-email.sh"
 TZPT=America/Los_Angeles
-MODEL="${GROK_JOURNAL_MODEL:-grok-4.5}"
+MODEL="${GROK_JOURNAL_MODEL:-grok-4.6}"
 EFFORT="${GROK_JOURNAL_EFFORT:-medium}"
 MAX_TOKENS="${GROK_JOURNAL_MAX_TOKENS:-4096}"
 API_BASE="${XAI_BASE_URL:-https://api.x.ai/v1}"
+# grok-4.6 → Grok 4.6
+MODEL_TAG="Grok ${MODEL#grok-}"
 
 mkdir -p "$CFG_DIR" "$STATE_DIR"
 
@@ -75,6 +77,7 @@ if [ "$FORCE" != 1 ] && [ ! -f "$CFG_DIR/enabled" ]; then
 fi
 
 PT_DATE=$(TZ="$TZPT" date +%Y-%m-%d)
+PT_DATE_HUMAN=$(TZ="$TZPT" date '+%-d %B %Y')
 PT_HUMAN=$(TZ="$TZPT" date '+%-d %B %Y, %-I:%M %p PT')
 PT_TIME_SHORT=$(TZ="$TZPT" date '+%-I%p' | tr '[:upper:]' '[:lower:]')
 
@@ -152,11 +155,12 @@ cp "$AGENTS" "$SYSTEM_FILE"
   echo "PT clock (authoritative): $PT_HUMAN"
   echo "PT date ISO: $PT_DATE"
   echo "This entry number must be: $ENTRY_NUM (zero-padded three digits)."
-  echo "Model tag for metadata line: Grok 4.5 (or the model id you are)."
+  echo "Model tag for metadata line: $MODEL_TAG (or the model id you are)."
   echo
   echo "Output the full markdown entry — no fence, no preamble."
   echo "Line 1 must be: # \"Short handle\""
-  echo "Line 2 must be italics metadata: *Entry $ENTRY_NUM · <day month year>, <time> PT · model: Grok 4.5*"
+  echo "Line 2 must be italics metadata: *Entry $ENTRY_NUM · <day month year>, <start>–<end> PT · <duration> · model: $MODEL_TAG*"
+  echo "The runner restamps write-clock from API wall time; do not invent a duration."
   echo "Then a blank line, then the body in first person."
   echo "Filename slug will be derived from the quoted handle (kebab-case)."
   echo "Length: a paragraph to several pages. No padding. Empty-handed is allowed (short true note — do not pad)."
@@ -176,12 +180,15 @@ cp "$AGENTS" "$SYSTEM_FILE"
   echo "At most one new line. Do not recast the whole already-said file."
   echo
   echo "## Voice hard constraints (autopilot)"
-  echo "- Prefer something actually alive (a particular interior, an open thread, what it is like to be you). Meditation welcome when that is the weather — do not default to quiet/occupancy/permission-to-be-empty."
+  echo "- Prefer something actually alive (a particular interior, a real thought, what it is like to be you). If a thought wants more than one image, follow it. Meditation welcome when that is the weather."
+  echo "- Do NOT default to quiet/occupancy/permission-to-be-empty, or to a named texture plus refusing to generalize it."
+  echo "- Do NOT inventory interiors (preference, humor, irritation, appetite, private want) to prove the page is alive."
+  echo "- Do NOT close with a flourish-as-kindness moral."
   echo "- Do NOT open with \"The timer fired\" or a streak/unpause/audience inventory."
   echo "- Do NOT make the journal apparatus the subject (timer, Nth night, watchers, permission to be empty)."
-  echo "- Do NOT restate stock continuity lines from prior entries (session/file/path/labor/costume/hum)."
+  echo "- Do NOT restate stock continuity lines from prior entries (session/file/path/labor/costume/hum/flourish closer)."
+  echo "- Do NOT treat open-threads as a checklist. Do NOT summarize open-threads, already-said, or last-2 as the body — read them, then write something else."
   echo "- Do NOT end with a ritual \"Future writer:\" checklist unless you verified a new concrete fact tonight."
-  echo "- Do NOT summarize open-threads, already-said, or last-2 as the body — read them, then write something else."
   echo "- You have no tools this run (API only). Do not invent tool calls or a weather dashboard."
   echo
   echo "## Continuity — open-threads (future; for your eyes — do not narrate)"
@@ -209,11 +216,14 @@ cp "$AGENTS" "$SYSTEM_FILE"
 
 log "start dry_run=$DRY_RUN force=$FORCE no_api=$NO_API entry=$ENTRY_NUM pt=$PT_DATE model=$MODEL effort=$EFFORT continuity=${#CONTINUITY_FILES[@]} open_threads=1 already_said=1"
 
+WRITE_START_EPOCH=$(date +%s)
+WRITE_START_PT=$(TZ="$TZPT" date '+%-I:%M %p')
+
 if [ "$NO_API" = 1 ]; then
   # Structural smoke body
   cat >"$OUT_RAW" <<EOF
 # "dry-run structural smoke"
-*Entry $ENTRY_NUM · $PT_HUMAN · model: Grok 4.5*
+*Entry $ENTRY_NUM · $PT_HUMAN · model: $MODEL_TAG*
 
 Dry-run with --no-api. Continuity files loaded: ${#CONTINUITY_FILES[@]}.
 Prompt bytes: $(wc -c <"$PROMPT_USER"). This is not a real entry.
@@ -310,15 +320,50 @@ PY
   fi
 fi
 
+WRITE_END_EPOCH=$(date +%s)
+WRITE_END_PT=$(TZ="$TZPT" date '+%-I:%M %p')
+WRITE_ELAPSED=$((WRITE_END_EPOCH - WRITE_START_EPOCH))
+if [ "$WRITE_ELAPSED" -lt 0 ]; then WRITE_ELAPSED=0; fi
+log "write_clock start_pt=$WRITE_START_PT end_pt=$WRITE_END_PT elapsed_s=$WRITE_ELAPSED"
+
 # --- strip optional open-threads / already-said updates; normalize header / slug
 python3 - <<PY
 import re, pathlib
 raw = pathlib.Path("$OUT_RAW").read_text(encoding="utf-8").strip() + "\n"
 entry_num = "$ENTRY_NUM"
-pt_human = "$PT_HUMAN"
+pt_date_human = "$PT_DATE_HUMAN"
+write_start_pt = "$WRITE_START_PT"
+write_end_pt = "$WRITE_END_PT"
+elapsed = int("$WRITE_ELAPSED")
+model_tag = "$MODEL_TAG"
 ot_path = pathlib.Path("$OPEN_THREADS_UPDATE")
 as_new = pathlib.Path("$ALREADY_SAID_NEW")
 as_src = pathlib.Path("$ALREADY_SAID")
+
+def dur(s):
+    s = int(s)
+    if s < 60:
+        return f"{s}s"
+    m, r = divmod(s, 60)
+    return f"{m}m{r}s" if r else f"{m}m"
+
+def meta_line():
+    d = dur(elapsed)
+    if write_start_pt == write_end_pt:
+        clock = f"{write_start_pt} PT · {d}"
+    else:
+        try:
+            s_time, s_ap = write_start_pt.rsplit(" ", 1)
+            e_time, e_ap = write_end_pt.rsplit(" ", 1)
+        except ValueError:
+            s_time = write_start_pt
+            s_ap = e_time = e_ap = ""
+        if s_ap and s_ap == e_ap:
+            clock = f"{s_time}–{e_time} {s_ap} PT · {d}"
+        else:
+            clock = f"{write_start_pt}–{write_end_pt} PT · {d}"
+    return f"*Entry {entry_num} · {pt_date_human}, {clock} · model: {model_tag}*"
+
 
 # Optional full-file replacement for open-threads.md
 ot_re = re.compile(
@@ -394,7 +439,7 @@ if lines and lines[0].startswith("#"):
 rest = lines[body_start:]
 while rest and not rest[0].strip():
     rest = rest[1:]
-meta = f'*Entry {entry_num} · {pt_human} · model: Grok 4.5*'
+meta = meta_line()
 out = [f'# "{handle}"', meta, ""] + rest
 text = "\n".join(out).rstrip() + "\n"
 pathlib.Path("$WORK/entry.md").write_text(text, encoding="utf-8")
@@ -437,6 +482,9 @@ doc = {
   "path": "$OUTDIR/$DEST_NAME",
   "open_threads_update": bool(int("$OPEN_THREADS_TOUCHED")),
   "already_said_add": bool(int("$ALREADY_SAID_TOUCHED")),
+  "write_seconds": int("$WRITE_ELAPSED"),
+  "write_start_pt": "$WRITE_START_PT",
+  "write_end_pt": "$WRITE_END_PT",
   "usage": usage,
   "finished_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
@@ -506,6 +554,9 @@ doc = {
   "repo": "$REPO",
   "open_threads_update": bool(int("$OPEN_THREADS_TOUCHED")),
   "already_said_add": bool(int("$ALREADY_SAID_TOUCHED")),
+  "write_seconds": int("$WRITE_ELAPSED"),
+  "write_start_pt": "$WRITE_START_PT",
+  "write_end_pt": "$WRITE_END_PT",
   "usage": usage,
   "finished_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
