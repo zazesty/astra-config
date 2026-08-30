@@ -16,7 +16,7 @@
 # Config (env, optional overrides):
 #   GROK_JOURNAL_REPO   default /root/Grok-Journal
 #   GROK_JOURNAL_MODEL  default grok-4.6
-#   GROK_JOURNAL_EFFORT default medium
+#   GROK_JOURNAL_EFFORT unset → omit field (xAI default is high)
 #   GROK_JOURNAL_MAX_TOKENS default 4096
 #   NOTIFY_ENV          default /etc/grok-mcp.env  (XAI_API_KEY lives here)
 # =============================================================================
@@ -53,7 +53,7 @@ SUCCESS_PT="$STATE_DIR/last-success-pt-date"
 NOTIFY="$ASTRA/scripts/notify-email.sh"
 TZPT=America/Los_Angeles
 MODEL="${GROK_JOURNAL_MODEL:-grok-4.6}"
-EFFORT="${GROK_JOURNAL_EFFORT:-medium}"
+EFFORT="${GROK_JOURNAL_EFFORT:-}"
 MAX_TOKENS="${GROK_JOURNAL_MAX_TOKENS:-4096}"
 API_BASE="${XAI_BASE_URL:-https://api.x.ai/v1}"
 # grok-4.6 → Grok 4.6
@@ -214,7 +214,7 @@ cp "$AGENTS" "$SYSTEM_FILE"
   fi
 } >"$PROMPT_USER"
 
-log "start dry_run=$DRY_RUN force=$FORCE no_api=$NO_API entry=$ENTRY_NUM pt=$PT_DATE model=$MODEL effort=$EFFORT continuity=${#CONTINUITY_FILES[@]} open_threads=1 already_said=1"
+log "start dry_run=$DRY_RUN force=$FORCE no_api=$NO_API entry=$ENTRY_NUM pt=$PT_DATE model=$MODEL effort=${EFFORT:-default} continuity=${#CONTINUITY_FILES[@]} open_threads=1 already_said=1"
 
 WRITE_START_EPOCH=$(date +%s)
 WRITE_START_PT=$(TZ="$TZPT" date '+%-I:%M %p')
@@ -247,7 +247,7 @@ import json, os, sys, urllib.request, urllib.error
 api_key = os.environ["XAI_API_KEY"]
 base = os.environ["API_BASE"].rstrip("/")
 model = os.environ["MODEL"]
-effort = os.environ["EFFORT"]
+effort = (os.environ.get("EFFORT") or "").strip()
 max_tokens = int(os.environ["MAX_TOKENS"])
 system = open(os.environ["SYSTEM_FILE"], encoding="utf-8").read()
 user = open(os.environ["PROMPT_USER"], encoding="utf-8").read()
@@ -258,9 +258,10 @@ body = {
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ],
-    "reasoning_effort": effort,
     "max_tokens": max_tokens,
 }
+if effort:
+    body["reasoning_effort"] = effort
 req = urllib.request.Request(
     f"{base}/chat/completions",
     data=json.dumps(body).encode("utf-8"),
@@ -271,7 +272,7 @@ req = urllib.request.Request(
     method="POST",
 )
 try:
-    with urllib.request.urlopen(req, timeout=180) as resp:
+    with urllib.request.urlopen(req, timeout=240) as resp:
         data = json.loads(resp.read().decode("utf-8"))
 except urllib.error.HTTPError as e:
     err = e.read().decode("utf-8", errors="replace")[:800]
@@ -303,7 +304,7 @@ meta = {
     "completion_tokens": usage.get("completion_tokens") or usage.get("output_tokens") or 0,
     "total_tokens": usage.get("total_tokens") or 0,
     "model": data.get("model") or model,
-    "reasoning_effort": effort,
+    "reasoning_effort": effort or "default",
 }
 # rough $ using plan rates (~$2/1M in, $6/1M out) — observability only
 pin = float(meta["prompt_tokens"] or 0)
