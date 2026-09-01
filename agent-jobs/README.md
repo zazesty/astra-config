@@ -20,7 +20,7 @@ Optional: `AGENT_TIMEOUT_SECS` (default 300), `AGENT_EMAIL_ON_FAIL=1` for generi
 |-----|-------|---------|
 | `ops-log` | 6h | Machine JSON box snapshot |
 | `git-access-check` | daily 12:30 PT | PAT can see+push expected repos |
-| `consumer-health` | daily 12:45 PT | Smoke + Grok Build path + journal trigger/fire stale |
+| `consumer-health` | daily 12:45 PT | Smoke + Grok Build path; Claude journal secrets must stay purged |
 | `pause-reminder` | Sun 17:00 PT | Grok journal autopilot still paused? |
 | `grok-journal` | **02:00 PT** (`grok-journal.timer` → `scripts/grok-journal-run.sh`) | Nightly Grok journal via xAI API (needs `~/.config/grok-journal/enabled`) |
 | `hermes-finance-watch` | *(no timer yet)* | Budget hardcap/pace/anomaly; fixture dry-run until PayPal Link |

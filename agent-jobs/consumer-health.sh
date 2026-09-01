@@ -6,8 +6,8 @@
 # Checks:
 #   A) funnel smoke (EXPECTED_TOOLS)
 #   B) Grok Build loopback URL path matches /etc/grok-mcp.env MCP_PATH (hash compare)
-#   C) journal-trigger endpoint+secret files present & non-empty
-#   D) journal-cron.log: last successful fire age (warn if stale while pre-hard-stop)
+#   C) Claude journal-trigger secrets stay gone (purged 2026-08-30; presence = leak)
+#   D) journal-cron.log: last successful fire age (no-op after hard-stop / crontab cull)
 #   E) optional: ~/.config/grok-journal/enabled vs paused state consistency
 set -euo pipefail
 
@@ -74,9 +74,9 @@ else
   findings+=("grok_build: env or config unreadable")
 fi
 
-# --- C: journal trigger secrets present (not values) ---
-if [ ! -s "$J_ENDPOINT" ]; then findings+=("journal_trigger: endpoint file missing/empty"); fi
-if [ ! -s "$J_SECRET" ]; then findings+=("journal_trigger: secret file missing/empty"); fi
+# --- C: Claude journal-trigger retired 2026-08-30; missing is expected ---
+if [ -s "$J_ENDPOINT" ]; then findings+=("journal_trigger: retired endpoint file reappeared (should stay purged)"); fi
+if [ -s "$J_SECRET" ]; then findings+=("journal_trigger: retired secret file reappeared (should stay purged)"); fi
 
 # --- D: last successful fire ---
 LAST_FIRE_ISO=""
@@ -136,7 +136,7 @@ if [ "${#findings[@]}" -gt 0 ]; then
       echo "Report: $REPORT"
       echo "Human checklist: bash $REPO/scripts/post-rotate-checklist.sh"
       echo "Grok Build sync: bash $REPO/scripts/sync-grok-build-astra-mcp.sh"
-      echo "Cloud connectors (claude.ai / Grok) still need manual re-add after rotation. Not Claude Code / journaling."
+      echo "If this followed an MCP_PATH rotation: reconnect Grok (cloud) + Grok Build loopback."
     } | bash "$NOTIFY" "🔴 astra consumer-health findings" || true
   fi
   exit 1
