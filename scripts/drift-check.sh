@@ -47,6 +47,7 @@ symlinks=(
   "/root/.bashrc|home/.bashrc"
   "/root/journal-trigger/usage-gate.sh|home/journal-trigger/usage-gate.sh"
   "/root/journal-trigger/journal-trigger.sh|home/journal-trigger/journal-trigger.sh"
+  "/root/hermes-finance|budget-bot"
 )
 for u in astra-commit health-check drift-check; do
   for k in service timer; do

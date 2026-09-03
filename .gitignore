@@ -6,14 +6,17 @@
 *.pem
 *.log
 
-# ===== Bank / Hermes personal finance data (NEVER GitHub) =====
-# Live txn stores, exports, tokens — even if someone vendors hermes code here.
+# ===== Bank / Budget Bot personal finance data (NEVER GitHub) =====
+# Live txn stores, exports, tokens. Code lives in budget-bot/; state does not.
 **/txns.json
 **/hermes-finance/imports/
+**/budget-bot/imports/
 **/*Transactions*.xlsx
 **/*transactions*.csv
 hermes-finance.env
 /etc/hermes-finance.env
+# synthetic fixtures are allowed
+!budget-bot/fixtures/sample_txns.json
 
 # ===== GitHub Node.gitignore template =====
 # Logs

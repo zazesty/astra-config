@@ -1,0 +1,141 @@
+{
+  "note": "Synthetic fixtures for pre-Plaid development. Amounts in cents; positive = spend (outflow).",
+  "transactions": [
+    {
+      "id": "fix-ins-01",
+      "date": "2026-07-01",
+      "amount_cents": 11510,
+      "name": "Insurance Premium",
+      "merchant_name": "Insurance Co",
+      "category": "Insurance",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-groc-01",
+      "date": "2026-07-03",
+      "amount_cents": 6200,
+      "name": "GROCERY OUTLET",
+      "merchant_name": "Grocery Outlet",
+      "category": "Groceries / Food",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-groc-02",
+      "date": "2026-07-10",
+      "amount_cents": 5800,
+      "name": "GROCERY OUTLET",
+      "merchant_name": "Grocery Outlet",
+      "category": "Groceries / Food",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-util-01",
+      "date": "2026-07-05",
+      "amount_cents": 3500,
+      "name": "PHONE",
+      "merchant_name": "Carrier",
+      "category": "Utilities & Phone",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-shop-01",
+      "date": "2026-07-08",
+      "amount_cents": 4500,
+      "name": "iHerb",
+      "merchant_name": "iHerb",
+      "category": "Medical & Health",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-barber-01",
+      "date": "2026-07-12",
+      "amount_cents": 3500,
+      "name": "Barber",
+      "merchant_name": "Local Barber",
+      "category": "Personal Care",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-soft-01",
+      "date": "2026-07-04",
+      "amount_cents": 1000,
+      "name": "SuperGrok",
+      "merchant_name": "xAI",
+      "category": "Software & Tools",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-soft-prior",
+      "date": "2026-06-20",
+      "amount_cents": 1000,
+      "name": "SuperGrok",
+      "merchant_name": "xAI",
+      "category": "Software & Tools",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-anthropic-spike",
+      "date": "2026-07-20",
+      "amount_cents": 4000,
+      "name": "Anthropic",
+      "merchant_name": "Anthropic",
+      "category": "Software & Tools",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-dine-01",
+      "date": "2026-07-15",
+      "amount_cents": 1800,
+      "name": "Cafe",
+      "merchant_name": "Local Cafe",
+      "category": "Dining Out",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-transfer-skip",
+      "date": "2026-07-18",
+      "amount_cents": 20000,
+      "name": "Transfer to savings",
+      "category": "Transfer",
+      "institution": "paypal",
+      "transfer": true
+    },
+    {
+      "id": "fix-pending-skip",
+      "date": "2026-07-21",
+      "amount_cents": 9999,
+      "name": "Pending Big Shop",
+      "merchant_name": "Pending Mart",
+      "category": "Shopping",
+      "institution": "paypal",
+      "pending": true
+    },
+    {
+      "id": "fix-refund",
+      "date": "2026-07-16",
+      "amount_cents": -1200,
+      "name": "Refund",
+      "merchant_name": "Amazon",
+      "category": "Shopping",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-charity",
+      "date": "2026-07-07",
+      "amount_cents": 4000,
+      "name": "Donation",
+      "merchant_name": "Charity Org",
+      "category": "Charity / Donations",
+      "institution": "paypal"
+    },
+    {
+      "id": "fix-misc",
+      "date": "2026-07-14",
+      "amount_cents": 2500,
+      "name": "Misc",
+      "merchant_name": "Random Store",
+      "category": "Misc / Other",
+      "institution": "paypal"
+    }
+  ]
+}

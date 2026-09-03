@@ -20,7 +20,7 @@ say() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 # -----------------------------------------------------------------------------
 say "1/10  APT packages (curl, git, tailscale)"
 apt-get update -qq
-apt-get install -y curl git
+apt-get install -y curl git python3 poppler-utils
 if ! command -v tailscale >/dev/null; then
   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \
     | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
@@ -226,7 +226,13 @@ install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-pres
 if [ -f "$REPO/docs/OPERATOR.md" ]; then
   cp -a "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
 fi
-# Hermes secrets template only (never a filled file)
+# Budget Bot code (user-facing name). Live path stays /root/hermes-finance
+# for systemd WorkingDirectory. State stays off git.
+if [ -d "$REPO/budget-bot" ]; then
+  ln -sfnT "$REPO/budget-bot" /root/hermes-finance
+fi
+install -d -m 700 /root/.local/state/hermes-finance
+# Secrets template only (never a filled file)
 if [ ! -f /etc/hermes-finance.env ]; then
   echo "  (optional) later: sudo cp $REPO/hermes-finance.env.example /etc/hermes-finance.env && chmod 600 ..."
 fi
