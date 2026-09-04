@@ -37,16 +37,18 @@ CSV_FIELDS = [
     "notes",
 ]
 
-# Bristol-style 1–7 with memorable anchors (same vibe as energy “bad floaty”).
+# Personal Bristol-style (not textbook cracks). 1 culled. 7 display-only.
+# One piece: lumpy → 2, dense/firm → 3, soft fully formed → 4.
+# Not a log: blobs-with-edges → 5, shapeless mush → 6.
 STOOL_LABELS = {
-    1: "1 deer pellets",
-    2: "2 lumpy / rocky",
-    3: "3 formed, cracks",
-    4: "4 smooth gold",
-    5: "5 soft blobs",
-    6: "6 mushy soft-serve",
-    7: "7 taco bell / pure liquid",
+    2: "2 lumpy log",
+    3: "3 dense log",
+    4: "4 soft, fully formed log (ideal)",
+    5: "5 soft blobs with clear edges",
+    6: "6 no form — all loose mush",
+    7: "7 pure liquid",
 }
+STOOL_CHOICES = (2, 3, 4, 5, 6)
 
 
 def ensure_state() -> dict:
@@ -138,7 +140,7 @@ def page_html(cfg: dict, *, msg: str = "", err: str = "") -> bytes:
     if err:
         banner = f'<p class="err">{err}</p>'
     stool_opts = "\n".join(
-        f'        <option value="{n}">{STOOL_LABELS[n]}</option>' for n in range(1, 8)
+        f'        <option value="{n}">{STOOL_LABELS[n]}</option>' for n in STOOL_CHOICES
     )
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -192,7 +194,7 @@ def page_html(cfg: dict, *, msg: str = "", err: str = "") -> bytes:
         <option value="">—</option>
 {stool_opts}
       </select>
-      <span class="hint">4 smooth gold = ideal · 1 deer pellets (hard) · 7 taco bell / pure liquid</span>
+      <span class="hint">One piece? lumpy → 2, dense/firm → 3, soft fully formed → 4. Blobs with edges → 5. Shapeless mush → 6.</span>
     </label>
     <label>Abdominal pain / cramping
       <select name="cramp" required>
@@ -201,9 +203,9 @@ def page_html(cfg: dict, *, msg: str = "", err: str = "") -> bytes:
         <option value="moderate">moderate</option>
       </select>
     </label>
-    <label>Bowel movements today (optional)
-      <input name="bm_count" type="number" min="0" max="30" placeholder="e.g. 1"/>
-      <span class="hint">Leave blank if not tracking today</span>
+    <label>Bowel movements today
+      <input name="bm_count" type="number" min="0" max="30" value="1"/>
+      <span class="hint">Defaults to 1; change if not</span>
     </label>
     <label>Notes
       <textarea name="notes" rows="3" placeholder="sleep, floaty, urgency, blood, anything else…"></textarea>
@@ -282,8 +284,8 @@ class Handler(BaseHTTPRequestHandler):
             d = one("date") or datetime.now(TZ).date().isoformat()
             if not (1 <= sleep <= 5 and 1 <= energy <= 5):
                 raise ValueError("sleep/energy must be 1-5")
-            if not (1 <= stool <= 7):
-                raise ValueError("stool form must be 1-7")
+            if stool not in STOOL_CHOICES:
+                raise ValueError("stool form must be 2-6")
             if cramp not in ("none", "mild", "moderate"):
                 raise ValueError("cramp must be none|mild|moderate")
             bm_count: int | None = None

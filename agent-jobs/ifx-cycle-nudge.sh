@@ -88,7 +88,7 @@ ${WINDOW}
 Form (~30s, auto-saves on box):
 ${FORM_URL}
 
-Fields: sleep 1–5 · energy/floaty 1–5 · stool form 1–7 · cramp · BM count (opt) · notes
+Fields: sleep 1–5 · energy/floaty 1–5 · stool 2–6 · cramp · BM (default 1) · notes
 
 Why: track end-of-cycle sleep/energy/floaty + stool for a data-driven GI talk about
 possible interval shortening (q8w → q6–7w). Deep remission context only.

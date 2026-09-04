@@ -13,7 +13,7 @@ usage() {
 usage:
   ifx-cycle-log.sh set-infusion YYYY-MM-DD   # last infusion date (PT calendar)
   ifx-cycle-log.sh add [--date YYYY-MM-DD] [--days-since N] \\
-       --sleep 1-5 --energy 1-5 --stool 1-7 --cramp none|mild|moderate \\
+       --sleep 1-5 --energy 1-5 --stool 2-6 --cramp none|mild|moderate \\
        [--bm N] [--notes text]
   ifx-cycle-log.sh add          # interactive (days-since auto from last infusion if set)
   ifx-cycle-log.sh list [-n N]
@@ -158,10 +158,13 @@ PY
       days="${d_in:-$days}"
       read -r -p "sleep 1-5: " sleep
       read -r -p "energy/floaty 1-5 (5=solid): " energy
-      echo "stool 1-7: 1 deer · 4 smooth gold · 7 taco bell/liquid"
+      echo "stool 2-6:"
+      echo "  2 lumpy log  3 dense log  4 soft fully formed log (ideal)"
+      echo "  5 soft blobs with edges    6 no form / loose mush"
       read -r -p "  stool: " stool
       read -r -p "cramp none/mild/moderate: " cramp
-      read -r -p "bm count today (blank=skip): " bm
+      read -r -p "bm count today [1]: " bm
+      bm="${bm:-1}"
       read -r -p "notes: " notes
     fi
     # auto days-since if still empty
@@ -208,8 +211,8 @@ if bm_raw.strip() != "":
         raise SystemExit("bm_count must be 0-30")
 if not (1 <= row["sleep_1_5"] <= 5 and 1 <= row["energy_floaty_1_5"] <= 5):
     raise SystemExit("sleep/energy must be 1-5")
-if not (1 <= row["stool_form_1_7"] <= 7):
-    raise SystemExit("stool form must be 1-7")
+if not (2 <= row["stool_form_1_7"] <= 6):
+    raise SystemExit("stool form must be 2-6")
 if row["cramp"] not in ("none", "mild", "moderate"):
     raise SystemExit("cramp must be none|mild|moderate")
 
