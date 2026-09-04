@@ -379,6 +379,47 @@ class TestBudget(unittest.TestCase):
             [date(2026, 7, 31), date(2026, 8, 31), date(2026, 9, 30)],
         )
 
+    def test_eff_early_sept_clears_delayed_aug_eom_stays(self):
+        """Early-Sept opaque debit clears Aug EOM; Sept EOM remains reserved."""
+        bill = {
+            "name": "EFF",
+            "amount_cents": 2575,
+            "day_of_month": 31,
+            "match": r"(?i)electronic frontier|www\.eff\.org",
+            "active_from": "2026-08-01",
+        }
+        unpaid = effective_bills_reserve_cents(
+            [bill],
+            [],
+            as_of=date(2026, 9, 3),
+            period_kind="calendar",
+            arrears_lookback_months=6,
+            payment_grace_days=40,
+            fuzzy_day_slop=2,
+            fuzzy_amount_tol_cents=100,
+        )
+        self.assertEqual(unpaid, 2575 * 2)
+        delayed = [
+            Transaction(
+                id="eff-aug-late",
+                date="2026-09-03",
+                amount_cents=2575,
+                name="Recurring Withdrawal Debit Card MasterMoney Card",
+                merchant_name="Recurring Withdrawal Debit Card MasterMoney Card",
+            )
+        ]
+        after = effective_bills_reserve_cents(
+            [bill],
+            delayed,
+            as_of=date(2026, 9, 3),
+            period_kind="calendar",
+            arrears_lookback_months=6,
+            payment_grace_days=40,
+            fuzzy_day_slop=2,
+            fuzzy_amount_tol_cents=100,
+        )
+        self.assertEqual(after, 2575)
+
     def test_arrears_stack_unpaid_months(self):
         from hermes_finance.rules import effective_bills_reserve_cents
 

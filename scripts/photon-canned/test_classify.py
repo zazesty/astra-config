@@ -73,6 +73,12 @@ class TestBudget(unittest.TestCase):
     def test_budget(self):
         self.assertEqual(classify("budget").kind, "budget")
 
+    def test_budget_trailing_space(self):
+        self.assertEqual(classify("Budget ").kind, "budget")
+
+    def test_budget_prefix(self):
+        self.assertEqual(classify("Budget leftover").kind, "budget")
+
     def test_slash_budget(self):
         self.assertEqual(classify("/budget").kind, "budget")
 

@@ -77,7 +77,7 @@ _TODO_LIST = re.compile(
 
 _BUDGET = re.compile(
     r"^(?:"
-    r"budget(?: status)?"
+    r"budget(?:\s+.*)?"
     r"|sts"
     r"|what(?:'s| is|s) (?:my )?(?:budget|safe ?-?to ?-?spend|sts)\b.*"
     r"|how(?:'s| is|s) (?:my )?(?:budget|spend|spending|pace)\b.*"

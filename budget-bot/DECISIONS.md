@@ -23,8 +23,8 @@
 | Pace-hot / soft near-pace | **Culled 2026-08-24.** Firm pace only. | 2026-08-24 |
 | Interrupt sleep | Firm over-budget pri 1; **all hardcap breaches pri 2** (incl. further txns while over); else pri 0 | 2026-08-24 |
 | Transfers | PayPal↔CU + internal CU savings/MM/checking **excluded** from hardcap | 2026-08-02 |
-| Bills | CSAA, Spotify, SuperGrok $30, US Mobile, T-Mobile, Apple $0.99, EFF $25 EOM, Hetzner ~$15 on ~10th (usage) | 2026-08-29 |
-| Cash vs upcoming bills | Canned 4th line only if unpaid **material** dues (≥ half daily allotment) in next **5** days **and** cash < **2×** those dues. Floor ≈ $17.50 on a 30d $1050 month → CSAA / Grok / US Mobile; hide Apple/T-Mobile/Spotify/Hetzner/EFF $10. Overall leftover copy `$N left`. | 2026-09-03 |
+| Bills | CSAA, Spotify, SuperGrok $30, US Mobile, T-Mobile, Apple $0.99, EFF **$25.75 debit card EOM** (`active_from` 2026-08-01 so a delayed Aug post clears Aug; Sept EOM stays reserved), Hetzner ~$15 on ~10th (usage) | 2026-09-03 |
+| Cash vs upcoming bills | Canned 4th line only if unpaid **material** dues (≥ half daily allotment) in next **5** days **and** cash < **2×** those dues. Floor ≈ $17.50 on a 30d $1050 month → CSAA / Grok / US Mobile; hide Apple/T-Mobile/Spotify/Hetzner/EFF $25.75 EOM. Overall leftover copy `$N left`. | 2026-09-03 |
 | Product goal | Financial coaching + behavioral optimization | 2026-07-26 |
 | Runtime model | Cron + rules (no always-on Hermes Agent process) | 2026-07-26 |
 | Grok charges | **SuperGrok $30** = monthly bill; $5/$15 usage = discretionary when charged | 2026-08-18 |
