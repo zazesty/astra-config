@@ -188,6 +188,51 @@ class TestRules(unittest.TestCase):
         apply_review([t])
         self.assertTrue(t.excluded)
 
+    def test_review_revives_unique_plaid_debit_then_dedupe_reexcludes_twin(self):
+        """Plaid TRANSFER_OUT repair must not leave statement twins counting.
+
+        Unique post-statement MasterMoney should stay live; same date+amount
+        as a PDF/xlsx row must be excluded again after persist.
+        """
+        from hermes_finance.dedupe import apply_import_plaid_dedupe
+
+        unique = Transaction(
+            id="plaid-unique",
+            date="2026-09-03",
+            amount_cents=9200,
+            name="Withdrawal Debit Card MasterMoney Card",
+            merchant_name="MasterMoney Card",
+            institution="1st-northern-california-credit-union",
+            excluded=True,
+            transfer=True,
+        )
+        stmt = Transaction(
+            id="norcal-20260826-twin",
+            date="2026-08-26",
+            amount_cents=14584,
+            name="Withdrawal Debit Card MasterMoney Card - AIRGAS",
+            institution="1st-norcal",
+        )
+        twin = Transaction(
+            id="plaid-twin-xfer",
+            date="2026-08-26",
+            amount_cents=14584,
+            name="Withdrawal Debit Card MasterMoney Card",
+            merchant_name="MasterMoney Card",
+            institution="1st-northern-california-credit-union",
+            excluded=True,
+            transfer=True,
+        )
+        apply_review([unique, stmt, twin])
+        self.assertFalse(unique.transfer)
+        self.assertFalse(unique.excluded)
+        self.assertFalse(twin.transfer)
+        self.assertFalse(twin.excluded)
+        apply_import_plaid_dedupe([unique, stmt, twin])
+        self.assertFalse(unique.excluded)
+        self.assertTrue(twin.excluded)
+        self.assertFalse(stmt.excluded)
+
     def test_apple_bill_is_saas(self):
         t = Transaction(
             id="a",

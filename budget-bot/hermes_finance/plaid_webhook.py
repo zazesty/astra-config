@@ -190,6 +190,17 @@ def _process_update_unlocked(
         review_summary = {"error": str(e)[:200]}
         whlog(f"auto-review error: {e}")
 
+    # Auto-review clears false Plaid TRANSFER_OUT on MasterMoney, which also
+    # revives statement twins. Re-apply SSOT after review, including empty syncs
+    # (sync_item only persists when the batch is non-empty).
+    try:
+        from .dedupe import persist_statement_ssot
+
+        review_summary["statement_ssot_excluded"] = persist_statement_ssot()
+    except Exception as e:
+        review_summary["statement_ssot_error"] = str(e)[:200]
+        whlog(f"statement-ssot error: {e}")
+
     txns = load_txns()
     tz = ZoneInfo(cfg.get("timezone") or "America/Los_Angeles")
     as_of = datetime.now(tz).date()

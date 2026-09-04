@@ -301,7 +301,8 @@ def rule_review(t: Transaction) -> ReviewResult:
     from .transfers import is_debit_card_purchase, looks_like_transfer
 
     # Plaid often tags MasterMoney as TRANSFER_OUT. Repair the transfer flag.
-    # Statement-SSOT twins are excluded with transfer=False — leave those excluded.
+    # This also revives statement-SSOT twins; persist_statement_ssot must run
+    # after auto-review so PDF/xlsx still wins on (date, amount).
     debit_purchase = is_debit_card_purchase(
         name=t.name or "", merchant_name=t.merchant_name
     )
