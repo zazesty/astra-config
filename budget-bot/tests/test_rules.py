@@ -771,6 +771,259 @@ class TestBudget(unittest.TestCase):
             0,
         )
 
+    def test_saas_tax_inclusive_opaque_clears(self):
+        """CA SaaS tax ~10%: opaque SuperGrok $33 still clears the $30 reserve."""
+        from hermes_finance.rules import (
+            amount_matches_bill,
+            bill_amount_band,
+            bill_posted_in_period,
+            effective_bills_reserve_cents,
+        )
+
+        bill = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+        }
+        under, over = bill_amount_band(bill)
+        self.assertEqual(under, 100)
+        self.assertEqual(over, 400)  # $1 + 10% of $30
+        self.assertTrue(amount_matches_bill(3300, 3000, under, over))
+        self.assertTrue(amount_matches_bill(3308, 3000, under, over))  # 10.25%
+        self.assertFalse(amount_matches_bill(2700, 3000, under, over))  # US Mobile
+
+        tx = [
+            Transaction(
+                id="grok-tax",
+                date="2026-01-01",
+                amount_cents=3300,
+                name="Recurring Withdrawal Debit Card MasterMoney Card",
+                merchant_name=None,
+            )
+        ]
+        self.assertTrue(
+            bill_posted_in_period(
+                bill,
+                tx,
+                date(2026, 1, 1),
+                date(2026, 1, 31),
+                fuzzy=True,
+                as_of=date(2026, 1, 2),
+            )
+        )
+        self.assertEqual(
+            effective_bills_reserve_cents(
+                [bill],
+                tx,
+                as_of=date(2026, 1, 2),
+                period_kind="calendar",
+                arrears_lookback_months=0,
+            ),
+            0,
+        )
+        # without saas flag, $33 is outside ±$1
+        plain = {**bill, "saas": False}
+        self.assertFalse(
+            bill_posted_in_period(
+                plain,
+                tx,
+                date(2026, 1, 1),
+                date(2026, 1, 31),
+                fuzzy=True,
+                as_of=date(2026, 1, 2),
+            )
+        )
+
+    def test_saas_tax_does_not_steal_us_mobile(self):
+        """$27 opaque on the 5th is US Mobile, not a discounted SuperGrok."""
+        from hermes_finance.rules import bill_posted_in_period, effective_bills_reserve_cents
+
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+        }
+        usm = {
+            "name": "US Mobile",
+            "amount_cents": 2700,
+            "day_of_month": 5,
+            "match": r"US MOBILE",
+        }
+        tx = [
+            Transaction(
+                id="um",
+                date="2026-01-05",
+                amount_cents=2700,
+                name="Recurring Withdrawal Debit Card MasterMoney Card",
+                merchant_name=None,
+            )
+        ]
+        self.assertFalse(
+            bill_posted_in_period(
+                grok,
+                tx,
+                date(2026, 1, 1),
+                date(2026, 1, 31),
+                fuzzy=True,
+                as_of=date(2026, 1, 5),
+            )
+        )
+        self.assertTrue(
+            bill_posted_in_period(
+                usm,
+                tx,
+                date(2026, 1, 1),
+                date(2026, 1, 31),
+                fuzzy=True,
+                as_of=date(2026, 1, 5),
+            )
+        )
+        self.assertEqual(
+            effective_bills_reserve_cents(
+                [grok, usm],
+                tx,
+                as_of=date(2026, 1, 5),
+                period_kind="calendar",
+                arrears_lookback_months=0,
+            ),
+            3000,  # Grok still reserved; US Mobile cleared
+        )
+
+    def test_named_saas_tax_inclusive_still_clears(self):
+        """Name-matched SuperGrok $33 already credited in full; saas flag is extra."""
+        from hermes_finance.rules import bill_posted_in_period
+
+        bill = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+        }
+        tx = [
+            Transaction(
+                id="named",
+                date="2026-01-01",
+                amount_cents=3300,
+                name="XAI SuperGrok",
+                merchant_name="X.AI",
+            )
+        ]
+        self.assertTrue(
+            bill_posted_in_period(
+                bill,
+                tx,
+                date(2026, 1, 1),
+                date(2026, 1, 31),
+                fuzzy=True,
+                as_of=date(2026, 1, 2),
+            )
+        )
+
+    def test_saas_reserve_follows_tax_inclusive_post(self):
+        """Opaque $33 SuperGrok rewrites the $30 reserve; $15 usage does not."""
+        from hermes_finance.rules import (
+            amount_matches_bill,
+            apply_saas_reserve_updates_to_bills,
+            bill_posted_in_period,
+            proposed_saas_reserve_updates,
+        )
+
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+        }
+        # After the bump, a pre-tax $30 still matches the $33 reserve.
+        self.assertTrue(
+            amount_matches_bill(3000, 3300, 100, 430, tax_pct=0.10)
+        )
+        self.assertFalse(
+            amount_matches_bill(2700, 3300, 100, 430, tax_pct=0.10)
+        )
+
+        tax = Transaction(
+            id="grok-tax",
+            date="2027-01-01",
+            amount_cents=3300,
+            name="Recurring Withdrawal Debit Card MasterMoney Card",
+            merchant_name=None,
+        )
+        usage = Transaction(
+            id="grok-use",
+            date="2027-01-04",
+            amount_cents=1500,
+            name="XAI GROK",
+            merchant_name="X.AI",
+        )
+        updates = proposed_saas_reserve_updates(
+            [grok],
+            [tax, usage],
+            as_of=date(2027, 1, 4),
+        )
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0]["new_cents"], 3300)
+        self.assertEqual(updates[0]["old_cents"], 3000)
+        n = apply_saas_reserve_updates_to_bills([grok], updates)
+        self.assertEqual(n, 1)
+        self.assertEqual(grok["amount_cents"], 3300)
+        self.assertTrue(
+            bill_posted_in_period(
+                grok,
+                [tax],
+                date(2027, 1, 1),
+                date(2027, 1, 31),
+                fuzzy=True,
+                as_of=date(2027, 1, 4),
+            )
+        )
+        # same $33 next month: no further rewrite
+        self.assertEqual(
+            proposed_saas_reserve_updates(
+                [grok],
+                [
+                    tax,
+                    Transaction(
+                        id="grok-tax-2",
+                        date="2027-02-01",
+                        amount_cents=3300,
+                        name="Recurring Withdrawal Debit Card MasterMoney Card",
+                    ),
+                ],
+                as_of=date(2027, 2, 2),
+            ),
+            [],
+        )
+
+    def test_saas_reserve_ignores_unrelated_opaque(self):
+        from hermes_finance.rules import proposed_saas_reserve_updates
+
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+        }
+        tx = [
+            Transaction(
+                id="um",
+                date="2027-01-05",
+                amount_cents=2700,
+                name="Recurring Withdrawal Debit Card MasterMoney Card",
+            )
+        ]
+        self.assertEqual(
+            proposed_saas_reserve_updates([grok], tx, as_of=date(2027, 1, 5)),
+            [],
+        )
+
     def test_days_off_pace(self):
         from hermes_finance.rules import days_off_pace
 

@@ -28,6 +28,7 @@
 | Product goal | Financial coaching + behavioral optimization | 2026-07-26 |
 | Runtime model | Cron + rules (no always-on Hermes Agent process) | 2026-07-26 |
 | Grok charges | **SuperGrok $30** = monthly bill; $5/$15 usage = discretionary when charged | 2026-08-18 |
+| SaaS tax match | `saas: true` bills allow **~10% over** the pre-tax reserve (plus the usual ±$1) so CA tax-inclusive charges still clear. **Grok / Apple / Spotify** tagged. Not a global ±10% (EFF $25.75 vs US Mobile $27). When an in-band post lands (webhook/poll/evaluate), **`amount_cents` follows the posted amount** so next month reserves $33 not $30. $5/$15 usage is out of band and does not rewrite. | 2026-09-05 |
 | Alert channel v0 | Email via `notify-email.sh` (Resend) | 2026-07-21 |
 | Alert channel v1 | **Pushover** for firm pace + hardcap breach (`notify-pushover.sh`); Twilio deferred. Soft near-pace culled 2026-08-24. | 2026-08-24 |
 | Near-instant review | **Plaid webhooks** primary + **15m poll backup**; sync → auto-review → budget interrupts (no digest) | 2026-08-02 |

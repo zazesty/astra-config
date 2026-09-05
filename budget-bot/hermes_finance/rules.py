@@ -105,6 +105,12 @@ def spend_in_period(
     return total
 
 
+# CA digital-goods / SaaS sales tax (from Jan 2027). Combined state+local
+# is ~9.5–10.75%; "~10%" plus the usual $1 slop covers that without a
+# global ±10% (which would let EFF $25.75 collide with US Mobile $27).
+DEFAULT_SAAS_TAX_VARIANCE_PCT = 0.10
+
+
 def bill_monthly_reserve_cents(bill: dict[str, Any]) -> int:
     """Monthly amount reserved for a bill.
 
@@ -116,6 +122,64 @@ def bill_monthly_reserve_cents(bill: dict[str, Any]) -> int:
     if bill.get("annual_cents") is not None:
         return int(round(int(bill["annual_cents"]) / 12))
     return int(bill.get("amount_cents") or 0)
+
+
+def saas_tax_pct(bill: dict[str, Any]) -> float | None:
+    """~10% CA SaaS tax band, or an explicit per-bill override."""
+    pct = bill.get("tax_variance_pct")
+    if pct is None and bill.get("saas"):
+        pct = DEFAULT_SAAS_TAX_VARIANCE_PCT
+    if pct is None:
+        return None
+    try:
+        val = float(pct)
+    except (TypeError, ValueError):
+        return None
+    return val if val > 0 else None
+
+
+def bill_amount_band(
+    bill: dict[str, Any],
+    *,
+    fuzzy_amount_tol_cents: int = 100,
+) -> tuple[int, int]:
+    """Return (under_cents, over_cents) vs the monthly reserve.
+
+    Default band is ±`fuzzy_amount_tol_cents` ($1). Bills with `saas: true`
+    (or an explicit `tax_variance_pct`) also allow ~10% *over* so a
+    tax-inclusive SuperGrok charge still clears the pre-tax $30 reserve.
+    Under stays at $1 — a $27 US Mobile must not clear a $30 Grok due.
+    """
+    under = max(0, int(fuzzy_amount_tol_cents))
+    over = under
+    pct = saas_tax_pct(bill)
+    if pct:
+        monthly = bill_monthly_reserve_cents(bill)
+        extra = int(round(monthly * pct))
+        # Stack $1 slop on the 10% so 10.25% combined-rate rounding still fits.
+        over = under + max(0, extra)
+    return under, over
+
+
+def amount_matches_bill(
+    posted_cents: int,
+    monthly_cents: int,
+    under_cents: int,
+    over_cents: int,
+    *,
+    tax_pct: float | None = None,
+) -> bool:
+    """True if posted is the reserve, the reserve plus tax, or pre-tax of a tax-inclusive reserve.
+
+    Inverse (tax-off) does *not* stack the extra $1 on 10% — that would let
+    US Mobile $27 look like pre-tax SuperGrok $30.
+    """
+    if monthly_cents - under_cents <= posted_cents <= monthly_cents + over_cents:
+        return True
+    if not tax_pct or posted_cents <= 0 or monthly_cents <= 0:
+        return False
+    extra = int(round(posted_cents * float(tax_pct)))
+    return 0 < monthly_cents - posted_cents <= extra
 
 
 def bill_due_day(bill: dict[str, Any]) -> int | None:
@@ -303,6 +367,7 @@ def bill_occurrence_cleared(
     if monthly <= 0:
         return False
     tol = max(0, int(fuzzy_amount_tol_cents))
+    under, over = bill_amount_band(bill, fuzzy_amount_tol_cents=tol)
     w0, w1 = _bill_window(
         bill, due_d, fuzzy_day_slop=fuzzy_day_slop, payment_grace_days=payment_grace_days
     )
@@ -337,7 +402,7 @@ def bill_occurrence_cleared(
         need -= take
         claimed_ids.add(tid)
         used_dates.append(_d)
-        if need <= tol:
+        if need <= under:
             cleared = True
             break
     # Split catch-up: unused sibling in this window within a few days of a
@@ -374,7 +439,13 @@ def bill_occurrence_cleared(
         d = parse_ymd(t.date)
         if not (w0 <= d <= w1):
             continue
-        if abs(int(t.amount_cents) - monthly) <= tol:
+        if amount_matches_bill(
+            int(t.amount_cents),
+            monthly,
+            under,
+            over,
+            tax_pct=saas_tax_pct(bill),
+        ):
             claimed_ids.add(t.id)
             return True
     return False
@@ -428,6 +499,125 @@ def bill_posted_in_period(
         ):
             return True
     return False
+
+
+def _saas_post_for_due(
+    bill: dict[str, Any],
+    due_d: date,
+    txns: list[Transaction],
+    *,
+    exclude_pending: bool = True,
+    fuzzy_amount_tol_cents: int = 100,
+    fuzzy_day_slop: int = 2,
+    payment_grace_days: int = 40,
+) -> tuple[Transaction, int] | None:
+    """Single in-band charge in this due's window (name or opaque)."""
+    monthly = bill_monthly_reserve_cents(bill)
+    if monthly <= 0:
+        return None
+    under, over = bill_amount_band(bill, fuzzy_amount_tol_cents=fuzzy_amount_tol_cents)
+    pct = saas_tax_pct(bill)
+    w0, w1 = _bill_window(
+        bill, due_d, fuzzy_day_slop=fuzzy_day_slop, payment_grace_days=payment_grace_days
+    )
+    hits: list[Transaction] = []
+    for t in txns:
+        if not counts_as_spend(t, exclude_pending):
+            continue
+        posted = int(t.amount_cents)
+        if posted <= 0:
+            continue
+        d = parse_ymd(t.date)
+        if not (w0 <= d <= w1):
+            continue
+        if not amount_matches_bill(posted, monthly, under, over, tax_pct=pct):
+            continue
+        hits.append(t)
+    if not hits:
+        return None
+    hits.sort(key=lambda t: (abs((parse_ymd(t.date) - due_d).days), t.date, t.id))
+    t = hits[0]
+    return t, int(t.amount_cents)
+
+
+def proposed_saas_reserve_updates(
+    bills: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    *,
+    as_of: date,
+    exclude_pending: bool = True,
+    fuzzy_amount_tol_cents: int = 100,
+    fuzzy_day_slop: int = 2,
+    payment_grace_days: int = 40,
+    lookback_days: int = 62,
+) -> list[dict[str, Any]]:
+    """SaaS bills whose latest in-band post differs from the configured reserve.
+
+    SuperGrok posts as opaque MasterMoney, so opaque fuzzy hits count — but only
+    amounts in the ~10% tax band of the current reserve ($15 usage will not).
+    """
+    out: list[dict[str, Any]] = []
+    tol = max(0, int(fuzzy_amount_tol_cents))
+    start = as_of - timedelta(days=max(1, int(lookback_days)))
+    for bill in bills or []:
+        if saas_tax_pct(bill) is None:
+            continue
+        if bill.get("annual_cents") is not None:
+            continue
+        monthly = bill_monthly_reserve_cents(bill)
+        if monthly <= 0:
+            continue
+        dues = sorted(
+            bill_due_dates_in_range(bill, start, as_of),
+            reverse=True,
+        )
+        for due_d in dues:
+            hit = _saas_post_for_due(
+                bill,
+                due_d,
+                txns or [],
+                exclude_pending=exclude_pending,
+                fuzzy_amount_tol_cents=tol,
+                fuzzy_day_slop=fuzzy_day_slop,
+                payment_grace_days=payment_grace_days,
+            )
+            if hit is None:
+                continue
+            t, posted = hit
+            if abs(posted - monthly) <= tol:
+                break
+            out.append(
+                {
+                    "name": bill.get("name") or "",
+                    "old_cents": monthly,
+                    "new_cents": posted,
+                    "txn_id": t.id,
+                    "date": t.date[:10],
+                }
+            )
+            break
+    return out
+
+
+def apply_saas_reserve_updates_to_bills(
+    bills: list[dict[str, Any]] | None,
+    updates: list[dict[str, Any]] | None,
+) -> int:
+    """Set amount_cents on matching bill names. Returns how many bills changed."""
+    if not bills or not updates:
+        return 0
+    by_name = {str(u.get("name") or ""): int(u["new_cents"]) for u in updates if u.get("name")}
+    n = 0
+    for bill in bills:
+        name = str(bill.get("name") or "")
+        if name not in by_name:
+            continue
+        new = by_name[name]
+        if int(bill.get("amount_cents") or 0) == new:
+            continue
+        bill["amount_cents"] = new
+        n += 1
+    return n
 
 
 def bill_due_phase(bill: dict[str, Any], as_of: date, *, posted: bool) -> str:

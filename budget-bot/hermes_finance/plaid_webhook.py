@@ -20,7 +20,7 @@ from typing import Any, Iterator
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
-from .config import load_config, state_dir
+from .config import load_config, persist_saas_bill_reserves, state_dir
 from .notify import PUSH_KINDS, send_alert, send_alerts
 from .plaid_client import item_webhook_update, load_plaid_env
 from .plaid_sync import list_items, load_access_token, sync_all_items, sync_item
@@ -204,6 +204,11 @@ def _process_update_unlocked(
     txns = load_txns()
     tz = ZoneInfo(cfg.get("timezone") or "America/Los_Angeles")
     as_of = datetime.now(tz).date()
+    try:
+        persist_saas_bill_reserves(cfg, txns, as_of)
+        cfg = load_config()
+    except Exception as e:
+        whlog(f"saas-reserve update error: {e}")
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
     snap = both["calendar"]  # notify SSOT
     record_period_series(

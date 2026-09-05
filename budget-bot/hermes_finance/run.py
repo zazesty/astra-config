@@ -11,7 +11,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import __version__
-from .config import load_config, save_config, state_dir
+from .config import load_config, persist_saas_bill_reserves, save_config, state_dir
 from .rules import (
     budget_alerts,
     detect_anomalies,
@@ -544,6 +544,9 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     if args.fixture:
         txns = load_fixture(Path(args.fixture))
     as_of = _as_of(cfg, args.as_of)
+    if not args.fixture:
+        persist_saas_bill_reserves(cfg, txns, as_of)
+        cfg = load_config()
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
     snap = both["calendar"]  # notify SSOT
     anomalies = detect_anomalies(txns, cfg, as_of=as_of)
@@ -595,6 +598,9 @@ def cmd_watch(args: argparse.Namespace) -> int:
         new_tx = []
 
     as_of = _as_of(cfg, args.as_of)
+    if not args.fixture:
+        persist_saas_bill_reserves(cfg, all_tx, as_of)
+        cfg = load_config()
     both = evaluate_budget_both(all_tx, cfg, as_of=as_of)
     snap = both["calendar"]  # notify SSOT
     record_period_series(

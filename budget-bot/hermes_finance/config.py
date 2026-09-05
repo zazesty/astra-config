@@ -19,6 +19,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # bills: monthly reserve toward hardcap safe-to-spend.
     # Fields: name, amount_cents (monthly) OR annual_cents (/12),
     # match (regex; when spend matches in period, reserve clears that month).
+    # saas: true → fuzzy $ also allows ~10% over (CA tax-inclusive SaaS).
     "bills": [],
     "goals": [],  # [{name, amount_cents}]
     "anomaly": {
@@ -50,7 +51,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "bill_horizon_days_calendar": 0,
     # rolling display: all unposted bills with due date in the rolling window
     "bill_fuzzy_match": True,
-    "bill_fuzzy_amount_tol_cents": 100,  # ±$1
+    "bill_fuzzy_amount_tol_cents": 100,  # ±$1; SaaS bills also allow ~10% over
     "bill_fuzzy_day_slop": 2,  # due±2 days (US Mobile can post on the 3rd)
     # Unpaid past dues stack (each missed month) within lookback
     "bill_arrears_lookback_months": 6,
@@ -103,3 +104,39 @@ def save_config(cfg: dict[str, Any]) -> None:
         json.dump(cfg, f, indent=2, sort_keys=True)
         f.write("\n")
     tmp.replace(path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def persist_saas_bill_reserves(
+    cfg: dict[str, Any],
+    txns: list[Any],
+    as_of: Any,
+) -> list[dict[str, Any]]:
+    """Rewrite saas bill amount_cents when an in-band tax-inclusive charge posts.
+
+    No-op when the latest post is within ±$1 of the current reserve.
+    """
+    from datetime import date as date_cls
+
+    from .rules import apply_saas_reserve_updates_to_bills, proposed_saas_reserve_updates
+
+    if not isinstance(as_of, date_cls):
+        as_of = date_cls.fromisoformat(str(as_of)[:10])
+    updates = proposed_saas_reserve_updates(
+        cfg.get("bills"),
+        txns,
+        as_of=as_of,
+        exclude_pending=bool(cfg.get("exclude_pending", True)),
+        fuzzy_amount_tol_cents=int(cfg.get("bill_fuzzy_amount_tol_cents", 100)),
+        fuzzy_day_slop=int(cfg.get("bill_fuzzy_day_slop", 2)),
+        payment_grace_days=int(cfg.get("bill_payment_grace_days", 40)),
+    )
+    if not updates:
+        return []
+    changed = apply_saas_reserve_updates_to_bills(cfg.get("bills"), updates)
+    if changed:
+        save_config(cfg)
+    return updates
