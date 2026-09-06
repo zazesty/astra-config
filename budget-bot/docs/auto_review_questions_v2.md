@@ -24,7 +24,7 @@ Answer only what you care to; leave blank = leave needs_review.
 
 **2. Opaque POS / MasterMoney REF** → use embedded **4-digit MCC** after `REF#:` (e.g. `5542` = fuel). Merchant parse fixed for REF#+MCC and POS # lines. Residual opaque queue only when no MCC + no keyword.
 
-**3. Annual / lumpy bills** → **(B) monthly reserve** coded: `bills[]` with `amount_cents` or `annual_cents` (/12); `match` regex clears reserve when posted that month. Seeded CSAA $68.92 + VSP $30.93.
+**3. Annual / lumpy bills** → **cadence: annual** shipped 2026-09-05: leftover 1/12, cash-vs-bills uses the lump, charge month spend = 1/12. Seeded NSSI $102 + CSAA Renters $115.73. Monthly bills still `amount_cents`.
 
 ## Optional
 

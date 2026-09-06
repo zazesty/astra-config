@@ -109,6 +109,46 @@ def spend_in_period(
 # is ~9.5–10.75%; "~10%" plus the usual $1 slop covers that without a
 # global ±10% (which would let EFF $25.75 collide with US Mobile $27).
 DEFAULT_SAAS_TAX_VARIANCE_PCT = 0.10
+# Monthly → annual prepay. US Mobile $280/$27 ≈ 10.4×; SuperGrok $300/$30 = 10×
+# (tax-inclusive annual ~11×). Not 12× list-price. Band excludes $33 SaaS tax.
+ANNUAL_PREPAY_RATIO_MIN = 8.5
+ANNUAL_PREPAY_RATIO_MAX = 11.5
+
+
+def bill_is_annual(bill: dict[str, Any]) -> bool:
+    """True when cadence is yearly. `annual_cents` alone still means monthly-sized reserve."""
+    cad = str(bill.get("cadence") or "").strip().lower()
+    return cad in ("annual", "yearly", "year")
+
+
+def bill_auto_annual_enabled(bill: dict[str, Any]) -> bool:
+    """Monthly bills that should flip to annual cadence on a ~10× prepay."""
+    if bill_is_annual(bill):
+        return False
+    return bool(bill.get("auto_annual"))
+
+
+def amount_looks_like_annual_prepay(posted_cents: int, monthly_cents: int) -> bool:
+    """True if posted is ~10× the monthly reserve (annual discount, not 12× list)."""
+    if posted_cents <= 0 or monthly_cents <= 0:
+        return False
+    ratio = posted_cents / monthly_cents
+    return ANNUAL_PREPAY_RATIO_MIN <= ratio <= ANNUAL_PREPAY_RATIO_MAX
+
+
+def bill_anniversary_month(bill: dict[str, Any]) -> int | None:
+    raw = bill.get("month")
+    if raw is None:
+        raw = bill.get("anniversary_month")
+    if raw is None:
+        return None
+    try:
+        month = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if month < 1 or month > 12:
+        return None
+    return month
 
 
 def bill_monthly_reserve_cents(bill: dict[str, Any]) -> int:
@@ -122,6 +162,16 @@ def bill_monthly_reserve_cents(bill: dict[str, Any]) -> int:
     if bill.get("annual_cents") is not None:
         return int(round(int(bill["annual_cents"]) / 12))
     return int(bill.get("amount_cents") or 0)
+
+
+def bill_cash_pull_cents(bill: dict[str, Any]) -> int:
+    """Dollars that actually leave checking on a due.
+
+    Annual cadence → full `annual_cents` (cash-vs-bills). Else the monthly reserve.
+    """
+    if bill_is_annual(bill) and bill.get("annual_cents") is not None:
+        return int(bill["annual_cents"])
+    return bill_monthly_reserve_cents(bill)
 
 
 def saas_tax_pct(bill: dict[str, Any]) -> float | None:
@@ -142,8 +192,9 @@ def bill_amount_band(
     bill: dict[str, Any],
     *,
     fuzzy_amount_tol_cents: int = 100,
+    center_cents: int | None = None,
 ) -> tuple[int, int]:
-    """Return (under_cents, over_cents) vs the monthly reserve.
+    """Return (under_cents, over_cents) vs the monthly reserve (or `center_cents`).
 
     Default band is ±`fuzzy_amount_tol_cents` ($1). Bills with `saas: true`
     (or an explicit `tax_variance_pct`) also allow ~10% *over* so a
@@ -154,8 +205,12 @@ def bill_amount_band(
     over = under
     pct = saas_tax_pct(bill)
     if pct:
-        monthly = bill_monthly_reserve_cents(bill)
-        extra = int(round(monthly * pct))
+        center = (
+            int(center_cents)
+            if center_cents is not None
+            else bill_monthly_reserve_cents(bill)
+        )
+        extra = int(round(center * pct))
         # Stack $1 slop on the 10% so 10.25% combined-rate rounding still fits.
         over = under + max(0, extra)
     return under, over
@@ -197,7 +252,14 @@ def bill_due_day(bill: dict[str, Any]) -> int | None:
 
 
 def bill_due_date_for_month(bill: dict[str, Any], year: int, month: int) -> date | None:
-    """Concrete due date in a given month (clamped to month length)."""
+    """Concrete due date in a given month (clamped to month length).
+
+    Annual cadence only fires in `month` / `anniversary_month`.
+    """
+    if bill_is_annual(bill):
+        ann = bill_anniversary_month(bill)
+        if ann is None or month != ann:
+            return None
     due = bill_due_day(bill)
     if due is None:
         return None
@@ -257,6 +319,113 @@ def _bill_match_blob(t: Transaction) -> str:
     return f"{t.merchant_name or ''} {t.name or ''}"
 
 
+def _txn_in_annual_band(
+    bill: dict[str, Any],
+    t: Transaction,
+    *,
+    fuzzy_amount_tol_cents: int = 100,
+) -> bool:
+    if not bill_is_annual(bill):
+        return False
+    cre = _bill_name_re(bill)
+    if cre is None or not cre.search(_bill_match_blob(t)):
+        return False
+    posted = int(t.amount_cents)
+    if posted <= 0:
+        return False
+    pull = bill_cash_pull_cents(bill)
+    if pull <= 0:
+        return False
+    under, over = bill_amount_band(
+        bill, fuzzy_amount_tol_cents=fuzzy_amount_tol_cents, center_cents=pull
+    )
+    return amount_matches_bill(
+        posted, pull, under, over, tax_pct=saas_tax_pct(bill)
+    )
+
+
+def annual_in_band_txn_ids(
+    bills: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    *,
+    exclude_pending: bool = True,
+    fuzzy_amount_tol_cents: int = 100,
+) -> set[str]:
+    """Txn ids that are an in-band annual cash pull (so monthly siblings must not claim them)."""
+    ids: set[str] = set()
+    for b in bills or []:
+        if not bill_is_annual(b):
+            continue
+        for t in txns or []:
+            if t.transfer or t.excluded:
+                continue
+            if exclude_pending and t.pending:
+                continue
+            if _txn_in_annual_band(
+                b, t, fuzzy_amount_tol_cents=fuzzy_amount_tol_cents
+            ):
+                ids.add(t.id)
+    return ids
+
+
+def annual_bill_posted_in_range(
+    bill: dict[str, Any],
+    txns: list[Transaction] | None,
+    range_start: date,
+    range_end: date,
+    *,
+    exclude_pending: bool = True,
+    fuzzy_amount_tol_cents: int = 100,
+) -> bool:
+    """True if an in-band annual cash pull posted in [range_start, range_end]."""
+    if not bill_is_annual(bill) or range_start > range_end:
+        return False
+    for t in txns or []:
+        if t.transfer or t.excluded:
+            continue
+        if exclude_pending and t.pending:
+            continue
+        if not _txn_in_annual_band(
+            bill, t, fuzzy_amount_tol_cents=fuzzy_amount_tol_cents
+        ):
+            continue
+        d = parse_ymd(t.date)
+        if range_start <= d <= range_end:
+            return True
+    return False
+
+
+def annual_spend_overage_cents(
+    txns: list[Transaction],
+    bills: list[dict[str, Any]] | None,
+    period_start: date,
+    period_end: date,
+    exclude_pending: bool = True,
+    *,
+    fuzzy_amount_tol_cents: int = 100,
+) -> int:
+    """In-band annual pulls above 1/12 — strip from hardcap spend (timing spread, not a carve-out)."""
+    extra = 0
+    seen: set[str] = set()
+    for b in bills or []:
+        if not bill_is_annual(b):
+            continue
+        monthly = bill_monthly_reserve_cents(b)
+        for t in txns:
+            if t.id in seen or not counts_as_spend(t, exclude_pending):
+                continue
+            if not _txn_in_annual_band(
+                b, t, fuzzy_amount_tol_cents=fuzzy_amount_tol_cents
+            ):
+                continue
+            d = parse_ymd(t.date)
+            if not (period_start <= d <= period_end):
+                continue
+            seen.add(t.id)
+            extra += max(0, int(t.amount_cents) - monthly)
+    return extra
+
+
 def _bill_window(
     bill: dict[str, Any],
     due_d: date,
@@ -282,6 +451,7 @@ def build_bill_payment_credits(
     *,
     exclude_pending: bool = True,
     fuzzy_amount_tol_cents: int = 100,
+    skip_txn_ids: set[str] | None = None,
 ) -> dict[str, int]:
     """Map txn_id → cents available to clear bill dues (after bounce netting).
 
@@ -289,16 +459,26 @@ def build_bill_payment_credits(
     - Split catch-ups count (e.g. $50 + $112). Only fee-sized crumbs (CSAA ~$20)
       are ignored — not "must be ≥ one full premium".
     - Name-matching refunds/reversals cancel a nearby equal spend (bounce).
+    - Annual cadence only accepts in-band cash-pull amounts ($102 not $8.50).
+    - Monthly siblings skip `skip_txn_ids` (annual CSAA $115.73 must not clear auto).
     """
     cre = _bill_name_re(bill)
     if cre is None:
         return {}
     monthly = bill_monthly_reserve_cents(bill)
+    pull = bill_cash_pull_cents(bill)
+    annual = bill_is_annual(bill)
     tol = max(0, int(fuzzy_amount_tol_cents))
+    under, over = bill_amount_band(
+        bill, fuzzy_amount_tol_cents=tol, center_cents=pull if annual else None
+    )
+    skip = skip_txn_ids or set()
     spends: list[tuple[date, str, int]] = []
     refunds: list[tuple[date, str, int]] = []
     for t in txns:
         if t.transfer or t.excluded:
+            continue
+        if t.id in skip and not annual:
             continue
         if not cre.search(_bill_match_blob(t)):
             continue
@@ -334,10 +514,14 @@ def build_bill_payment_credits(
         min_credit = min(monthly // 2 + 1, 3000)
     else:
         min_credit = 1
+    tax_pct = saas_tax_pct(bill)
     for _d, sid, samt in spends:
         if sid in dead:
             continue
-        if samt < min_credit:
+        if annual:
+            if not amount_matches_bill(samt, pull, under, over, tax_pct=tax_pct):
+                continue
+        elif samt < min_credit:
             continue
         credits[sid] = samt
     return credits
@@ -362,12 +546,16 @@ def bill_occurrence_cleared(
     Leftover on a credit already applied to an earlier due rolls forward so a
     late-July catch-up can prepay August. Bounces netted in payment_credits;
     fee-sized name-matching crumbs stay ignored.
+    Annual dues need the cash pull (e.g. $102), not the 1/12 reserve.
     """
     monthly = bill_monthly_reserve_cents(bill)
-    if monthly <= 0:
+    pull = bill_cash_pull_cents(bill)
+    if monthly <= 0 or pull <= 0:
         return False
     tol = max(0, int(fuzzy_amount_tol_cents))
-    under, over = bill_amount_band(bill, fuzzy_amount_tol_cents=tol)
+    under, over = bill_amount_band(
+        bill, fuzzy_amount_tol_cents=tol, center_cents=pull
+    )
     w0, w1 = _bill_window(
         bill, due_d, fuzzy_day_slop=fuzzy_day_slop, payment_grace_days=payment_grace_days
     )
@@ -390,7 +578,7 @@ def bill_occurrence_cleared(
         if w0 <= d <= w1 or t.id in claimed_ids:
             dated.append((d, t.id))
     dated.sort(key=lambda x: x[0])
-    need = monthly
+    need = pull
     used_dates: list[date] = []
     cleared = False
     for _d, tid in dated:
@@ -441,7 +629,7 @@ def bill_occurrence_cleared(
             continue
         if amount_matches_bill(
             int(t.amount_cents),
-            monthly,
+            pull,
             under,
             over,
             tax_pct=saas_tax_pct(bill),
@@ -562,7 +750,7 @@ def proposed_saas_reserve_updates(
     for bill in bills or []:
         if saas_tax_pct(bill) is None:
             continue
-        if bill.get("annual_cents") is not None:
+        if bill_is_annual(bill) or bill.get("annual_cents") is not None:
             continue
         monthly = bill_monthly_reserve_cents(bill)
         if monthly <= 0:
@@ -616,6 +804,150 @@ def apply_saas_reserve_updates_to_bills(
         if int(bill.get("amount_cents") or 0) == new:
             continue
         bill["amount_cents"] = new
+        n += 1
+    return n
+
+
+def _txn_matches_bill_name(bill: dict[str, Any], t: Transaction) -> bool:
+    cre = _bill_name_re(bill)
+    return bool(cre and cre.search(_bill_match_blob(t)))
+
+
+def _txn_matches_any_bill_name(
+    t: Transaction, bills: list[dict[str, Any]] | None
+) -> bool:
+    return any(_txn_matches_bill_name(b, t) for b in bills or [])
+
+
+def proposed_auto_annual_conversions(
+    bills: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    *,
+    as_of: date,
+    exclude_pending: bool = True,
+    fuzzy_day_slop: int = 2,
+    payment_grace_days: int = 40,
+    lookback_days: int = 62,
+) -> list[dict[str, Any]]:
+    """Monthly `auto_annual` bills whose latest ~10× prepay should become annual cadence.
+
+    Named 10× always wins. Opaque MasterMoney only if it matches no bill name, sits
+    in a due window, and is closer in ratio/due than a sibling auto_annual bill.
+    """
+    out: list[dict[str, Any]] = []
+    claimed: set[str] = set()
+    converted: set[str] = set()
+    start = as_of - timedelta(days=max(1, int(lookback_days)))
+    txns = txns or []
+    candidates = [b for b in bills or [] if bill_auto_annual_enabled(b)]
+
+    def _row(bill: dict[str, Any], t: Transaction, monthly: int) -> dict[str, Any]:
+        return {
+            "name": bill.get("name") or "",
+            "old_cents": monthly,
+            "new_cents": int(t.amount_cents),
+            "txn_id": t.id,
+            "date": t.date[:10],
+        }
+
+    for bill in candidates:
+        monthly = bill_monthly_reserve_cents(bill)
+        if monthly <= 0:
+            continue
+        hits: list[Transaction] = []
+        for t in txns:
+            if not counts_as_spend(t, exclude_pending):
+                continue
+            if int(t.amount_cents) <= 0:
+                continue
+            d = parse_ymd(t.date)
+            if not (start <= d <= as_of):
+                continue
+            if not _txn_matches_bill_name(bill, t):
+                continue
+            if not amount_looks_like_annual_prepay(int(t.amount_cents), monthly):
+                continue
+            hits.append(t)
+        if not hits:
+            continue
+        hits.sort(key=lambda t: (t.date, t.id), reverse=True)
+        t = hits[0]
+        out.append(_row(bill, t, monthly))
+        claimed.add(t.id)
+        converted.add(str(bill.get("name") or ""))
+
+    opaque_opts: list[tuple[tuple[Any, ...], dict[str, Any], Transaction, int]] = []
+    for bill in candidates:
+        name = str(bill.get("name") or "")
+        if name in converted:
+            continue
+        monthly = bill_monthly_reserve_cents(bill)
+        if monthly <= 0:
+            continue
+        for due_d in bill_due_dates_in_range(bill, start, as_of):
+            w0, w1 = _bill_window(
+                bill,
+                due_d,
+                fuzzy_day_slop=fuzzy_day_slop,
+                payment_grace_days=payment_grace_days,
+            )
+            for t in txns:
+                if t.id in claimed:
+                    continue
+                if not counts_as_spend(t, exclude_pending):
+                    continue
+                posted = int(t.amount_cents)
+                if posted <= 0:
+                    continue
+                if _txn_matches_any_bill_name(t, bills):
+                    continue
+                d = parse_ymd(t.date)
+                if not (w0 <= d <= w1 and d <= as_of):
+                    continue
+                if not amount_looks_like_annual_prepay(posted, monthly):
+                    continue
+                ratio = posted / monthly
+                score = (
+                    abs(ratio - 10.0),
+                    abs((d - due_d).days),
+                    t.date,
+                    t.id,
+                )
+                opaque_opts.append((score, bill, t, monthly))
+    opaque_opts.sort(key=lambda x: x[0])
+    for _score, bill, t, monthly in opaque_opts:
+        name = str(bill.get("name") or "")
+        if name in converted or t.id in claimed:
+            continue
+        out.append(_row(bill, t, monthly))
+        claimed.add(t.id)
+        converted.add(name)
+    return out
+
+
+def apply_auto_annual_conversions_to_bills(
+    bills: list[dict[str, Any]] | None,
+    updates: list[dict[str, Any]] | None,
+) -> int:
+    """Flip matching bills to annual cadence. Returns how many bills changed."""
+    if not bills or not updates:
+        return 0
+    by_name = {str(u.get("name") or ""): u for u in updates if u.get("name")}
+    n = 0
+    for bill in bills:
+        name = str(bill.get("name") or "")
+        u = by_name.get(name)
+        if not u:
+            continue
+        posted = int(u["new_cents"])
+        d = parse_ymd(str(u.get("date") or ""))
+        if bill_is_annual(bill) and int(bill.get("annual_cents") or 0) == posted:
+            continue
+        bill["cadence"] = "annual"
+        bill["annual_cents"] = posted
+        bill["month"] = d.month
+        bill["day_of_month"] = d.day
+        bill["amount_cents"] = int(round(posted / 12))
         n += 1
     return n
 
@@ -727,9 +1059,12 @@ def effective_bills_reserve_cents(
 ) -> int:
     """Sum reserves with **arrears stacking** (unpaid past dues accumulate).
 
-    For each bill occurrence (monthly due date):
+    For each monthly bill occurrence:
       - Past/today unpaid (within lookback) → +monthly each
       - Future: calendar if due later this month; rolling if due in window
+    Annual cadence: always +1/12 (sinking fund), once — never 12 stacked dues.
+    Clears that month's 1/12 when an in-band cash pull posts in as_of's calendar month
+    (the lump's extra is stripped from spend instead).
     Clearing is per-occurrence (exact name or fuzzy $), FIFO oldest-first via claim set.
     """
     reserved = 0
@@ -754,10 +1089,37 @@ def effective_bills_reserve_cents(
         arrears_lookback_months=arrears_lookback_months,
     )
     txns = txns or []
+    annual_ids = annual_in_band_txn_ids(
+        bills,
+        txns,
+        exclude_pending=exclude_pending,
+        fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+    )
 
     for b in bills or []:
         monthly = bill_monthly_reserve_cents(b)
         if monthly <= 0:
+            continue
+
+        if bill_is_annual(b):
+            raw_start = b.get("active_from") or b.get("start")
+            if raw_start:
+                try:
+                    if ref < parse_ymd(str(raw_start)):
+                        continue
+                except ValueError:
+                    pass
+            month_start = date(ref.year, ref.month, 1)
+            if annual_bill_posted_in_range(
+                b,
+                txns,
+                month_start,
+                month_end(ref),
+                exclude_pending=exclude_pending,
+                fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+            ):
+                continue
+            reserved += monthly
             continue
 
         pay_credits = build_bill_payment_credits(
@@ -765,6 +1127,7 @@ def effective_bills_reserve_cents(
             txns,
             exclude_pending=exclude_pending,
             fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+            skip_txn_ids=annual_ids,
         )
 
         dues = bill_due_dates_in_range(b, range_start, range_end)
@@ -835,20 +1198,28 @@ def upcoming_unpaid_bills_cents(
     """Unpaid bill dues in [as_of, as_of+horizon_days]. Not arrears outside that window.
 
     Canned cash-vs-bills uses horizon_days=5.
+    Annual cadence adds the cash pull (e.g. $102), not 1/12.
     """
     end = as_of + timedelta(days=max(0, int(horizon_days)))
     claimed: set[str] = set()
     total = 0
     txns = txns or []
+    annual_ids = annual_in_band_txn_ids(
+        bills,
+        txns,
+        exclude_pending=exclude_pending,
+        fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+    )
     for b in bills or []:
-        monthly = bill_monthly_reserve_cents(b)
-        if monthly <= 0:
+        pull = bill_cash_pull_cents(b)
+        if pull <= 0:
             continue
         pay_credits = build_bill_payment_credits(
             b,
             txns,
             exclude_pending=exclude_pending,
             fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+            skip_txn_ids=annual_ids,
         )
         for due_d in bill_due_dates_in_range(b, as_of, end):
             if bill_occurrence_cleared(
@@ -864,7 +1235,7 @@ def upcoming_unpaid_bills_cents(
                 payment_credits=pay_credits,
             ):
                 continue
-            total += monthly
+            total += pull
     return total
 
 
@@ -888,7 +1259,8 @@ def canned_cash_bills_cents(
 ) -> int:
     """Unpaid material dues in the next 5 days, else 0 (hide the cash line).
 
-    Material = monthly due ≥ half a daily allotment (hardcap / days_in / 2).
+    Material = cash pull ≥ half a daily allotment (hardcap / days_in / 2).
+    Annual bills use the lump (e.g. $102), not 1/12 — else they hide under the floor.
     Hide when cash is None, nothing due, or cash ≥ 2× those dues.
     """
     if cash_cents is None:
@@ -899,7 +1271,7 @@ def canned_cash_bills_cents(
     material = [
         b
         for b in (bills or [])
-        if bill_monthly_reserve_cents(b) >= floor
+        if bill_cash_pull_cents(b) >= floor
     ]
     due = upcoming_unpaid_bills_cents(
         material,
@@ -971,7 +1343,7 @@ def pace_ratio(
     """Pace = committed / pro-rated hardcap.
 
     **v2:** committed = spend + remaining bill reserves (pre-charged).
-    Hardcap breach still uses raw spend only (elsewhere).
+    Hardcap breach uses the same spend figure (annual bills already 1/12-amortized).
     """
     if hardcap_cents <= 0 or days_in_period <= 0:
         return 0.0
@@ -1108,8 +1480,17 @@ def evaluate_budget(
     arrears_months = int(cfg.get("bill_arrears_lookback_months", 6))
     pay_grace = int(cfg.get("bill_payment_grace_days", 21))
     # Spend only through as_of (never count future dates in a centered window).
+    # Known annual bills count 1/12 in the charge month (timing spread).
     spend_through = min(as_of, end)
     spend = spend_in_period(txns, start, spend_through, exclude_pending)
+    spend -= annual_spend_overage_cents(
+        txns,
+        cfg.get("bills"),
+        start,
+        spend_through,
+        exclude_pending,
+        fuzzy_amount_tol_cents=fuzzy_tol,
+    )
     remaining = hardcap - spend
     pct = (spend / hardcap) if hardcap else 0.0
     # Bills: arrears stack + horizon/window upcoming
@@ -1157,7 +1538,7 @@ def evaluate_budget(
     dop = days_off_pace(committed, hardcap, days_elapsed, days_in)
 
     # Pro-rated lines use **committed** (spend + unposted bills) for pace risk.
-    # Hardcap breach remains raw spend only.
+    # Hardcap breach uses spend after annual 1/12 amortization.
     month_frac = days_elapsed / max(days_in, 1)
     expected = hardcap * month_frac
     soft_pace = float(cfg.get("soft_pace_frac", 0.90))
@@ -1369,6 +1750,13 @@ def detect_anomalies(
     alerts: list[AlertEvent] = []
     seen: set[str] = set()
 
+    annual_ids = annual_in_band_txn_ids(
+        cfg.get("bills"),
+        txns,
+        exclude_pending=exclude_pending,
+        fuzzy_amount_tol_cents=int(cfg.get("bill_fuzzy_amount_tol_cents", 100)),
+    )
+
     by_key: dict[tuple[str, str], list[Transaction]] = defaultdict(list)
     for t in recent:
         by_key[(t.display_name(), t.date)].append(t)
@@ -1376,6 +1764,8 @@ def detect_anomalies(
     for (merchant, day), group in by_key.items():
         day_total = sum(t.amount_cents for t in group)
         if day_total <= 0:
+            continue
+        if group and all(t.id in annual_ids for t in group):
             continue
         cat = group[0].category
         m_base = merch_baseline(merchant, cat)

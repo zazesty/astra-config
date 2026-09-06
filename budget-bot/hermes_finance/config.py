@@ -18,6 +18,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "timezone": "America/Los_Angeles",
     # bills: monthly reserve toward hardcap safe-to-spend.
     # Fields: name, amount_cents (monthly) OR annual_cents (/12),
+    # cadence: "annual" → once-yearly due (month + day_of_month); leftover always
+    # 1/12; cash-vs-bills uses the cash pull; charge month spend counts 1/12.
+    # auto_annual: true → ~10× monthly post (named, or opaque in due window)
+    # flips the row to annual cadence (Grok / US Mobile).
     # match (regex; when spend matches in period, reserve clears that month).
     # saas: true → fuzzy $ also allows ~10% over (CA tax-inclusive SaaS).
     "bills": [],
@@ -140,3 +144,48 @@ def persist_saas_bill_reserves(
     if changed:
         save_config(cfg)
     return updates
+
+
+def persist_auto_annual_conversions(
+    cfg: dict[str, Any],
+    txns: list[Any],
+    as_of: Any,
+) -> list[dict[str, Any]]:
+    """Flip `auto_annual` monthly bills to annual cadence on a ~10× prepay.
+
+    Runs before SaaS reserve rewrite so the same lump amortizes 1/12.
+    """
+    from datetime import date as date_cls
+
+    from .rules import (
+        apply_auto_annual_conversions_to_bills,
+        proposed_auto_annual_conversions,
+    )
+
+    if not isinstance(as_of, date_cls):
+        as_of = date_cls.fromisoformat(str(as_of)[:10])
+    updates = proposed_auto_annual_conversions(
+        cfg.get("bills"),
+        txns,
+        as_of=as_of,
+        exclude_pending=bool(cfg.get("exclude_pending", True)),
+        fuzzy_day_slop=int(cfg.get("bill_fuzzy_day_slop", 2)),
+        payment_grace_days=int(cfg.get("bill_payment_grace_days", 40)),
+    )
+    if not updates:
+        return []
+    changed = apply_auto_annual_conversions_to_bills(cfg.get("bills"), updates)
+    if changed:
+        save_config(cfg)
+    return updates
+
+
+def persist_bill_rewrites(
+    cfg: dict[str, Any],
+    txns: list[Any],
+    as_of: Any,
+) -> dict[str, list[dict[str, Any]]]:
+    """Annual prepay conversion first, then SaaS tax reserve follow."""
+    annual = persist_auto_annual_conversions(cfg, txns, as_of)
+    saas = persist_saas_bill_reserves(cfg, txns, as_of)
+    return {"auto_annual": annual, "saas": saas}

@@ -1302,10 +1302,344 @@ class TestBudgetAlertBatch(unittest.TestCase):
         self.assertNotIn("Still over", alerts[0].body)
 
 
-class TestFixtureFile(unittest.TestCase):
-    def test_json_loads(self):
-        data = json.loads(FIXTURE.read_text())
-        self.assertGreaterEqual(len(data["transactions"]), 5)
+class TestAnnualCadence(unittest.TestCase):
+    nssi = {
+        "name": "NSSI personal property",
+        "cadence": "annual",
+        "annual_cents": 10200,
+        "month": 2,
+        "day_of_month": 12,
+        "match": r"NATLSTDNTSERV",
+    }
+    renters = {
+        "name": "CSAA Renters",
+        "cadence": "annual",
+        "annual_cents": 11573,
+        "month": 2,
+        "day_of_month": 12,
+        "match": r"CSAA",
+    }
+    auto = {
+        "name": "CSAA Insurance",
+        "amount_cents": 6892,
+        "day_of_month": 5,
+        "match": r"CSAA",
+    }
+    spot = {
+        "name": "Spotify",
+        "amount_cents": 699,
+        "day_of_month": 19,
+        "match": r"SPOTIFY",
+        "saas": True,
+    }
+
+    def test_due_only_on_anniversary(self):
+        from hermes_finance.rules import bill_due_dates_in_range
+
+        dues = bill_due_dates_in_range(
+            self.nssi, date(2026, 1, 1), date(2026, 12, 31)
+        )
+        self.assertEqual(dues, [date(2026, 2, 12)])
+
+    def test_sinking_fund_not_arrears_stack(self):
+        bills = [self.nssi]
+        # September, Feb $102 already in ledger — reserve 1/12 once, not 7×
+        feb = [
+            Transaction(
+                id="nssi",
+                date="2026-02-12",
+                amount_cents=10200,
+                name="NATLSTDNTSERVINSURANCE",
+                merchant_name="NATLSTDNTSERVINSURANCE",
+            )
+        ]
+        sep = effective_bills_reserve_cents(
+            bills,
+            feb,
+            period_start=date(2026, 9, 1),
+            period_end=date(2026, 9, 30),
+            as_of=date(2026, 9, 5),
+            period_kind="calendar",
+            arrears_lookback_months=6,
+        )
+        self.assertEqual(sep, 850)
+        empty = effective_bills_reserve_cents(
+            bills,
+            [],
+            period_start=date(2026, 9, 1),
+            period_end=date(2026, 9, 30),
+            as_of=date(2026, 9, 5),
+            period_kind="calendar",
+            arrears_lookback_months=0,
+        )
+        self.assertEqual(empty, 850)
+
+    def test_charge_month_clears_reserve_and_amortizes_spend(self):
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["hardcap_cents"] = 105_000
+        cfg["bills"] = [self.nssi]
+        cfg["bill_arrears_lookback_months"] = 0
+        tx = [
+            Transaction(
+                id="nssi",
+                date="2026-02-12",
+                amount_cents=10200,
+                name="NATLSTDNTSERVINSURANCE",
+                merchant_name="NATLSTDNTSERVINSURANCE",
+            )
+        ]
+        snap = evaluate_budget(tx, cfg, as_of=date(2026, 2, 12))
+        self.assertEqual(snap.spend_to_date, 850)
+        self.assertEqual(snap.bills_reserved_cents, 0)
+        self.assertLess(snap.spend_to_date, 105_000)
+        self.assertNotEqual(snap.risk, "breach")
+
+    def test_cash_vs_bills_uses_cash_pull_in_window(self):
+        bills = [self.nssi, self.renters, self.spot]
+        # 5d before anniversary: full lumps, not 1/12; Spotify not in window
+        due = upcoming_unpaid_bills_cents(
+            bills, [], date(2026, 2, 8), horizon_days=5
+        )
+        self.assertEqual(due, 10200 + 11573)
+        # September: nothing posting
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                bills, [], date(2026, 9, 5), horizon_days=5
+            ),
+            0,
+        )
+        # Material floor would hide 1/12 ($8.50); cash pull stays visible
+        shown = canned_cash_bills_cents(
+            bills,
+            [],
+            date(2026, 2, 8),
+            hardcap_cents=105_000,
+            days_in_period=28,
+            cash_cents=5_000,
+        )
+        self.assertEqual(shown, 10200 + 11573)
+
+    def test_csaa_auto_and_renters_do_not_cross_clear(self):
+        bills = [self.auto, self.renters]
+        both = [
+            Transaction(
+                id="auto",
+                date="2026-02-05",
+                amount_cents=6892,
+                name="CSAA INSURANCE",
+                merchant_name="CSAA INSURANCE",
+            ),
+            Transaction(
+                id="rent",
+                date="2026-02-12",
+                amount_cents=11573,
+                name="CSAA INSURANCE",
+                merchant_name="CSAA INSURANCE",
+            ),
+        ]
+        # Auto due Feb 5 is before as_of Feb 8; renters due Feb 12 in 5d window
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                bills, both, date(2026, 2, 8), horizon_days=5
+            ),
+            0,
+        )
+        # $115.73 alone must not clear the monthly auto due
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                bills,
+                [both[1]],
+                date(2026, 2, 3),
+                horizon_days=5,
+            ),
+            6892,
+        )
+        # $68.92 alone must not clear renters
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                bills,
+                [both[0]],
+                date(2026, 2, 8),
+                horizon_days=5,
+            ),
+            11573,
+        )
+
+    def test_spotify_stays_monthly(self):
+        from hermes_finance.rules import bill_due_dates_in_range, bill_is_annual
+
+        self.assertFalse(bill_is_annual(self.spot))
+        dues = bill_due_dates_in_range(
+            self.spot, date(2026, 1, 1), date(2026, 3, 31)
+        )
+        self.assertEqual(
+            dues, [date(2026, 1, 19), date(2026, 2, 19), date(2026, 3, 19)]
+        )
+
+    def test_annual_post_skips_anomaly(self):
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["bills"] = [self.nssi]
+        tx = [
+            Transaction(
+                id="nssi",
+                date="2026-02-12",
+                amount_cents=10200,
+                name="NATLSTDNTSERVINSURANCE",
+                merchant_name="NATLSTDNTSERVINSURANCE",
+                category="Insurance",
+            )
+        ]
+        alerts = detect_anomalies(tx, cfg, as_of=date(2026, 2, 12), since=date(2026, 2, 11))
+        self.assertEqual(alerts, [])
+
+    def test_auto_annual_named_10x_converts_and_amortizes(self):
+        from hermes_finance.rules import (
+            apply_auto_annual_conversions_to_bills,
+            bill_is_annual,
+            proposed_auto_annual_conversions,
+        )
+
+        usm = {
+            "name": "US Mobile",
+            "amount_cents": 2700,
+            "day_of_month": 5,
+            "match": r"US MOBILE",
+            "auto_annual": True,
+        }
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+            "auto_annual": True,
+        }
+        spot = dict(self.spot)
+        tx = [
+            Transaction(
+                id="usm-yr",
+                date="2026-09-05",
+                amount_cents=28000,
+                name="US MOBILE",
+                merchant_name="US MOBILE",
+            ),
+            Transaction(
+                id="grok-yr",
+                date="2026-09-01",
+                amount_cents=30000,
+                name="GROK XAI",
+                merchant_name="GROK XAI",
+            ),
+        ]
+        updates = proposed_auto_annual_conversions(
+            [usm, grok, spot], tx, as_of=date(2026, 9, 5)
+        )
+        names = {u["name"]: u["new_cents"] for u in updates}
+        self.assertEqual(names["US Mobile"], 28000)
+        self.assertEqual(names["Grok / xAI"], 30000)
+        self.assertNotIn("Spotify", names)
+        n = apply_auto_annual_conversions_to_bills([usm, grok, spot], updates)
+        self.assertEqual(n, 2)
+        self.assertTrue(bill_is_annual(usm))
+        self.assertTrue(bill_is_annual(grok))
+        self.assertFalse(bill_is_annual(spot))
+        self.assertEqual(usm["annual_cents"], 28000)
+        self.assertEqual(usm["month"], 9)
+        self.assertEqual(usm["day_of_month"], 5)
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["bills"] = [usm, grok, spot]
+        cfg["bill_arrears_lookback_months"] = 0
+        snap = evaluate_budget(tx, cfg, as_of=date(2026, 9, 5))
+        # 28000/12=2333, 30000/12=2500
+        self.assertEqual(snap.spend_to_date, 2333 + 2500)
+        self.assertEqual(snap.bills_reserved_cents, 699)  # Spotify only (due 19th)
+
+    def test_auto_annual_opaque_prefers_closer_due(self):
+        from hermes_finance.rules import proposed_auto_annual_conversions
+
+        usm = {
+            "name": "US Mobile",
+            "amount_cents": 2700,
+            "day_of_month": 5,
+            "match": r"US MOBILE",
+            "auto_annual": True,
+        }
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+            "auto_annual": True,
+        }
+        opaque_usm = Transaction(
+            id="opaque-280",
+            date="2026-09-05",
+            amount_cents=28000,
+            name="Recurring Withdrawal Debit Card MasterMoney Card",
+        )
+        opaque_grok = Transaction(
+            id="opaque-300",
+            date="2026-09-01",
+            amount_cents=30000,
+            name="Recurring Withdrawal Debit Card MasterMoney Card",
+        )
+        u = proposed_auto_annual_conversions(
+            [usm, grok], [opaque_usm], as_of=date(2026, 9, 5)
+        )
+        self.assertEqual(len(u), 1)
+        self.assertEqual(u[0]["name"], "US Mobile")
+        g = proposed_auto_annual_conversions(
+            [usm, grok], [opaque_grok], as_of=date(2026, 9, 1)
+        )
+        self.assertEqual(len(g), 1)
+        self.assertEqual(g[0]["name"], "Grok / xAI")
+
+    def test_auto_annual_ignores_tax_and_usage_and_untagged(self):
+        from hermes_finance.rules import proposed_auto_annual_conversions
+
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+            "auto_annual": True,
+        }
+        apple = {
+            "name": "Apple",
+            "amount_cents": 99,
+            "day_of_month": 6,
+            "match": r"APPLE",
+            "saas": True,
+            # no auto_annual — $9.99 is ~10× of $0.99
+        }
+        tx = [
+            Transaction(
+                id="tax",
+                date="2026-09-01",
+                amount_cents=3300,
+                name="GROK XAI",
+            ),
+            Transaction(
+                id="use",
+                date="2026-09-01",
+                amount_cents=1500,
+                name="GROK XAI",
+            ),
+            Transaction(
+                id="icloud",
+                date="2026-09-06",
+                amount_cents=999,
+                name="APPLE.COM/BILL",
+            ),
+        ]
+        self.assertEqual(
+            proposed_auto_annual_conversions(
+                [grok, apple], tx, as_of=date(2026, 9, 6)
+            ),
+            [],
+        )
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@
 |----------|--------|------|
 | Hardcap | **$1,050 / calendar month** (`hardcap_cents: 105000`) | 2026-08-29 (was $1,000 from 2026-07-26; $1,111 seed 2026-07-21) |
 | Rolling 30d hardcap | **Pinned later** (candidate: 15d past + 15d future) | 2026-07-26 |
-| Pace vs bills | **v2 shipped 2026-08-07:** pace uses **committed** = spend + remaining unposted bill reserves (pre-charged); hardcap **breach** still raw spend only; bills still clear safe-to-spend when posted | 2026-08-07 |
+| Pace vs bills | **v2 shipped 2026-08-07:** pace uses **committed** = spend + remaining unposted bill reserves (pre-charged); hardcap **breach** uses spend after **annual 1/12 amortization** (known yearly bills only); bills still clear safe-to-spend when posted | 2026-09-05 (amortize) |
 | Pace v2.1 lead window | **Superseded 2026-08-18.** Calendar STS/reserves = **rest of current month** (no 7-day lead; no next-month leak). Rolling 30d still uses the 15d-ahead window. Past-due unpaid always reserve; arrears stack 6 months. | 2026-08-18 |
 | Import↔Plaid dedupe | **Only on PDF/XLSX import** (not every Plaid upsert). Prefer Plaid when date+amount match import insts | 2026-08-07 |
 
@@ -23,7 +23,7 @@
 | Pace-hot / soft near-pace | **Culled 2026-08-24.** Firm pace only. | 2026-08-24 |
 | Interrupt sleep | Firm over-budget pri 1; **all hardcap breaches pri 2** (incl. further txns while over); else pri 0 | 2026-08-24 |
 | Transfers | PayPal↔CU + internal CU savings/MM/checking **excluded** from hardcap | 2026-08-02 |
-| Bills | CSAA, Spotify, SuperGrok $30, US Mobile, T-Mobile, Apple $0.99, EFF **$25.75 debit card EOM** (`active_from` 2026-08-01 so a delayed Aug post clears Aug; Sept EOM stays reserved), Hetzner ~$15 on ~10th (usage) | 2026-09-03 |
+| Bills | **Annual cadence:** NSSI personal property **$102** (Feb 12), CSAA Renters **$115.73** (Feb 12 endorsement). Leftover 1/12 every month; cash-vs-bills uses the cash pull in the 5d window; charge month spend counts 1/12. **Monthly:** CSAA auto $68.92, Spotify, SuperGrok $30, US Mobile $27, T-Mobile, Apple $0.99, EFF **$25.75 debit card EOM** (`active_from` 2026-08-01), Hetzner ~$15 on ~10th (usage). **Grok + US Mobile `auto_annual`:** a ~10× monthly post (8.5–11.5×; $280/$300) flips the row to annual the same evaluate — named always, opaque MasterMoney in the due window. Spotify/Apple untagged. | 2026-09-05 |
 | Cash vs upcoming bills | Canned 4th line only if unpaid **material** dues (≥ half daily allotment) in next **5** days **and** cash < **2×** those dues. Floor ≈ $17.50 on a 30d $1050 month → CSAA / Grok / US Mobile; hide Apple/T-Mobile/Spotify/Hetzner/EFF $25.75 EOM. Overall leftover copy `$N left`. | 2026-09-03 |
 | Product goal | Financial coaching + behavioral optimization | 2026-07-26 |
 | Runtime model | Cron + rules (no always-on Hermes Agent process) | 2026-07-26 |
@@ -69,7 +69,7 @@
 
 | Item | Notes |
 |------|--------|
-| **Annualize insurance → monthly reserve** | ✅ coded 2026-07-26. `bills[]`: `amount_cents` monthly and/or `annual_cents` (/12); `match` regex clears reserve when posted in period. Seeded CSAA $68.92 + VSP $30.93. |
+| **Annual cadence + 1/12 amortize** | ✅ shipped 2026-09-05. `cadence: annual` + `annual_cents` + anniversary `month`/`day_of_month`: leftover always 1/12 (no 12-month arrears stack); cash-vs-bills uses cash pull; charge month hardcap spend = 1/12. Monthly `annual_cents` without cadence still just sizes a monthly due. Seeded NSSI $102 + CSAA Renters $115.73. |
 
 ## Data safety (locked)
 
