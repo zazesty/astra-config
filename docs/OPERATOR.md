@@ -90,10 +90,13 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 
 **`or-timeout-review`:** local log only (no email). First look **2026-09-08**; timer skip until then.
 
+**Weekly AI usage digest emails: OFF** (paused 2026-09-06; Hermes cron `d237b9f46e18`). Do not re-arm. On-demand script still exists; no Sunday mail.
+
 ### Budget Bot (when live)
 
 - **Channel:** **Pushover** (`notify-pushover.sh` + `PUSHOVER_*`) for the interrupt tiers below only. **Live** when `notify_enabled: true`.
 - **No daily digests.** Coaching = hardcap / firm pace / rare anomalies, plus one EOM leftover congrats.
+- **No weekly AI usage emails** (paused 2026-09-06).
 - **Soft pace: culled** (2026-08-24). Firm pace superseded it.
 - **Firm pace:** committed% of hardcap **>** month% elapsed (e.g. 10% through month & >10% of hardcap) → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**).
 - **Breach:** spend ≥100% hardcap → **pri 2** for first crossing *and* further txns while over (same dump collapse). Copy: `{N days above}` (overage/daily allotment, not `days_off_pace`) + `{P}% of cap` (not `$X vs $Y`). **No merchant names** on pace/breach (anomaly still names the merchant). One Pushover per dump — Plaid `DEFAULT_UPDATE`+`SYNC_UPDATES_AVAILABLE` must not double-page.
