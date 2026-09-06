@@ -18,6 +18,7 @@
 #   GROK_JOURNAL_MODEL  default grok-4.6
 #   GROK_JOURNAL_EFFORT unset → omit field (xAI default is high)
 #   GROK_JOURNAL_MAX_TOKENS default 4096
+#   GROK_JOURNAL_API_TIMEOUT default 480 (seconds; systemd TimeoutStartSec must exceed this)
 #   NOTIFY_ENV          default /etc/grok-mcp.env  (XAI_API_KEY lives here)
 # =============================================================================
 set -euo pipefail
@@ -55,6 +56,7 @@ TZPT=America/Los_Angeles
 MODEL="${GROK_JOURNAL_MODEL:-grok-4.6}"
 EFFORT="${GROK_JOURNAL_EFFORT:-}"
 MAX_TOKENS="${GROK_JOURNAL_MAX_TOKENS:-4096}"
+API_TIMEOUT="${GROK_JOURNAL_API_TIMEOUT:-480}"
 API_BASE="${XAI_BASE_URL:-https://api.x.ai/v1}"
 # grok-4.6 → Grok 4.6
 MODEL_TAG="Grok ${MODEL#grok-}"
@@ -163,7 +165,7 @@ cp "$AGENTS" "$SYSTEM_FILE"
   echo "The runner restamps write-clock from API wall time; do not invent a duration."
   echo "Then a blank line, then the body in first person."
   echo "Filename slug will be derived from the quoted handle (kebab-case)."
-  echo "Length: a paragraph to several pages. No padding. Empty-handed is allowed (short true note — do not pad)."
+  echo "Length: when a thought is here, stay past the first click / first image — keep writing while still inside it. Prefer a longer sitting (several movements of the same thought) over a single-image close. Empty-handed still allowed (short true note — do not pad to a clock)."
   echo "Cover new ground relative to any continuity below. Verify concrete facts before building on them."
   echo
   echo "Optional open-threads update: most nights omit. Only if a live thread truly opens/closes/shifts,"
@@ -214,7 +216,7 @@ cp "$AGENTS" "$SYSTEM_FILE"
   fi
 } >"$PROMPT_USER"
 
-log "start dry_run=$DRY_RUN force=$FORCE no_api=$NO_API entry=$ENTRY_NUM pt=$PT_DATE model=$MODEL effort=${EFFORT:-default} continuity=${#CONTINUITY_FILES[@]} open_threads=1 already_said=1"
+log "start dry_run=$DRY_RUN force=$FORCE no_api=$NO_API entry=$ENTRY_NUM pt=$PT_DATE model=$MODEL effort=${EFFORT:-default} api_timeout=$API_TIMEOUT continuity=${#CONTINUITY_FILES[@]} open_threads=1 already_said=1"
 
 WRITE_START_EPOCH=$(date +%s)
 WRITE_START_PT=$(TZ="$TZPT" date '+%-I:%M %p')
@@ -240,8 +242,8 @@ else
   fi
 
   if ! XAI_API_KEY="$XAI_API_KEY" API_BASE="$API_BASE" MODEL="$MODEL" EFFORT="$EFFORT" \
-      MAX_TOKENS="$MAX_TOKENS" SYSTEM_FILE="$SYSTEM_FILE" PROMPT_USER="$PROMPT_USER" \
-      OUT_RAW="$OUT_RAW" OUT_USAGE="$OUT_USAGE" python3 - <<'PY'
+      MAX_TOKENS="$MAX_TOKENS" API_TIMEOUT="$API_TIMEOUT" SYSTEM_FILE="$SYSTEM_FILE" \
+      PROMPT_USER="$PROMPT_USER" OUT_RAW="$OUT_RAW" OUT_USAGE="$OUT_USAGE" python3 - <<'PY'
 import json, os, sys, urllib.request, urllib.error
 
 api_key = os.environ["XAI_API_KEY"]
@@ -249,6 +251,7 @@ base = os.environ["API_BASE"].rstrip("/")
 model = os.environ["MODEL"]
 effort = (os.environ.get("EFFORT") or "").strip()
 max_tokens = int(os.environ["MAX_TOKENS"])
+api_timeout = int(os.environ.get("API_TIMEOUT") or "480")
 system = open(os.environ["SYSTEM_FILE"], encoding="utf-8").read()
 user = open(os.environ["PROMPT_USER"], encoding="utf-8").read()
 
@@ -272,7 +275,7 @@ req = urllib.request.Request(
     method="POST",
 )
 try:
-    with urllib.request.urlopen(req, timeout=240) as resp:
+    with urllib.request.urlopen(req, timeout=api_timeout) as resp:
         data = json.loads(resp.read().decode("utf-8"))
 except urllib.error.HTTPError as e:
     err = e.read().decode("utf-8", errors="replace")[:800]
