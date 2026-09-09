@@ -88,7 +88,7 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 
 **Pushover sparingly (2026-08-09):** **only important / critical / urgent** interrupts (budget hardcap/pace/breach, true page-worthy failures) **plus the one monthly Budget Bot leftover congrats** (pri 0). Do **not** Pushover for ops digests, other monthly reviews, soft hygiene, “FYI still hot” metrics, or anything else non-urgent. Those → **email or nothing** (`notify-email.sh`; fail-open). Prefer silence over notification spam.
 
-**`or-timeout-review`:** local log only (no email). First look **2026-09-08**; timer skip until then.
+**`or-timeout-review`:** local log only (no email). First look **done 2026-09-08** (15s wall gone; don’t raise further on that sample). Timer 1st+15th 10:15 PT continues.
 
 **Weekly AI usage digest emails: OFF** (paused 2026-09-06; Hermes cron `d237b9f46e18`). Do not re-arm. On-demand script still exists; no Sunday mail.
 
@@ -98,11 +98,12 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 - **No daily digests.** Coaching = hardcap / firm pace / rare anomalies, plus one EOM leftover congrats.
 - **No weekly AI usage emails** (paused 2026-09-06).
 - **Soft pace: culled** (2026-08-24). Firm pace superseded it.
-- **Firm pace:** committed% of hardcap **>** month% elapsed (e.g. 10% through month & >10% of hardcap) → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**).
+- **Firm pace:** committed% of hardcap **>** month% elapsed (e.g. 10% through month & >10% of hardcap) → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**). **Trigger stays calendar.** Retarget to canned **Overall** is **pinned to discuss** once NorCal Plaid is solid (no multi-day `LOGIN_REQUIRED` holes) — not auto-ship, not “wait for a later go.”
 - **Breach:** spend ≥100% hardcap → **pri 2** for first crossing *and* further txns while over (same dump collapse). Copy: `{N days above}` (overage/daily allotment, not `days_off_pace`) + `{P}% of cap` (not `$X vs $Y`). **No merchant names** on pace/breach (anomaly still names the merchant). One Pushover per dump — Plaid `DEFAULT_UPDATE`+`SYNC_UPDATES_AVAILABLE` must not double-page.
 - **Anomalies:** **$100 over baseline OR 4× baseline** (ratio path only if day total ≥ **$100**); once/merchant/month; pri 0.
 - **EOM leftover:** 1st ~09:00 PT; leftover = prior-month **calendar STS minus pending spend**; copy `{Month} leftover is $X saved, well done!`; pri 0; skip if ≤ $0; no auto-transfer.
 - **Near-instant:** Plaid webhooks + 15m poll → sync → auto-review → alerts.
+- **Canned Overall days** = mean of calendar and rolling **pace-days** (ceil fraction). Rolling’s printed line is always pace, even when that window is over cap. Calendar over-cap line still uses overage (matches breach Push). Leftover $ is the **average** of calendar and rolling STS, copy **`$N left`** not `safe $N`.
 - **Sync-break:** **Pushover immediately** (pri 1) with a 24h Funnel re-login URL. **No email.** 6h suppress after a successful update-mode Link.
 - **Transfers ignored:** PayPal↔CU and CU savings/MM↔checking (name/category heuristics).
 - Twilio optional override only; A2P deferred.

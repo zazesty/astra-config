@@ -25,6 +25,7 @@
 | Transfers | PayPal↔CU + internal CU savings/MM/checking **excluded** from hardcap | 2026-08-02 |
 | Bills | **Annual cadence:** NSSI personal property **$102** (Feb 12), CSAA Renters **$115.73** (Feb 12 endorsement). Leftover 1/12 every month; cash-vs-bills uses the cash pull in the 5d window; charge month spend counts 1/12. **Monthly:** CSAA auto $68.92, Spotify, SuperGrok $30, US Mobile $27, T-Mobile, Apple $0.99, EFF **$25.75 debit card EOM** (`active_from` 2026-08-01), Hetzner ~$15 on ~10th (usage). **Grok + US Mobile `auto_annual`:** a ~10× monthly post (8.5–11.5×; $280/$300) flips the row to annual the same evaluate — named always, opaque MasterMoney in the due window. Spotify/Apple untagged. | 2026-09-05 |
 | Cash vs upcoming bills | Canned 4th line only if unpaid **material** dues (≥ half daily allotment) in next **5** days **and** cash < **2×** those dues. Floor ≈ $17.50 on a 30d $1050 month → CSAA / Grok / US Mobile; hide Apple/T-Mobile/Spotify/Hetzner/EFF $25.75 EOM. Overall leftover copy `$N left`. | 2026-09-03 |
+| Canned Overall days | Mean of calendar + rolling **pace-days** (ceil fraction). Rolling line always pace, even over cap. Calendar over-cap line still overage (matches breach Push). Do not mix overage into Overall. | 2026-09-08 |
 | Product goal | Financial coaching + behavioral optimization | 2026-07-26 |
 | Runtime model | Cron + rules (no always-on Hermes Agent process) | 2026-07-26 |
 | Grok charges | **SuperGrok $30** = monthly bill; $5/$15 usage = discretionary when charged | 2026-08-18 |
@@ -50,6 +51,7 @@
 
 | Item | Notes |
 |------|--------|
+| Firm-pace Push → Overall | **Pinned 2026-09-08.** Trigger stays calendar. When NorCal Plaid is solid (no multi-day LOGIN_REQUIRED holes), **discuss** retargeting to canned Overall — do not auto-ship. |
 | ~~Bill lead-time window (pace v2.1)~~ | **Moved to Locked 2026-08-12** — was listed deferred after the code already shipped. |
 | Plaid Trial keys | User creates account; store in `/etc/hermes-finance.env` |
 | PayPal Link OAuth | User browser session; first live Item |

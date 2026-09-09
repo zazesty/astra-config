@@ -254,25 +254,26 @@ def _status_pace(raw: float) -> str:
     return _days_off_from_raw(raw).replace("ahead of pace", "above pace")
 
 
+def _is_rolling(snap: BudgetSnapshot) -> bool:
+    kind = str(getattr(snap, "period_kind", "") or "").strip().lower()
+    return kind in ("rolling", "rolling_30d", "rolling30", "r30")
+
+
 def _status_window(snap: BudgetSnapshot) -> str:
-    if _over_cap(snap):
+    """Rolling is always pace-days. Calendar over cap keeps overage (breach lock)."""
+    if not _is_rolling(snap) and _over_cap(snap):
         return _days_above_phrase(snap)
     return _status_pace(_days_off_raw(snap))
 
 
-def _window_days_signed(snap: BudgetSnapshot) -> int:
-    """Whole days as shown on that line (over-cap overage, else pace)."""
-    if _over_cap(snap):
-        n = _round_half_away(
-            days_over_cap(snap.spend_to_date, snap.hardcap_cents, snap.days_in_period)
-        )
-        return max(n, 0)
+def _pace_days_signed(snap: BudgetSnapshot) -> int:
+    """Whole pace-days for Overall blend — never overage."""
     return _round_half_away(_days_off_raw(snap))
 
 
 def _overall_days_signed(cal: BudgetSnapshot, roll: BudgetSnapshot) -> int:
-    """Mean of the two line day-counts; round up if a fraction."""
-    avg = (_window_days_signed(cal) + _window_days_signed(roll)) / 2.0
+    """Mean of calendar and rolling pace-days; round up if a fraction."""
+    avg = (_pace_days_signed(cal) + _pace_days_signed(roll)) / 2.0
     if abs(avg) < 1e-12:
         return 0
     if avg > 0:
@@ -286,13 +287,6 @@ def _overall_sts_cents(cal: BudgetSnapshot, roll: BudgetSnapshot) -> int:
         int(cal.safe_to_spend_cents) + int(roll.safe_to_spend_cents)
     ) / 2.0
     return _round_half_away(avg / 100.0) * 100
-
-
-def _days_above_from_n(n: int) -> str:
-    if n <= 0:
-        return "on pace"
-    unit = "day" if n == 1 else "days"
-    return f"{n} {unit} above"
 
 
 def _sts_clause(cents: int) -> str:
@@ -322,15 +316,17 @@ def budget_status_text(
     cash_cents: int | None = None,
     upcoming_bills_cents: int = 0,
 ) -> str:
-    """Overall = avg of calendar + rolling days (ceil fraction) and STS.
+    """Overall = avg of calendar + rolling *pace-days* (ceil fraction) and STS.
 
+    Rolling's printed line is also pace-days, even when that window is over
+    cap. Calendar over cap still prints overage (matches breach Pushover).
     Leftover $ on Overall is the mean of the two windows, not the lesser. Over
     cap (calendar spend): percent of calendar cap, no leftover. Optional 4th
     line: `$84 cash > $72 bills` only if unpaid bills due in the next 5 days.
     """
     n = _overall_days_signed(calendar_snap, rolling_snap)
     if _over_cap(calendar_snap):
-        overall = f"{_days_above_from_n(n)} · {_pct_of_cap(calendar_snap)}% of cap"
+        overall = f"{_status_pace(float(n))} · {_pct_of_cap(calendar_snap)}% of cap"
     else:
         overall = (
             f"{_status_pace(float(n))} · "
