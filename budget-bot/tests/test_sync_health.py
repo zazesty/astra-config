@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from hermes_finance.sync_health import (
     ITEM_BREAK_CODES,
+    append_relogin_event,
     break_email_body,
     break_kind,
     break_notify_key,
@@ -141,6 +142,16 @@ class TestCollectAndMerge(unittest.TestCase):
 
             with (
                 patch.object(sync_health, "_path", _path),
+                patch.object(
+                    sync_health,
+                    "_health_log_path",
+                    lambda: Path(td) / "sync_health.log",
+                ),
+                patch.object(
+                    sync_health,
+                    "_relogin_log_path",
+                    lambda: Path(td) / "norcal-relogin.jsonl",
+                ),
                 patch.object(sync_health, "send_alert", return_value="dry_run"),
                 patch.object(
                     sync_health,
@@ -207,6 +218,11 @@ class TestCollectAndMerge(unittest.TestCase):
                     sync_health,
                     "_health_log_path",
                     lambda: Path(td) / "sync_health.log",
+                ),
+                patch.object(
+                    sync_health,
+                    "_relogin_log_path",
+                    lambda: Path(td) / "norcal-relogin.jsonl",
                 ),
                 patch.object(sync_health, "_now", _now),
                 patch.object(sync_health, "send_alert", side_effect=_send),
@@ -335,6 +351,11 @@ class TestRemintPush(unittest.TestCase):
                     "_health_log_path",
                     lambda: Path(td) / "sync_health.log",
                 ),
+                patch.object(
+                    sync_health,
+                    "_relogin_log_path",
+                    lambda: Path(td) / "norcal-relogin.jsonl",
+                ),
                 patch.object(sync_health, "_now", _now),
                 patch.object(sync_health, "send_alert", side_effect=_send),
                 patch.object(sync_health, "load_config", return_value=cfg),
@@ -405,6 +426,93 @@ class TestEmailCopy(unittest.TestCase):
     def test_labels(self):
         self.assertEqual(friendly_institution("paypal"), "PAYPAL")
         self.assertEqual(break_kind("stale_transactions last_success=…"), "STALE")
+
+
+class TestReloginLog(unittest.TestCase):
+    def test_append_and_asked_on_new_episode(self):
+        import json
+        import tempfile
+        from unittest.mock import patch
+
+        from hermes_finance import sync_health
+
+        with tempfile.TemporaryDirectory() as td:
+            logp = Path(td) / "norcal-relogin.jsonl"
+            health_path = Path(td) / "sync_health.json"
+            health_path.write_text('{"failures": {}}\n')
+            with patch.object(sync_health, "_relogin_log_path", lambda: logp):
+                append_relogin_event(
+                    "logged_in",
+                    item_id="nymRm9nmeMhoTEST",
+                    institution="1st-northern-california-credit-union",
+                    extra={"via": "update_mode"},
+                    at=datetime(2026, 9, 6, 16, 14, 56, tzinfo=UTC),
+                )
+            with (
+                patch.object(sync_health, "_path", lambda: health_path),
+                patch.object(
+                    sync_health,
+                    "_health_log_path",
+                    lambda: Path(td) / "sync_health.log",
+                ),
+                patch.object(sync_health, "_relogin_log_path", lambda: logp),
+                patch.object(
+                    sync_health,
+                    "_now",
+                    lambda: datetime(2026, 9, 8, 3, 19, 37, tzinfo=UTC),
+                ),
+                patch.object(sync_health, "send_alert", return_value="sent_push"),
+                patch.object(
+                    sync_health,
+                    "load_config",
+                    return_value={
+                        "sync_break_email": False,
+                        "sync_break_pushover_after_days": 0,
+                    },
+                ),
+                patch(
+                    "hermes_finance.plaid_sync.item_repair_grace_active",
+                    return_value=False,
+                ),
+                patch(
+                    "hermes_finance.plaid_link_server.mint_repair_link",
+                    return_value={
+                        "public_url": "https://example.invalid/r",
+                        "expires_at": "2026-09-09T03:19:37Z",
+                    },
+                ),
+            ):
+                process_sync_health(
+                    {
+                        "failed_items": [
+                            {
+                                "item_id": "nymRm9nmeMhoTEST",
+                                "institution": "1st-northern-california-credit-union",
+                                "error": "ITEM_LOGIN_REQUIRED",
+                            }
+                        ]
+                    },
+                    dry_run=False,
+                )
+                process_sync_health(
+                    {
+                        "failed_items": [
+                            {
+                                "item_id": "nymRm9nmeMhoTEST",
+                                "institution": "1st-northern-california-credit-union",
+                                "error": "ITEM_LOGIN_REQUIRED",
+                            }
+                        ]
+                    },
+                    dry_run=False,
+                )
+
+            rows = [json.loads(l) for l in logp.read_text().splitlines() if l]
+            events = [r["event"] for r in rows]
+            self.assertEqual(events, ["logged_in", "asked"])
+            self.assertEqual(rows[0]["item"], "nymRm9nm")
+            self.assertEqual(rows[1]["kind"], "LOGIN")
+            self.assertEqual(rows[1]["institution"], "NORCAL")
 
 
 if __name__ == "__main__":

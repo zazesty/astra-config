@@ -80,6 +80,42 @@ def _health_log_path() -> Path:
     return state_dir() / "sync_health.log"
 
 
+def _relogin_log_path() -> Path:
+    """Append-only re-login ledger. Local state only — never git."""
+    return state_dir() / "norcal-relogin.jsonl"
+
+
+def append_relogin_event(
+    event: str,
+    *,
+    item_id: str = "",
+    institution: str = "",
+    extra: dict[str, Any] | None = None,
+    at: datetime | None = None,
+) -> None:
+    """Ledger of re-login asks / completions / post-login flakes.
+
+    Events: asked | relink | logged_in | flake | ghost_repaired
+    """
+    rec: dict[str, Any] = {
+        "ts": (at or _now()).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "event": event,
+        "institution": friendly_institution(institution) if institution else "",
+        "item": (item_id or "")[:8],
+    }
+    if extra:
+        for k, v in extra.items():
+            if v is not None and k not in rec:
+                rec[k] = v
+    try:
+        p = _relogin_log_path()
+        with p.open("a") as f:
+            f.write(json.dumps(rec, separators=(",", ":")) + "\n")
+        p.chmod(0o600)
+    except OSError:
+        pass
+
+
 def log_sync_break(item_id: str, institution: str, error: str) -> None:
     """Plaid dumps live here — never in the email."""
     line = (
@@ -373,6 +409,12 @@ def handle_item_webhook(
     err_code = str(err.get("error_code") or "").strip()
     match = next((i for i in list_items() if i.get("item_id") == item_id), None)
     if not match or not item_id:
+        if item_id and code in ITEM_REPAIR_WEBHOOK_CODES:
+            append_relogin_event(
+                "ghost_repaired",
+                item_id=item_id,
+                extra={"via": "culled_item"},
+            )
         return []
 
     inst = str(match.get("institution") or "unknown")
@@ -401,6 +443,13 @@ def handle_item_webhook(
 
         if item_repair_grace_active(item_id):
             log_sync_break(item_id, inst, f"ignored_webhook_during_repair_grace {err_code or code}")
+            if (err_code or code) in ITEM_BREAK_CODES or "LOGIN" in (err_code or code or "").upper():
+                append_relogin_event(
+                    "flake",
+                    item_id=item_id,
+                    institution=inst,
+                    extra={"via": "webhook_grace"},
+                )
             return []
         from .plaid_client import item_get
 
@@ -528,6 +577,13 @@ def process_sync_health(
                 "pushover_sent_at": None,
             }
             log_sync_break(key, f["institution"], f["error"])
+            append_relogin_event(
+                "asked",
+                item_id=key,
+                institution=f["institution"],
+                extra={"kind": break_kind(f["error"])},
+                at=now,
+            )
         else:
             if f["error"] != row.get("error"):
                 log_sync_break(key, f["institution"], f["error"])
@@ -616,6 +672,14 @@ def process_sync_health(
                 row["pushover_sent_at"] = now.isoformat()
                 if repair_expires:
                     row["repair_expires_at"] = repair_expires
+                if remint:
+                    append_relogin_event(
+                        "relink",
+                        item_id=key,
+                        institution=row["institution"],
+                        extra={"kind": break_kind(row["error"])},
+                        at=now,
+                    )
             elif st == "skipped_dedup":
                 row["pushover_sent_at"] = row.get("pushover_sent_at") or now.isoformat()
 

@@ -91,6 +91,17 @@ def mark_item_repaired(item_id: str) -> dict[str, Any] | None:
         return None
     match["repaired_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     save_items(items)
+    try:
+        from .sync_health import append_relogin_event
+
+        append_relogin_event(
+            "logged_in",
+            item_id=item_id,
+            institution=str(match.get("institution") or ""),
+            extra={"via": "update_mode"},
+        )
+    except Exception:
+        pass
     return match
 
 
