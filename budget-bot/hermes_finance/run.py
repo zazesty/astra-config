@@ -143,17 +143,65 @@ def cmd_recurring(args: argparse.Namespace) -> int:
     return 0
 
 
+def _finish_plaid_link(result: dict, update_id: str | None) -> None:
+    print(json.dumps({"linked": True, **result}, indent=2))
+    if update_id:
+        try:
+            from .plaid_sync import mark_item_repaired
+
+            mark_item_repaired(result.get("item_id") or update_id)
+        except Exception as e:
+            print(json.dumps({"repaired_stamp": False, "error": str(e)[:200]}))
+        print(json.dumps({
+            "synced_after_link": False,
+            "reason": "update_mode_no_sync",
+        }, indent=2))
+        return
+    if result.get("quarantine"):
+        print(json.dumps({
+            "synced_after_link": False,
+            "reason": "quarantined_preview",
+            "next": "python3 -m hermes_finance plaid-preview --item-id "
+            + str(result.get("item_id") or ""),
+        }, indent=2))
+        return
+    try:
+        from .plaid_webhook import process_update
+
+        sync_out = process_update(item_id=result.get("item_id"), source="link")
+        print(json.dumps(
+            {"synced_after_link": True, "new_txns": sync_out.get("new_txns")},
+            indent=2,
+        ))
+    except Exception as e:
+        print(json.dumps({"synced_after_link": False, "error": str(e)[:300]}))
+
+
 def cmd_plaid_link(args: argparse.Namespace) -> int:
-    """Start Link server; print URL; wait until linked or timeout."""
-    import secrets
+    """Start Link; print URL; wait until linked or timeout.
+
+    New Items use the stable PLAID_REDIRECT_URI (OAuth return) on PLAID_OAUTH_PORT
+    so they do not collide with plaid-repair-serve on :8765.
+    """
     import time
 
-    from .plaid_link_server import run_link_server
+    from .plaid_link_server import (
+        FUNNEL_HOST,
+        OAUTH_PORT,
+        configured_redirect_uri,
+        create_link_token_for_link,
+        load_inflight,
+        port_listening,
+        redirect_mount,
+        run_link_server,
+        save_inflight,
+        _funnel_path,
+    )
     from .plaid_sync import list_items, load_access_token
 
-    port = int(args.port)
-    mount = args.mount or ("/hermes-link-" + secrets.token_hex(8))
-    redirect = args.redirect_uri
+    port = int(args.port) if args.port is not None else OAUTH_PORT
+    redirect = args.redirect_uri or configured_redirect_uri()
+    mount = args.mount or redirect_mount(redirect)
     access = None
     heading = None
     blurb = None
@@ -173,99 +221,92 @@ def cmd_plaid_link(args: argparse.Namespace) -> int:
             "Tokens stay on this box only."
         )
         button = "Re-login"
-    info = run_link_server(
-        port=port,
-        mount=mount,
-        redirect_uri=redirect,
-        access_token=access,
-        page_heading=heading,
-        page_blurb=blurb,
-        page_button=button,
-    )
-    # optional: expose via Tailscale Funnel (public HTTPS) + serve path
-    public = None
-    if args.funnel:
-        import subprocess
+    elif not redirect:
+        print(json.dumps({
+            "error": "missing_PLAID_REDIRECT_URI",
+            "hint": "Set PLAID_REDIRECT_URI in /etc/hermes-finance.env and allow it in the Plaid dashboard.",
+        }))
+        return 2
 
-        # Public Funnel path → local Link server (not tailnet-only serve)
-        for cmd in ("serve", "funnel"):
-            subprocess.run(
-                [
-                    "tailscale",
-                    cmd,
-                    "--bg",
-                    "--yes",
-                    f"--set-path={info['mount']}",
-                    f"http://127.0.0.1:{port}",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        st = subprocess.run(
-            ["tailscale", "funnel", "status"],
-            capture_output=True,
-            text=True,
-            check=False,
+    handed_off = False
+    info: dict = {}
+    if (not update_id) and port_listening(port):
+        # Long-lived oauth listener already up (plaid-repair-serve).
+        tok = create_link_token_for_link(
+            access_token=access,
+            redirect_uri=redirect,
+            allow_redirect_fallback=False,
         )
-        host = "zaz-astra.tail5d74e1.ts.net"
-        for line in (st.stdout or "").splitlines():
-            # e.g. "https://zaz-astra.tail5d74e1.ts.net (Funnel on)" or bare host
-            if "ts.net" not in line:
-                continue
-            for tok in line.replace("(", " ").split():
-                if "ts.net" in tok:
-                    host = tok.replace("https://", "").replace("http://", "").strip().rstrip("/")
-                    break
-            if host and host != "#":
-                break
-        public = f"https://{host}{info['mount']}"
+        mount = mount or redirect_mount(redirect)
+        heading = heading or "Plaid Link"
+        blurb = blurb or (
+            "Connect a bank or PayPal via Plaid. For the new CU, search "
+            "<strong>Alliant Credit Union</strong>. Tokens stay on this box only."
+        )
+        button = button or "Connect account"
+        save_inflight(
+            {
+                "link_token": tok["link_token"],
+                "expiration": tok.get("expiration"),
+                "mode": "create",
+                "mount": mount,
+                "heading": heading,
+                "blurb": blurb,
+                "button": button,
+            }
+        )
+        if args.funnel and mount:
+            _funnel_path(mount, port)
+        info = {
+            "mount": mount,
+            "link_token_expiration": tok.get("expiration"),
+            "server": None,
+        }
+        handed_off = True
+    else:
+        info = run_link_server(
+            port=port,
+            mount=mount,
+            redirect_uri=redirect,
+            access_token=access,
+            page_heading=heading,
+            page_blurb=blurb,
+            page_button=button,
+        )
+        if args.funnel:
+            _funnel_path(info["mount"], port)
+
+    public = f"https://{FUNNEL_HOST}{info['mount']}" if args.funnel else None
     local = f"http://127.0.0.1:{port}{info['mount']}"
     print(json.dumps({
         "local_url": local,
         "public_url": public,
         "mount": info["mount"],
         "port": port,
+        "handed_off": handed_off,
         "expires": info.get("link_token_expiration"),
         "hint": (
-            "Open public_url (needs Funnel on). Update-mode: just log in. "
-            "Fresh Link: pick your bank (PayPal or 1st Nor Cal). Leave running until success."
+            "Open public_url. Search Alliant Credit Union (OAuth). "
+            "Leave this running until success. New CU Items stay quarantined until plaid-preview."
         ),
     }, indent=2))
     deadline = time.time() + int(args.timeout)
-    httpd = info["server"]
+    httpd = info.get("server")
     while time.time() < deadline:
-        if getattr(httpd, "result", None):
-            result = httpd.result
-            print(json.dumps({"linked": True, **result}, indent=2))
-            # Update-mode: never /transactions/sync (or refresh) right after Link.
-            # NorCal flakes ITEM_LOGIN_REQUIRED if we pull the FI immediately.
-            if update_id:
-                try:
-                    from .plaid_sync import mark_item_repaired
-
-                    mark_item_repaired(result.get("item_id") or update_id)
-                except Exception as e:
-                    print(json.dumps({"repaired_stamp": False, "error": str(e)[:200]}))
-                print(json.dumps({
-                    "synced_after_link": False,
-                    "reason": "update_mode_no_sync",
-                }, indent=2))
-            else:
-                try:
-                    from .plaid_webhook import process_update
-
-                    sync_out = process_update(
-                        item_id=result.get("item_id"), source="link"
-                    )
-                    print(json.dumps({"synced_after_link": True, "new_txns": sync_out.get("new_txns")}, indent=2))
-                except Exception as e:
-                    print(json.dumps({"synced_after_link": False, "error": str(e)[:300]}))
-            httpd.shutdown()
+        result = None
+        if httpd is not None:
+            result = getattr(httpd, "result", None)
+        if not result:
+            result = (load_inflight() or {}).get("result")
+        if result:
+            _finish_plaid_link(result, update_id)
+            if httpd is not None:
+                httpd.shutdown()
             return 0
         time.sleep(0.5)
     print(json.dumps({"linked": False, "error": "timeout waiting for Link"}, indent=2))
-    httpd.shutdown()
+    if httpd is not None:
+        httpd.shutdown()
     return 1
 
 
@@ -732,9 +773,14 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=cmd_recurring)
 
     s = sub.add_parser("plaid-link", help="Start Plaid Link UI (PayPal / any bank)")
-    s.add_argument("--port", default=8765, type=int)
-    s.add_argument("--mount", default=None, help="URL path mount (default random secret)")
-    s.add_argument("--redirect-uri", default=None, help="OAuth redirect_uri if required by Plaid dashboard")
+    s.add_argument(
+        "--port",
+        default=None,
+        type=int,
+        help="listen port (default PLAID_OAUTH_PORT=8764, not repair :8765)",
+    )
+    s.add_argument("--mount", default=None, help="URL path mount (default PLAID_REDIRECT_URI path)")
+    s.add_argument("--redirect-uri", default=None, help="OAuth redirect_uri (default PLAID_REDIRECT_URI)")
     s.add_argument("--funnel", action="store_true", help="Expose mount via tailscale serve")
     s.add_argument("--timeout", default=900, type=int, help="Seconds to wait for Link success")
     s.add_argument(

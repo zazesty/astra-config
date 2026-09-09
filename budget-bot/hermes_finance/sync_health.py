@@ -42,6 +42,7 @@ ITEM_REPAIR_WEBHOOK_CODES = frozenset({"LOGIN_REPAIRED"})
 
 _INST_LABELS = (
     (("northern-california", "norcal", "1st-nor", "1st nor"), "NORCAL"),
+    (("alliant",), "ALLIANT"),
     (("paypal",), "PAYPAL"),
 )
 
@@ -143,7 +144,12 @@ def friendly_institution(institution: str) -> str:
     return token.upper()[:16]
 
 
-_DISPLAY = {"NORCAL": "NorCal", "PAYPAL": "PayPal", "PLAID": "Plaid"}
+_DISPLAY = {
+    "NORCAL": "NorCal",
+    "ALLIANT": "Alliant",
+    "PAYPAL": "PayPal",
+    "PLAID": "Plaid",
+}
 
 
 def display_institution(institution: str) -> str:

@@ -86,6 +86,48 @@ class TestCashOnHand(unittest.TestCase):
             )
         )
 
+    def test_alliant_checking_is_not_norcal_cash(self):
+        from hermes_finance.balances import is_norcal_institution, is_norcal_item
+
+        alliant = {
+            "institution": "alliant-credit-union",
+            "accounts": [
+                {
+                    "name": "High-Rate Checking",
+                    "type": "depository",
+                    "subtype": "checking",
+                    "available_cents": 80_000,
+                }
+            ],
+        }
+        snap = {
+            "items": [
+                alliant,
+                {
+                    "institution": "1st-northern-california-credit-union",
+                    "accounts": [
+                        {
+                            "name": "Free Checking",
+                            "type": "depository",
+                            "subtype": "checking",
+                            "available_cents": 5000,
+                        }
+                    ],
+                },
+            ]
+        }
+        self.assertFalse(is_norcal_institution("alliant-credit-union"))
+        self.assertFalse(is_norcal_item(alliant))
+        self.assertTrue(is_norcal_institution("1st-northern-california-credit-union"))
+        # Alliant $800 must not pool into NorCal cash
+        self.assertEqual(cash_on_hand_cents(snap), 5000)
+        self.assertFalse(
+            is_spendable_cash(
+                {"type": "depository", "subtype": "checking", "name": "High-Rate Checking"},
+                item=alliant,
+            )
+        )
+
     def test_falls_back_to_current(self):
         snap = {
             "items": [

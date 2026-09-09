@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
+# Do not match bare "credit-union" / "cu" — that would treat Alliant as NorCal.
+NORCAL_NEEDLES = (
+    "norcal",
+    "northern-california",
+    "1st-nor",
+    "1st nor",
+)
+
+
+def is_norcal_institution(institution: str | None) -> bool:
+    inst = (institution or "").lower()
+    return any(n in inst for n in NORCAL_NEEDLES)
+
 
 def is_norcal_item(item: dict[str, Any] | None) -> bool:
-    inst = str((item or {}).get("institution") or "").lower()
-    return any(
-        x in inst
-        for x in ("norcal", "northern-california", "1st-nor", "credit-union")
-    )
+    return is_norcal_institution(str((item or {}).get("institution") or ""))
 
 
 def is_norcal_checking(acct: dict[str, Any], *, item: dict[str, Any] | None = None) -> bool:

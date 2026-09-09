@@ -28,9 +28,9 @@ nor = next(
         for i in items
         if i.get("quarantine")
         and (
-            "nor" in (i.get("institution") or "").lower()
-            or "calif" in (i.get("institution") or "").lower()
-            or "credit-union" in (i.get("institution") or "").lower()
+            "norcal" in (i.get("institution") or "").lower()
+            or "northern-california" in (i.get("institution") or "").lower()
+            or "1st-nor" in (i.get("institution") or "").lower()
         )
     ),
     None,

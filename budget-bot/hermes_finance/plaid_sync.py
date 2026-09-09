@@ -9,6 +9,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .balances import is_norcal_institution
 from .config import state_dir
 from .models import Transaction
 from .plaid_client import accounts_get, transactions_sync
@@ -282,10 +283,7 @@ def refresh_item_balances(item: dict[str, Any]) -> dict[str, Any] | None:
     """Fetch /accounts/get and merge into balances.json. Fail-open (keep prior row)."""
     txn_unit = normalize_amount_unit(item.get("amount_unit"))
     inst = str(item.get("institution") or "").lower()
-    norcalish = any(
-        x in inst
-        for x in ("norcal", "northern-california", "1st-nor", "credit-union")
-    )
+    norcalish = is_norcal_institution(inst)
     try:
         resp = accounts_get(load_access_token(item))
     except Exception:
@@ -445,14 +443,14 @@ def assess_scale(
     Plaid amounts are dollars → we store cents (*100). A broken FI feed that
     already emits cents would land ~100× high (user: 'cents shown as dollars').
     """
-    inst_l = (institution or "").lower()
-    if any(x in inst_l for x in ("norcal", "nor cal", "1st-nor", "credit-union", "cu")):
+    if is_norcal_institution(institution):
         hints = [institution, "norcal", "1st-norcal", "1st nor"]
     else:
         hints = [institution] if institution else []
     base = _baseline_median_cents(hints)
-    # CU-shaped Item with no import baseline yet: fall back to known NorCal imports
-    if base is None and any(x in inst_l for x in ("nor", "cal", "credit", "union")):
+    # NorCal Item with no import baseline yet: fall back to known statement imports.
+    # Do not borrow that baseline for Alliant / other CUs.
+    if base is None and is_norcal_institution(institution):
         base = _baseline_median_cents(["norcal", "1st-norcal"])
     amts = [abs(t.amount_cents) for t in batch if t.amount_cents]
     med = float(statistics.median(amts)) if amts else None
@@ -483,9 +481,7 @@ def assess_scale(
     bal_notes: list[dict[str, Any]] = []
     # Known NorCal statement anchors (July 2026 end balances) — cents-as-dollars
     # shows exactly 100× on share + MM; checking moves so only flag if ~100× of recent.
-    norcalish = any(
-        x in inst_l for x in ("norcal", "nor cal", "1st-nor", "northern-california", "credit-union")
-    )
+    norcalish = is_norcal_institution(institution)
     bal_100x_hits = 0
     bal_checked = 0
     if balances:

@@ -269,6 +269,39 @@ class TestQuarantineAndCursor(unittest.TestCase):
             self.assertNotIn("cursor", body)
 
 
+class TestAssessScaleAlliant(unittest.TestCase):
+    def test_alliant_does_not_borrow_norcal_baseline(self):
+        from hermes_finance.plaid_sync import assess_scale
+
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict("os.environ", {"HERMES_FINANCE_STATE": td}):
+                store.save_txns(
+                    [
+                        Transaction(
+                            id=f"imp-{i}",
+                            date="2026-08-01",
+                            amount_cents=1000 + i,
+                            name="x",
+                            institution="1st-norcal",
+                        )
+                        for i in range(8)
+                    ]
+                )
+                batch = [
+                    Transaction(
+                        id="plaid-a",
+                        date="2026-09-01",
+                        amount_cents=1234,
+                        name="Coffee",
+                        institution="alliant-credit-union",
+                    )
+                ]
+                out = assess_scale(batch, institution="alliant-credit-union")
+                self.assertEqual(out.get("verdict"), "unknown")
+                nor = assess_scale(batch, institution="1st-northern-california-credit-union")
+                self.assertIn(nor.get("verdict"), ("ok", "suspect", "likely_100x_high", "likely_100x_low"))
+
+
 class TestCmdForceFootgun(unittest.TestCase):
     def test_force_without_item_does_not_include_quarantine(self):
         import argparse
