@@ -65,6 +65,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "sync_break_pushover_after_days": 0,
     # /item/get probe: treat last_successful_update older than this as a break
     "item_stale_hours": 72,
+    # Cash-vs-bills Pushover (once/day when any CU checking < that CU's 5d dues).
+    "cash_bills_notify": True,
+    # Culled Plaid Items (token gone). Webhooks ignored; does not free Trial slots.
+    "deprecated_item_ids": [],
+    # Firm-pace / breach Push SSOT. names_health never flips this.
+    "notify_period": "calendar",
 }
 
 

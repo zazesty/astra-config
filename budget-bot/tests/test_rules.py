@@ -31,6 +31,7 @@ from hermes_finance.rules import (
     spend_in_period,
     upcoming_unpaid_bills_cents,
     canned_cash_bills_cents,
+    cash_bills_alert,
 )
 from hermes_finance.store import load_fixture
 
@@ -363,6 +364,135 @@ class TestBudget(unittest.TestCase):
             cash_cents=30_000,  # 2× $95.92 = $192; $300 covers → hide
         )
         self.assertEqual(hidden, 0)
+
+    def test_cash_bills_alert_disabled_by_default(self):
+        cfg = {
+            **DEFAULT_CONFIG,
+            "cash_bills_notify": False,
+            "bills": [
+                {"name": "CSAA", "amount_cents": 6892, "day_of_month": 5, "match": r"CSAA"}
+            ],
+        }
+        ev = cash_bills_alert(
+            cfg, [], date(2026, 9, 3), cash_cents=5_000
+        )
+        self.assertIsNone(ev)
+
+    def test_cash_bills_alert_only_when_short(self):
+        cfg = {
+            **DEFAULT_CONFIG,
+            "cash_bills_notify": True,
+            "hardcap_cents": 105_000,
+            "bills": [
+                {"name": "CSAA", "amount_cents": 6892, "day_of_month": 5, "match": r"CSAA"},
+                {"name": "US Mobile", "amount_cents": 2700, "day_of_month": 5, "match": r"US MOBILE"},
+            ],
+        }
+        as_of = date(2026, 9, 3)
+        due = 6892 + 2700
+        short = cash_bills_alert(cfg, [], as_of, cash_cents=5_000)
+        self.assertIsNotNone(short)
+        assert short is not None
+        self.assertEqual(short.kind, "cash_short")
+        self.assertEqual(short.key, "cash_short|2026-09-03")
+        self.assertIn("<", short.subject)
+        # tight but can cover: canned may show, push must not
+        covered = cash_bills_alert(cfg, [], as_of, cash_cents=due + 100)
+        self.assertIsNone(covered)
+        plenty = cash_bills_alert(cfg, [], as_of, cash_cents=50_000)
+        self.assertIsNone(plenty)
+
+    def test_cash_bills_alliant_empty_without_alliant_bills_is_silent(self):
+        cfg = {
+            **DEFAULT_CONFIG,
+            "cash_bills_notify": True,
+            "hardcap_cents": 105_000,
+            "bills": [
+                {"name": "CSAA", "amount_cents": 6892, "day_of_month": 5, "match": r"CSAA"}
+            ],
+        }
+        snap = {
+            "items": [
+                {
+                    "institution": "alliant-credit-union",
+                    "accounts": [
+                        {
+                            "name": "Checking",
+                            "type": "depository",
+                            "subtype": "checking",
+                            "available_cents": 0,
+                        }
+                    ],
+                },
+                {
+                    "institution": "1st-northern-california-credit-union",
+                    "accounts": [
+                        {
+                            "name": "Checking",
+                            "type": "depository",
+                            "subtype": "checking",
+                            "available_cents": 50_000,
+                        }
+                    ],
+                },
+            ]
+        }
+        ev = cash_bills_alert(cfg, [], date(2026, 9, 3), balances=snap)
+        self.assertIsNone(ev)
+
+    def test_cash_bills_either_cu_short_alerts(self):
+        cfg = {
+            **DEFAULT_CONFIG,
+            "cash_bills_notify": True,
+            "hardcap_cents": 105_000,
+            "bills": [
+                {
+                    "name": "CSAA",
+                    "amount_cents": 6892,
+                    "day_of_month": 5,
+                    "match": r"CSAA",
+                    "institution": "norcal",
+                },
+                {
+                    "name": "Something Alliant",
+                    "amount_cents": 3000,
+                    "day_of_month": 5,
+                    "match": r"ALLIANTBILL",
+                    "institution": "alliant",
+                },
+            ],
+        }
+        snap = {
+            "items": [
+                {
+                    "institution": "alliant-credit-union",
+                    "accounts": [
+                        {
+                            "name": "Checking",
+                            "type": "depository",
+                            "subtype": "checking",
+                            "available_cents": 500,
+                        }
+                    ],
+                },
+                {
+                    "institution": "1st-northern-california-credit-union",
+                    "accounts": [
+                        {
+                            "name": "Checking",
+                            "type": "depository",
+                            "subtype": "checking",
+                            "available_cents": 50_000,
+                        }
+                    ],
+                },
+            ]
+        }
+        ev = cash_bills_alert(cfg, [], date(2026, 9, 3), balances=snap)
+        self.assertIsNotNone(ev)
+        assert ev is not None
+        self.assertIn("Alliant", ev.subject)
+        self.assertNotIn("NorCal", ev.subject)
 
     def test_active_from_skips_dues_before_start(self):
         from hermes_finance.rules import bill_due_dates_in_range

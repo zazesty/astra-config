@@ -78,6 +78,7 @@ AlertKind = Literal[
     "item_error",
     "info",
     "sync_break",
+    "cash_short",
 ]
 
 

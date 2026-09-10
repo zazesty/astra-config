@@ -48,6 +48,48 @@ def is_debit_card_purchase(*, name: str = "", merchant_name: str | None = None) 
     return bool(_DEBIT_CARD_PURCHASE_RE.search(blob))
 
 
+_MM_RE = re.compile(r"mastermoney(?:\s*card)?", re.I)
+_GENERIC_MM_RE = re.compile(
+    r"^(?:recurring\s+)?(?:withdrawal\s+)?(?:debit\s+card\s+)?mastermoney(?:\s+card)?$",
+    re.I,
+)
+
+
+def mastermoney_merchant_tail(name: str = "") -> str:
+    """Text after 'MasterMoney Card' minus REF# / date. Empty if none."""
+    m = _MM_RE.search(name or "")
+    if not m:
+        return ""
+    rest = (name or "")[m.end() :]
+    rest = re.sub(r"^\s*ref#:\s*\S+", "", rest, flags=re.I)
+    rest = re.sub(r"^\s*\d{2}/\d{2}/\d{4}", "", rest)
+    rest = rest.strip(" -:\t")
+    if not re.search(r"[A-Za-z]{3,}", rest):
+        return ""
+    return rest
+
+
+def is_opaque_mastermoney(*, name: str = "", merchant_name: str | None = None) -> bool:
+    """True when the card line has no merchant — generic MasterMoney / POS # only.
+
+    Statement PDFs still look like 'MasterMoney Card - ACE PARKING'. Live Plaid
+    since ~2026-08-28 often has no tail. A useful merchant_name counts as named.
+    """
+    blob_name = name or ""
+    mn = (merchant_name or "").strip()
+    if mastermoney_merchant_tail(blob_name):
+        return False
+    if mn and not _GENERIC_MM_RE.match(mn) and not _MM_RE.search(mn) and re.search(
+        r"[A-Za-z]{3,}", mn
+    ):
+        return False
+    if _MM_RE.search(blob_name) or re.search(r"withdrawal\s*pos\s*#", blob_name, re.I):
+        return True
+    if mn and _GENERIC_MM_RE.match(mn):
+        return True
+    return False
+
+
 def looks_like_transfer(
     *,
     name: str = "",

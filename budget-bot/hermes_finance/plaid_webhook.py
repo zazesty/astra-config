@@ -24,8 +24,8 @@ from .config import load_config, persist_bill_rewrites, state_dir
 from .notify import PUSH_KINDS, send_alert, send_alerts
 from .plaid_client import item_webhook_update, load_plaid_env
 from .plaid_sync import list_items, load_access_token, sync_all_items, sync_item
-from .rules import budget_alerts, evaluate_budget_both
-from .store import load_last_run, load_txns, record_period_series, save_last_run
+from .rules import budget_alerts, cash_bills_alert, evaluate_budget_both
+from .store import load_balances, load_last_run, load_txns, record_period_series, save_last_run
 
 DEFAULT_PORT = 8766
 FUNNEL_HOST = "zaz-astra.tail5d74e1.ts.net"
@@ -209,6 +209,12 @@ def _process_update_unlocked(
         cfg = load_config()
     except Exception as e:
         whlog(f"bill-rewrite update error: {e}")
+    try:
+        from .names_health import persist_names_health
+
+        persist_names_health(txns, as_of)
+    except Exception as e:
+        whlog(f"names_health error: {e}")
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
     snap = both["calendar"]  # notify SSOT
     record_period_series(
@@ -225,6 +231,18 @@ def _process_update_unlocked(
         new_txn_ids=new_ids,
         new_txns=new_tx_objs,
     )
+    try:
+        cash_ev = cash_bills_alert(
+            cfg,
+            txns,
+            as_of,
+            snap=snap,
+            balances=load_balances(),
+        )
+        if cash_ev:
+            alerts = list(alerts) + [cash_ev]
+    except Exception as e:
+        whlog(f"cash_bills_alert error: {e}")
     if bool(cfg.get("coaching_anomalies", True)):
         from .rules import detect_anomalies
 

@@ -10,7 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.transfers import is_debit_card_purchase, looks_like_transfer
+from hermes_finance.transfers import (
+    is_debit_card_purchase,
+    is_opaque_mastermoney,
+    looks_like_transfer,
+    mastermoney_merchant_tail,
+)
 
 
 class TestDebitCardNotTransfer(unittest.TestCase):
@@ -93,6 +98,26 @@ class TestRealTransfers(unittest.TestCase):
                 name="Venmo",
                 category="TRANSFER_IN",
                 plaid_raw=raw,
+            )
+        )
+
+
+class TestOpaqueMasterMoney(unittest.TestCase):
+    def test_statement_tail_is_named(self):
+        name = "Withdrawal Debit Card MasterMoney Card - ACE PARKING 4190"
+        self.assertTrue(mastermoney_merchant_tail(name))
+        self.assertFalse(is_opaque_mastermoney(name=name))
+
+    def test_blank_plaid_is_opaque(self):
+        name = "Withdrawal Debit Card MasterMoney Card"
+        self.assertEqual(mastermoney_merchant_tail(name), "")
+        self.assertTrue(is_opaque_mastermoney(name=name, merchant_name=name))
+
+    def test_useful_merchant_name_counts(self):
+        self.assertFalse(
+            is_opaque_mastermoney(
+                name="Withdrawal Debit Card MasterMoney Card",
+                merchant_name="Albertsons",
             )
         )
 

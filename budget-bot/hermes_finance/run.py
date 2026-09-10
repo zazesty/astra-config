@@ -22,7 +22,8 @@ from .rules import (
     pending_spend_cents,
     pending_spend_count,
     prior_month_end,
-    canned_cash_bills_cents,
+    canned_cash_bills_by_cu,
+    cash_bills_alert,
 )
 from .store import (
     archive_digest,
@@ -81,7 +82,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
 
 def cmd_budget_status(args: argparse.Namespace) -> int:
     """Human one-liner: calendar + rolling (Hermes / chat-friendly)."""
-    from .balances import cash_on_hand_cents
+    from .balances import checking_cash_by_cu
     from .templates import budget_status_text
 
     cfg = load_config()
@@ -90,14 +91,13 @@ def cmd_budget_status(args: argparse.Namespace) -> int:
     as_of = date.fromisoformat(args.as_of) if getattr(args, "as_of", None) else datetime.now(tz).date()
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
     cal = both["calendar"]
-    cash = cash_on_hand_cents(load_balances())
-    bills_cents = canned_cash_bills_cents(
+    piles = canned_cash_bills_by_cu(
         cfg.get("bills"),
         txns,
         as_of,
         hardcap_cents=cal.hardcap_cents,
         days_in_period=cal.days_in_period,
-        cash_cents=cash,
+        cash_by_cu=checking_cash_by_cu(load_balances()),
         exclude_pending=bool(cfg.get("exclude_pending", True)),
         fuzzy=bool(cfg.get("bill_fuzzy_match", True)),
         fuzzy_amount_tol_cents=int(cfg.get("bill_fuzzy_amount_tol_cents", 100)),
@@ -108,8 +108,7 @@ def cmd_budget_status(args: argparse.Namespace) -> int:
         budget_status_text(
             both["calendar"],
             both["rolling_30d"],
-            cash_cents=cash,
-            upcoming_bills_cents=bills_cents,
+            cash_piles=piles,
         )
     )
     return 0
@@ -579,6 +578,16 @@ def cmd_eom_leftover(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_names_health(args: argparse.Namespace) -> int:
+    from .names_health import persist_names_health
+
+    cfg = load_config()
+    as_of = _as_of(cfg, getattr(args, "as_of", None))
+    out = persist_names_health(load_txns(), as_of)
+    print(json.dumps(out, indent=2))
+    return 0
+
+
 def cmd_evaluate(args: argparse.Namespace) -> int:
     cfg = load_config()
     txns = load_txns()
@@ -592,6 +601,15 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     snap = both["calendar"]  # notify SSOT
     anomalies = detect_anomalies(txns, cfg, as_of=as_of)
     balerts = budget_alerts(snap, cfg, prev_risk=None)
+    cash_ev = cash_bills_alert(
+        cfg,
+        txns,
+        as_of,
+        snap=snap,
+        balances=load_balances(),
+    )
+    if cash_ev:
+        balerts = list(balerts) + [cash_ev]
     print(json.dumps({
         "snapshot": snap.to_dict(),
         "snapshot_rolling_30d": both["rolling_30d"].to_dict(),
@@ -658,6 +676,15 @@ def cmd_watch(args: argparse.Namespace) -> int:
         new_txn_ids=new_ids,
         new_txns=new_tx_objs,
     )
+    cash_ev = cash_bills_alert(
+        cfg,
+        all_tx,
+        as_of,
+        snap=snap,
+        balances=load_balances(),
+    )
+    if cash_ev:
+        balerts = list(balerts) + [cash_ev]
     anomalies = detect_anomalies(all_tx, cfg, as_of=as_of)
     coaching_anomalies = bool(cfg.get("coaching_anomalies", True))
     flags = list(balerts)
@@ -860,6 +887,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     s.add_argument("--item-id", default=None, help="optional single Item id")
     s.set_defaults(func=cmd_plaid_webhook_process)
+
+    s = sub.add_parser("names-health", help="NorCal MasterMoney / Alliant name detector")
+    s.add_argument("--as-of", default=None, help="YYYY-MM-DD")
+    s.set_defaults(func=cmd_names_health)
 
     s = sub.add_parser("evaluate", help="Evaluate rules (no notify)")
     s.add_argument("--fixture", default=None)

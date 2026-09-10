@@ -12,7 +12,14 @@ from .store import already_notified, mark_notified, notified_lock
 
 # Kinds that may push when live (digest never)
 PUSH_KINDS = frozenset(
-    {"hardcap_breach", "pace_warn", "anomaly", "eom_leftover", "sync_break"}
+    {
+        "hardcap_breach",
+        "pace_warn",
+        "anomaly",
+        "eom_leftover",
+        "sync_break",
+        "cash_short",
+    }
 )
 SMS_KINDS = PUSH_KINDS
 
@@ -119,7 +126,7 @@ def _priority_for(event: AlertEvent) -> int:
             pass
     if event.kind == "hardcap_breach":
         return 2
-    if event.kind in ("pace_warn", "sync_break"):
+    if event.kind in ("pace_warn", "sync_break", "cash_short"):
         return 1
     return 0
 

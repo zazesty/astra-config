@@ -11,9 +11,12 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .models import AlertEvent, Transaction
+from .balances import CU_PILE_LABELS, checking_cash_by_cu
 from .templates import (
     anomaly_body,
     anomaly_subject,
+    cash_short_body,
+    cash_short_subject,
     digest_body,
     digest_subject,
     eom_leftover_body,
@@ -1289,6 +1292,113 @@ def canned_cash_bills_cents(
     if cash_cents >= int(round(CASH_BILLS_COVER_MULT * due)):
         return 0
     return due
+
+
+def bill_cash_pile(bill: dict[str, Any] | None) -> str:
+    """Which CU checking the bill ACH/card hits. Default NorCal (current autopay)."""
+    raw = str((bill or {}).get("institution") or "norcal").lower()
+    if "alliant" in raw:
+        return "alliant"
+    return "norcal"
+
+
+def canned_cash_bills_by_cu(
+    bills: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    as_of: date,
+    *,
+    hardcap_cents: int,
+    days_in_period: int,
+    cash_by_cu: dict[str, int],
+    exclude_pending: bool = True,
+    fuzzy: bool = True,
+    fuzzy_amount_tol_cents: int = 100,
+    fuzzy_day_slop: int = 2,
+    payment_grace_days: int = 40,
+) -> list[tuple[str, int, int]]:
+    """Per-CU (label, cash, due) for piles that should show the canned line."""
+    rows: list[tuple[str, int, int]] = []
+    for pile, cash in (cash_by_cu or {}).items():
+        pile_bills = [b for b in (bills or []) if bill_cash_pile(b) == pile]
+        due = canned_cash_bills_cents(
+            pile_bills,
+            txns,
+            as_of,
+            hardcap_cents=hardcap_cents,
+            days_in_period=days_in_period,
+            cash_cents=cash,
+            exclude_pending=exclude_pending,
+            fuzzy=fuzzy,
+            fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+            fuzzy_day_slop=fuzzy_day_slop,
+            payment_grace_days=payment_grace_days,
+        )
+        if due <= 0:
+            continue
+        rows.append((CU_PILE_LABELS.get(pile, pile.title()), cash, due))
+    return rows
+
+
+def cash_bills_alert(
+    cfg: dict[str, Any],
+    txns: list[Transaction] | None,
+    as_of: date,
+    *,
+    cash_cents: int | None = None,
+    snap: BudgetSnapshot | None = None,
+    balances: dict[str, Any] | None = None,
+) -> AlertEvent | None:
+    """Once-daily bounce interrupt when any CU checking < that CU's 5d dues.
+
+    Bills default to NorCal (autopay). Alliant only alerts once a bill is tagged
+    `institution: alliant`. Empty Alliant with no Alliant bills stays silent.
+    """
+    if not bool(cfg.get("cash_bills_notify")):
+        return None
+    piles = checking_cash_by_cu(balances) if balances is not None else {}
+    if not piles and cash_cents is not None:
+        piles = {"norcal": cash_cents}
+    if not piles:
+        return None
+    days = int(snap.days_in_period) if snap is not None else 30
+    cap = int(snap.hardcap_cents) if snap is not None else int(cfg.get("hardcap_cents") or 0)
+    shown = canned_cash_bills_by_cu(
+        cfg.get("bills"),
+        txns,
+        as_of,
+        hardcap_cents=cap,
+        days_in_period=days,
+        cash_by_cu=piles,
+        exclude_pending=bool(cfg.get("exclude_pending", True)),
+        fuzzy=bool(cfg.get("bill_fuzzy_match", True)),
+        fuzzy_amount_tol_cents=int(cfg.get("bill_fuzzy_amount_tol_cents", 100)),
+        fuzzy_day_slop=int(cfg.get("bill_fuzzy_day_slop", 2)),
+        payment_grace_days=int(cfg.get("bill_payment_grace_days", 40)),
+    )
+    short = [(lab, cash, due) for lab, cash, due in shown if cash < due]
+    if not short:
+        return None
+    labels = [lab for lab, _, _ in short]
+    cash0, due0 = short[0][1], short[0][2]
+    return AlertEvent(
+        kind="cash_short",
+        subject=cash_short_subject(
+            cash0,
+            due0,
+            label=labels[0],
+            extra_labels=labels[1:],
+        ),
+        body=cash_short_body(short),
+        key=f"cash_short|{as_of.isoformat()}",
+        payload={
+            "push_priority": 1,
+            "interrupt": True,
+            "piles": [
+                {"label": lab, "cash_cents": cash, "bills_cents": due}
+                for lab, cash, due in short
+            ],
+        },
+    )
 
 
 def safe_to_spend_cents(

@@ -40,6 +40,9 @@ ITEM_BREAK_WEBHOOK_CODES = frozenset(
 
 ITEM_REPAIR_WEBHOOK_CODES = frozenset({"LOGIN_REPAIRED"})
 
+# First NorCal Item, culled locally 2026-08-07; access token gone.
+DEPRECATED_ITEM_IDS = frozenset({"yJpe4eopwqfMee4QJ5RAUbyL8xVb9nFXMyN6A"})
+
 _INST_LABELS = (
     (("northern-california", "norcal", "1st-nor", "1st nor"), "NORCAL"),
     (("alliant",), "ALLIANT"),
@@ -414,6 +417,12 @@ def handle_item_webhook(
     err = payload.get("error") if isinstance(payload.get("error"), dict) else {}
     err_code = str(err.get("error_code") or "").strip()
     match = next((i for i in list_items() if i.get("item_id") == item_id), None)
+    cfg = load_config()
+    deprecated = DEPRECATED_ITEM_IDS | {
+        str(x) for x in (cfg.get("deprecated_item_ids") or []) if x
+    }
+    if item_id in deprecated:
+        return []
     if not match or not item_id:
         if item_id and code in ITEM_REPAIR_WEBHOOK_CODES:
             append_relogin_event(
@@ -424,7 +433,6 @@ def handle_item_webhook(
         return []
 
     inst = str(match.get("institution") or "unknown")
-    cfg = load_config()
     if dry_run is None:
         dry_run = not (
             bool(cfg.get("notify_enabled"))

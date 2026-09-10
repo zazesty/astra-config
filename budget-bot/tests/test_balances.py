@@ -10,7 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.balances import cash_on_hand_cents, is_spendable_cash
+from hermes_finance.balances import (
+    cash_on_hand_cents,
+    checking_cash_by_cu,
+    is_spendable_cash,
+)
 
 
 class TestCashOnHand(unittest.TestCase):
@@ -127,6 +131,9 @@ class TestCashOnHand(unittest.TestCase):
                 item=alliant,
             )
         )
+        piles = checking_cash_by_cu(snap)
+        self.assertEqual(piles.get("alliant"), 80_000)
+        self.assertEqual(piles.get("norcal"), 5000)
 
     def test_falls_back_to_current(self):
         snap = {

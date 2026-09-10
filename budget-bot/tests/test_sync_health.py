@@ -515,5 +515,31 @@ class TestReloginLog(unittest.TestCase):
             self.assertEqual(rows[1]["institution"], "NORCAL")
 
 
+class TestDeprecatedItem(unittest.TestCase):
+    def test_deprecated_ghost_item_is_ignored(self):
+        import tempfile
+        from unittest.mock import patch
+
+        from hermes_finance.sync_health import DEPRECATED_ITEM_IDS, handle_item_webhook
+
+        iid = next(iter(DEPRECATED_ITEM_IDS))
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict("os.environ", {"HERMES_FINANCE_STATE": td}):
+                out = handle_item_webhook(
+                    {
+                        "webhook_code": "ERROR",
+                        "item_id": iid,
+                        "error": {"error_code": "ITEM_LOGIN_REQUIRED"},
+                    },
+                    dry_run=True,
+                )
+                self.assertEqual(out, [])
+                out2 = handle_item_webhook(
+                    {"webhook_code": "LOGIN_REPAIRED", "item_id": iid},
+                    dry_run=True,
+                )
+                self.assertEqual(out2, [])
+
+
 if __name__ == "__main__":
     unittest.main()

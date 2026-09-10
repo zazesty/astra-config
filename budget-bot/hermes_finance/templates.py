@@ -296,7 +296,12 @@ def _sts_clause(cents: int) -> str:
     return f"{money_dollars(cents)} left"
 
 
-def cash_vs_bills_line(cash_cents: int | None, bills_cents: int) -> str:
+def cash_vs_bills_line(
+    cash_cents: int | None,
+    bills_cents: int,
+    *,
+    label: str | None = None,
+) -> str:
     """Terse cash vs bills. Empty when no unpaid dues in the canned horizon."""
     if bills_cents <= 0 or cash_cents is None:
         return ""
@@ -306,7 +311,46 @@ def cash_vs_bills_line(cash_cents: int | None, bills_cents: int) -> str:
         op = "<"
     else:
         op = "="
-    return f"{money_dollars(cash_cents)} cash {op} {money_dollars(bills_cents)} bills"
+    core = f"{money_dollars(cash_cents)} cash {op} {money_dollars(bills_cents)} bills"
+    if label:
+        return f"{label}: {core}"
+    return core
+
+
+def cash_short_subject(
+    cash_cents: int,
+    bills_cents: int,
+    *,
+    label: str | None = None,
+    extra_labels: list[str] | None = None,
+) -> str:
+    names = [x for x in [label, *(extra_labels or [])] if x]
+    if len(names) >= 2:
+        return f"Budget Bot: cash short at {' and '.join(names)}"
+    if names:
+        return (
+            f"Budget Bot: {names[0]} {money_dollars(cash_cents)} cash < "
+            f"{money_dollars(bills_cents)} bills"
+        )
+    return f"Budget Bot: {money_dollars(cash_cents)} cash < {money_dollars(bills_cents)} bills"
+
+
+def cash_short_body(
+    piles: list[tuple[str | None, int, int]] | None = None,
+    *,
+    cash_cents: int | None = None,
+    bills_cents: int | None = None,
+    label: str | None = None,
+) -> str:
+    if piles:
+        lines = [
+            f"{cash_vs_bills_line(c, b, label=lab)} due in 5 days."
+            for lab, c, b in piles
+            if cash_vs_bills_line(c, b, label=lab)
+        ]
+        return ("\n".join(lines) + "\n") if lines else ""
+    line = cash_vs_bills_line(cash_cents, int(bills_cents or 0), label=label)
+    return f"{line} due in 5 days.\n" if line else ""
 
 
 def budget_status_text(
@@ -315,6 +359,7 @@ def budget_status_text(
     *,
     cash_cents: int | None = None,
     upcoming_bills_cents: int = 0,
+    cash_piles: list[tuple[str | None, int, int]] | None = None,
 ) -> str:
     """Overall = avg of calendar + rolling *pace-days* (ceil fraction) and STS.
 
@@ -340,6 +385,11 @@ def budget_status_text(
     extra = cash_vs_bills_line(cash_cents, upcoming_bills_cents)
     if extra:
         lines.append(extra)
+    for pile in cash_piles or []:
+        lab, cash, due = pile[0], pile[1], pile[2]
+        row = cash_vs_bills_line(cash, due, label=lab or None)
+        if row:
+            lines.append(row)
     return "\n".join(lines)
 
 

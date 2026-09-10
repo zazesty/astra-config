@@ -347,6 +347,18 @@ class TestPaceCopy(unittest.TestCase):
         )
         self.assertTrue(text.endswith("$84 cash > $72 bills"))
 
+    def test_cash_piles_labeled_lines(self):
+        cal = self._snap()
+        roll = self._snap()
+        roll.period_kind = "rolling_30d"
+        text = budget_status_text(
+            cal,
+            roll,
+            cash_piles=[("NorCal", 5_000, 7_200), ("Alliant", 8_400, 7_200)],
+        )
+        self.assertIn("NorCal: $50 cash < $72 bills", text)
+        self.assertIn("Alliant: $84 cash > $72 bills", text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,32 @@ INTERVAL_DAYS="${NORCAL_NUDGE_INTERVAL_DAYS:-14}"
 
 mkdir -p "$STATE_DIR"
 
+# Detector: skip nag when live Plaid names (or Alliant spend) are already clear.
+if python3 - "$STATE_DIR" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1]) / "names_health.json"
+if not p.is_file():
+    raise SystemExit(0)
+try:
+    data = json.loads(p.read_text())
+except Exception:
+    raise SystemExit(0)
+if data.get("names_live"):
+    print("skip: names_live")
+    raise SystemExit(3)
+raise SystemExit(0)
+PY
+then
+  :
+else
+  rc=$?
+  if [ "$rc" = "3" ]; then
+    echo "nudge skipped (names_live)"
+    exit 0
+  fi
+fi
+
 if ! python3 - "$STAMP" "$INTERVAL_DAYS" <<'PY'
 import json, sys
 from datetime import date, datetime
