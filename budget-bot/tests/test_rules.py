@@ -1524,6 +1524,48 @@ class TestAnnualCadence(unittest.TestCase):
         self.assertLess(snap.spend_to_date, 105_000)
         self.assertNotEqual(snap.risk, "breach")
 
+    def test_us_mobile_insurance_annual_amortizes(self):
+        ins = {
+            "name": "US Mobile insurance",
+            "cadence": "annual",
+            "annual_cents": 7500,
+            "month": 8,
+            "day_of_month": 13,
+            "match": r"US MOBILE",
+        }
+        phone = {
+            "name": "US Mobile",
+            "amount_cents": 2700,
+            "auto_annual": True,
+            "day_of_month": 5,
+            "match": r"US MOBILE",
+        }
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["hardcap_cents"] = 105_000
+        cfg["bills"] = [ins, phone]
+        cfg["bill_arrears_lookback_months"] = 0
+        tx = [
+            Transaction(
+                id="usm-ins",
+                date="2026-08-13",
+                amount_cents=7500,
+                name="US MOBILE 295 MADISON AVE FL 6 NEW YORK NY",
+                merchant_name="US MOBILE",
+                category="Utilities & Phone",
+            )
+        ]
+        snap = evaluate_budget(tx, cfg, as_of=date(2026, 8, 13))
+        self.assertEqual(snap.spend_to_date, 625)  # 7500/12
+        # $75 is not ~10× of $27, so the service bill stays monthly
+        from hermes_finance.rules import proposed_auto_annual_conversions
+
+        self.assertEqual(
+            proposed_auto_annual_conversions(
+                [phone], tx, as_of=date(2026, 8, 13)
+            ),
+            [],
+        )
+
     def test_cash_vs_bills_uses_cash_pull_in_window(self):
         bills = [self.nssi, self.renters, self.spot]
         # 5d before anniversary: full lumps, not 1/12; Spotify not in window

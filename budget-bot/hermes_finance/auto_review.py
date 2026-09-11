@@ -145,8 +145,9 @@ RULES: list[tuple[str, str, float]] = [
     (r"\bACCOUNT HOLD\b|\bREVERSAL OF GENERAL ACCOUNT HOLD\b", "Transfer", 0.95),
     (r"\bGENERAL CURRENCY CONVERSION\b", "Transfer", 0.9),
     (r"\bMONEY TRANSFER (TO|FROM)\b", "Transfer", 0.95),
+    (r"\bWITHDRAWAL\s+ALLIANT(\s+CU)?\b", "Transfer", 0.95),  # NorCal → Alliant funding
     (r"\bPARTNER FEE\b", "Misc / Other", 0.85),
-    # eBay: outflow shopping, inflow refund-ish income
+    # eBay: outflow shopping; Deposit eBay = sale (Income), handled in inflows
     (r"\bEBAY\b", "Shopping", 0.9),
     # insurance
     (r"\bCSAA\b|\bINSURANCE\b|\bVSP\b|\bNATLSTDNTSERV", "Insurance", 0.95),
@@ -201,6 +202,7 @@ RULES: list[tuple[str, str, float]] = [
     # transport
     (r"\bPARKING\b|\bUBER\b|\bLYFT\b|\bBART\b|\bTRANSIT\b|\bTOLL\b", "Transportation", 0.9),
     (r"\bAUTOZONE\b|\bO[\u2019']?REILLY\b", "Transportation", 0.9),
+    (r"\bMOSTLY\s*HONDA\b", "Transportation", 0.93),  # dealer service (oil/tires)
     (r"\bFASTRAK\b|\bFAS ?TRAK\b", "Transportation", 0.95),
     (r"\bGRAND PRIX EXPRESS\b|\bCAR\s*WASH", "Transportation", 0.93),  # car wash(es)
     (r"\bACE HARDWARE\b|\bMARKUS SUPPLY\b|\bAIRGAS\b", "Shopping", 0.92),
@@ -357,6 +359,12 @@ def rule_review(t: Transaction) -> ReviewResult:
         r"\bATM\b", blob, re.I
     ):
         return ReviewResult("Transfer", 0.99, "excluded", "owner:atm_no_cash_cancel")
+    # Opaque POS #240263 — Walgreens snack, not pharmacy
+    if t.date == "2026-09-06" and t.amount_cents == 548:
+        return ReviewResult("Dining Out", 0.95, "auto_accepted", "owner:walgreens_snack")
+    # Opaque MasterMoney $87.39 — Zima UV dental case (mostly discretionary)
+    if t.date == "2026-09-06" and t.amount_cents == 8739:
+        return ReviewResult("Medical & Health", 0.9, "auto_accepted", "owner:zima_uv_case")
 
     # Monument 76: gas if ≥$15, else c-store Misc
     if re.search(r"\bMONUMENT\s*76\b", blob, re.I):
@@ -392,6 +400,11 @@ def rule_review(t: Transaction) -> ReviewResult:
             if best and best.category not in ("Income", "Transfer", ""):
                 cat = best.category
             return ReviewResult(cat, 0.93, "auto_accepted", "inflow_refund")
+        # eBay seller payouts (Deposit eBay / CO: eBay) are sales, not purchase refunds.
+        if re.search(r"\bEBAY\b", blob, re.I) and re.search(
+            r"\bDEPOSIT\b|\bCO:\s*EBAY", blob, re.I
+        ):
+            return ReviewResult("Income", 0.93, "auto_accepted", "ebay_sale")
         # money in: prefer Income unless rule said Transfer/Shopping refund etc.
         if best and best.category in ("Transfer", "Shopping", "Income") and best.confidence >= 0.9:
             if best.category == "Shopping":

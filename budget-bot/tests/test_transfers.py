@@ -78,6 +78,15 @@ class TestRealTransfers(unittest.TestCase):
             )
         )
 
+    def test_norcal_to_alliant_funding_is_transfer(self):
+        self.assertTrue(
+            looks_like_transfer(
+                name="Withdrawal ALLIANT CU",
+                merchant_name="Withdrawal ALLIANT CU",
+                category="Transfer",
+            )
+        )
+
     def test_paypal_bridge(self):
         for name in (
             "Deposit PAYPAL",

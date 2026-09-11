@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 from hermes_finance.auto_review import apply_review, rule_review
 from hermes_finance.import_xlsx import extract_mcc, guess_merchant
 from hermes_finance.models import Transaction
+from hermes_finance.rules import counts_as_spend
 
 
 class TestMerchantParse(unittest.TestCase):
@@ -268,6 +269,83 @@ class TestRules(unittest.TestCase):
         )
         r = rule_review(t)
         self.assertEqual(r.category, "Dining Out")
+
+    def test_alliant_funding_excluded(self):
+        t = Transaction(
+            id="a",
+            date="2026-09-10",
+            amount_cents=5000,
+            name="Withdrawal ALLIANT CU",
+            merchant_name="Withdrawal ALLIANT CU",
+            institution="1st-northern-california-credit-union",
+        )
+        txns, _ = apply_review([t])
+        self.assertTrue(txns[0].excluded)
+        self.assertTrue(txns[0].transfer)
+        self.assertEqual(txns[0].category, "Transfer")
+
+    def test_ebay_deposit_is_sale_not_refund(self):
+        t = Transaction(
+            id="e",
+            date="2026-08-12",
+            amount_cents=-19458,
+            name="Deposit eBay Com3D4HFRMI - CO: eBay Com3D4HFRMI",
+            merchant_name="eBay",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.category, "Income")
+        txns, _ = apply_review([t])
+        self.assertEqual(txns[0].category, "Income")
+        self.assertFalse(counts_as_spend(txns[0]))
+
+    def test_credit_voucher_still_nets(self):
+        t = Transaction(
+            id="v",
+            date="2026-08-16",
+            amount_cents=-750,
+            name="Withdrawal Adjustment Debit Card Credit Voucher 08/13/2026 REF#: 6225DJTMX7YJ 4814 - US MOBILE",
+            merchant_name="US MOBILE",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.reason, "inflow_refund")
+        txns, _ = apply_review([t])
+        self.assertTrue(counts_as_spend(txns[0]))
+
+    def test_zima_uv_case(self):
+        t = Transaction(
+            id="z",
+            date="2026-09-06",
+            amount_cents=8739,
+            name="Withdrawal Debit Card MasterMoney Card",
+            merchant_name="Withdrawal Debit Card MasterMoney Card",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.category, "Medical & Health")
+
+    def test_walgreens_snack_not_pharmacy(self):
+        t = Transaction(
+            id="w",
+            date="2026-09-06",
+            amount_cents=548,
+            name="Withdrawal POS #240263 - WALGREENS",
+            merchant_name="WALGREENS",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.category, "Dining Out")
+        self.assertEqual(r.review_status, "auto_accepted")
+
+    def test_mostly_honda_transportation(self):
+        t = Transaction(
+            id="h",
+            date="2026-09-10",
+            amount_cents=12403,
+            name="Withdrawal POS #503703 - MOSTLY HONDA",
+            merchant_name="MOSTLY HONDA",
+            category="Food and Drink",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.category, "Transportation")
+        self.assertEqual(r.review_status, "auto_accepted")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,8 @@ _TRANSFER_RE = re.compile(
     r"TRANSFER\s+(TO|FROM)\s+SHARE|"
     r"BETWEEN\s*ACCOUNTS|"
     r"CREDIT\s*UNION\s*TRANSFER|"
-    r"MONEY\s*TRANSFER\s+(TO|FROM)"
+    r"MONEY\s*TRANSFER\s+(TO|FROM)|"
+    r"WITHDRAWAL\s+ALLIANT(\s+CU)?"
     r")",
     re.I,
 )
