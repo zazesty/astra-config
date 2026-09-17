@@ -4,7 +4,7 @@ Description=Nightly Grok journal autopilot (xAI API → Grok-Journal)
 
 [Service]
 Type=oneshot
-# API timeout default 480s + git; keep this above GROK_JOURNAL_API_TIMEOUT
-TimeoutStartSec=600
+# API timeout default 480s + one fast 5xx retry (~15s) + git
+TimeoutStartSec=720
 Environment=TZ=America/Los_Angeles
 ExecStart=/root/astra-config/scripts/grok-journal-run.sh

@@ -20,6 +20,8 @@
 #   GROK_JOURNAL_MAX_TOKENS default 4096
 #   GROK_JOURNAL_API_TIMEOUT default 480 (seconds; systemd TimeoutStartSec must exceed this)
 #   NOTIFY_ENV          default /etc/grok-mcp.env  (XAI_API_KEY lives here)
+#   API: one extra attempt on 429/5xx (incl. Cloudflare 520) or network errors
+#        when the failed attempt was <120s. Timeouts are not retried.
 # =============================================================================
 set -euo pipefail
 
@@ -244,7 +246,7 @@ else
   if ! XAI_API_KEY="$XAI_API_KEY" API_BASE="$API_BASE" MODEL="$MODEL" EFFORT="$EFFORT" \
       MAX_TOKENS="$MAX_TOKENS" API_TIMEOUT="$API_TIMEOUT" SYSTEM_FILE="$SYSTEM_FILE" \
       PROMPT_USER="$PROMPT_USER" OUT_RAW="$OUT_RAW" OUT_USAGE="$OUT_USAGE" python3 - <<'PY'
-import json, os, sys, urllib.request, urllib.error
+import json, os, sys, time, urllib.request, urllib.error
 
 api_key = os.environ["XAI_API_KEY"]
 base = os.environ["API_BASE"].rstrip("/")
@@ -265,24 +267,49 @@ body = {
 }
 if effort:
     body["reasoning_effort"] = effort
-req = urllib.request.Request(
-    f"{base}/chat/completions",
-    data=json.dumps(body).encode("utf-8"),
-    headers={
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    },
-    method="POST",
-)
-try:
-    with urllib.request.urlopen(req, timeout=api_timeout) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-except urllib.error.HTTPError as e:
-    err = e.read().decode("utf-8", errors="replace")[:800]
-    print(f"xAI HTTP {e.code}: {err}", file=sys.stderr)
-    sys.exit(1)
-except Exception as e:
-    print(f"xAI request failed: {e}", file=sys.stderr)
+payload = json.dumps(body).encode("utf-8")
+headers = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {api_key}",
+}
+url = f"{base}/chat/completions"
+RETRYABLE = {429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
+max_attempts = 2
+backoff = 15
+data = None
+for attempt in range(1, max_attempts + 1):
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    t0 = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=api_timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        break
+    except urllib.error.HTTPError as e:
+        err = e.read().decode("utf-8", errors="replace")[:800]
+        elapsed = time.monotonic() - t0
+        print(f"xAI HTTP {e.code}: {err}", file=sys.stderr)
+        retry = e.code in RETRYABLE and attempt < max_attempts and elapsed < 120
+        if not retry:
+            sys.exit(1)
+        print(
+            f"xAI retry {attempt}/{max_attempts - 1} after HTTP {e.code} ({elapsed:.0f}s); sleep {backoff}s",
+            file=sys.stderr,
+        )
+        time.sleep(backoff)
+    except Exception as e:
+        elapsed = time.monotonic() - t0
+        is_timeout = isinstance(e, TimeoutError) or "timed out" in str(e).lower()
+        print(f"xAI request failed: {e}", file=sys.stderr)
+        retry = (not is_timeout) and attempt < max_attempts and elapsed < 120
+        if not retry:
+            sys.exit(1)
+        print(
+            f"xAI retry {attempt}/{max_attempts - 1} after {type(e).__name__} ({elapsed:.0f}s); sleep {backoff}s",
+            file=sys.stderr,
+        )
+        time.sleep(backoff)
+if data is None:
+    print("xAI request failed: no response after retries", file=sys.stderr)
     sys.exit(1)
 
 text = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
