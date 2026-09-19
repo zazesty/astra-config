@@ -87,6 +87,21 @@ class TestRealTransfers(unittest.TestCase):
             )
         )
 
+    def test_alliant_inbound_newaccdep_is_transfer(self):
+        self.assertTrue(
+            looks_like_transfer(
+                name="Deposit Ach Alliant Cu Type: Newaccdep Id: 0271081528 Co: Alliant Cu",
+                merchant_name="Alliant Cu",
+            )
+        )
+
+    def test_paypal_acctverify_is_transfer(self):
+        for name in (
+            "Withdrawal Ach Paypal Type: Acctverify Id: Paypalrd33 Data: Verifybank Co: Paypal",
+            "Deposit Ach Paypal Type: Acctverify Id: Paypalrd33 Data: Verifybank Co: Paypal",
+        ):
+            self.assertTrue(looks_like_transfer(name=name), msg=name)
+
     def test_paypal_bridge(self):
         for name in (
             "Deposit PAYPAL",

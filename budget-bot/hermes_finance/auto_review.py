@@ -146,6 +146,8 @@ RULES: list[tuple[str, str, float]] = [
     (r"\bGENERAL CURRENCY CONVERSION\b", "Transfer", 0.9),
     (r"\bMONEY TRANSFER (TO|FROM)\b", "Transfer", 0.95),
     (r"\bWITHDRAWAL\s+ALLIANT(\s+CU)?\b", "Transfer", 0.95),  # NorCal → Alliant funding
+    (r"\bDEPOSIT\s+ACH\s+ALLIANT\b|\bNEWACCDEP\b", "Transfer", 0.95),  # Alliant inbound
+    (r"\bACCTVERIFY\b|\bVERIFYBANK\b", "Transfer", 0.95),  # PayPal bank-link micros
     (r"\bPARTNER FEE\b", "Misc / Other", 0.85),
     # eBay: outflow shopping; Deposit eBay = sale (Income), handled in inflows
     (r"\bEBAY\b", "Shopping", 0.9),

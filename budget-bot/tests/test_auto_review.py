@@ -284,6 +284,34 @@ class TestRules(unittest.TestCase):
         self.assertTrue(txns[0].transfer)
         self.assertEqual(txns[0].category, "Transfer")
 
+    def test_alliant_inbound_newaccdep_excluded(self):
+        t = Transaction(
+            id="ain",
+            date="2026-09-10",
+            amount_cents=-5000,
+            name="Deposit Ach Alliant Cu Type: Newaccdep Id: 0271081528 Co: Alliant Cu",
+            merchant_name="Alliant Cu",
+            institution="alliant-credit-union",
+        )
+        txns, _ = apply_review([t])
+        self.assertTrue(txns[0].excluded)
+        self.assertTrue(txns[0].transfer)
+        self.assertEqual(txns[0].category, "Transfer")
+
+    def test_paypal_acctverify_excluded(self):
+        t = Transaction(
+            id="pv",
+            date="2026-09-11",
+            amount_cents=7,
+            name="Withdrawal Ach Paypal Type: Acctverify Id: Paypalrd33 Data: Verifybank Co: Paypal",
+            merchant_name="Paypal",
+            institution="alliant-credit-union",
+        )
+        txns, _ = apply_review([t])
+        self.assertTrue(txns[0].excluded)
+        self.assertTrue(txns[0].transfer)
+        self.assertEqual(txns[0].category, "Transfer")
+
     def test_ebay_deposit_is_sale_not_refund(self):
         t = Transaction(
             id="e",

@@ -24,7 +24,11 @@ _TRANSFER_RE = re.compile(
     r"BETWEEN\s*ACCOUNTS|"
     r"CREDIT\s*UNION\s*TRANSFER|"
     r"MONEY\s*TRANSFER\s+(TO|FROM)|"
-    r"WITHDRAWAL\s+ALLIANT(\s+CU)?"
+    r"WITHDRAWAL\s+ALLIANT(\s+CU)?|"
+    r"DEPOSIT\s+ACH\s+ALLIANT|"
+    r"\bNEWACCDEP\b|"
+    r"(DEPOSIT|WITHDRAWAL)\s+ACH\s+PAYPAL|"
+    r"\bACCTVERIFY\b|\bVERIFYBANK\b"
     r")",
     re.I,
 )
