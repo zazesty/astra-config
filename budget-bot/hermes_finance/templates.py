@@ -341,16 +341,19 @@ def cash_short_body(
     cash_cents: int | None = None,
     bills_cents: int | None = None,
     label: str | None = None,
+    horizon_days: int = 3,
 ) -> str:
+    _ = horizon_days
+    tail = "until they post."
     if piles:
         lines = [
-            f"{cash_vs_bills_line(c, b, label=lab)} due in 5 days."
+            f"{cash_vs_bills_line(c, b, label=lab)} {tail}"
             for lab, c, b in piles
             if cash_vs_bills_line(c, b, label=lab)
         ]
         return ("\n".join(lines) + "\n") if lines else ""
     line = cash_vs_bills_line(cash_cents, int(bills_cents or 0), label=label)
-    return f"{line} due in 5 days.\n" if line else ""
+    return f"{line} {tail}\n" if line else ""
 
 
 def budget_status_text(
@@ -367,7 +370,7 @@ def budget_status_text(
     cap. Calendar over cap still prints overage (matches breach Pushover).
     Leftover $ on Overall is the mean of the two windows, not the lesser. Over
     cap (calendar spend): percent of calendar cap, no leftover. Optional 4th
-    line: `$84 cash > $72 bills` only if unpaid bills due in the next 5 days.
+    line: `$84 cash > $72 bills` only if unpaid bills due in the canned horizon.
     """
     n = _overall_days_signed(calendar_snap, rolling_snap)
     if _over_cap(calendar_snap):

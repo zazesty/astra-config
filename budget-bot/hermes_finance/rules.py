@@ -1197,13 +1197,17 @@ def upcoming_unpaid_bills_cents(
     fuzzy_amount_tol_cents: int = 100,
     fuzzy_day_slop: int = 2,
     payment_grace_days: int = 40,
+    include_arrears: bool = False,
 ) -> int:
-    """Unpaid bill dues in [as_of, as_of+horizon_days]. Not arrears outside that window.
+    """Unpaid bill dues in [as_of, as_of+horizon_days].
 
-    Canned cash-vs-bills uses horizon_days=5.
+    Default skips arrears outside that window (STS-style lead). Cash-vs-bills
+    passes include_arrears=True: still start at horizon, then stay until the
+    named post clears, capped at payment_grace_days after due.
     Annual cadence adds the cash pull (e.g. $102), not 1/12.
     """
     end = as_of + timedelta(days=max(0, int(horizon_days)))
+    grace = max(0, int(payment_grace_days))
     claimed: set[str] = set()
     total = 0
     txns = txns or []
@@ -1224,7 +1228,18 @@ def upcoming_unpaid_bills_cents(
             fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
             skip_txn_ids=annual_ids,
         )
-        for due_d in bill_due_dates_in_range(b, as_of, end):
+        dues: list[date] = []
+        if include_arrears and grace > 0:
+            arrears_end = as_of - timedelta(days=1)
+            arrears_start = as_of - timedelta(days=grace)
+            if arrears_start <= arrears_end:
+                dues.extend(bill_due_dates_in_range(b, arrears_start, arrears_end))
+        dues.extend(bill_due_dates_in_range(b, as_of, end))
+        seen: set[date] = set()
+        for due_d in dues:
+            if due_d in seen:
+                continue
+            seen.add(due_d)
             if bill_occurrence_cleared(
                 b,
                 due_d,
@@ -1242,7 +1257,8 @@ def upcoming_unpaid_bills_cents(
     return total
 
 
-CASH_BILLS_HORIZON_DAYS = 5
+# 3d 200% both (2026-09-20): narrower window than 5d, extra headroom vs bounce.
+CASH_BILLS_HORIZON_DAYS = 3
 CASH_BILLS_COVER_MULT = 2.0
 
 
@@ -1260,11 +1276,12 @@ def canned_cash_bills_cents(
     fuzzy_day_slop: int = 2,
     payment_grace_days: int = 40,
 ) -> int:
-    """Unpaid material dues in the next 5 days, else 0 (hide the cash line).
+    """Unpaid material dues in the canned horizon, else 0 (hide the cash line).
 
     Material = cash pull ≥ half a daily allotment (hardcap / days_in / 2).
     Annual bills use the lump (e.g. $102), not 1/12 — else they hide under the floor.
-    Hide when cash is None, nothing due, or cash ≥ 2× those dues.
+    Starts 3d before due; stays until the named post clears (grace cap).
+    Hide when cash is None, nothing due, or cash ≥ COVER_MULT × those dues.
     """
     if cash_cents is None:
         return 0
@@ -1286,6 +1303,7 @@ def canned_cash_bills_cents(
         fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
         fuzzy_day_slop=fuzzy_day_slop,
         payment_grace_days=payment_grace_days,
+        include_arrears=True,
     )
     if due <= 0:
         return 0
@@ -1348,10 +1366,12 @@ def cash_bills_alert(
     snap: BudgetSnapshot | None = None,
     balances: dict[str, Any] | None = None,
 ) -> AlertEvent | None:
-    """Once-daily bounce interrupt when any CU checking < that CU's 5d dues.
+    """Once-daily interrupt when any CU checking < COVER_MULT × that CU's dues.
 
-    Bills default to NorCal (autopay). Alliant only alerts once a bill is tagged
-    `institution: alliant`. Empty Alliant with no Alliant bills stays silent.
+    3d 200% both (2026-09-20): same bar as canned. Start 3d before due; stay
+    until the named post clears (grace cap). Bills default to NorCal. Alliant
+    only alerts once a bill is tagged `institution: alliant`. Empty Alliant
+    with no Alliant bills stays silent.
     """
     if not bool(cfg.get("cash_bills_notify")):
         return None
@@ -1375,7 +1395,12 @@ def cash_bills_alert(
         fuzzy_day_slop=int(cfg.get("bill_fuzzy_day_slop", 2)),
         payment_grace_days=int(cfg.get("bill_payment_grace_days", 40)),
     )
-    short = [(lab, cash, due) for lab, cash, due in shown if cash < due]
+    cover = CASH_BILLS_COVER_MULT
+    short = [
+        (lab, cash, due)
+        for lab, cash, due in shown
+        if cash < int(round(cover * due))
+    ]
     if not short:
         return None
     labels = [lab for lab, _, _ in short]
@@ -1388,7 +1413,7 @@ def cash_bills_alert(
             label=labels[0],
             extra_labels=labels[1:],
         ),
-        body=cash_short_body(short),
+        body=cash_short_body(short, horizon_days=CASH_BILLS_HORIZON_DAYS),
         key=f"cash_short|{as_of.isoformat()}",
         payload={
             "push_priority": 1,

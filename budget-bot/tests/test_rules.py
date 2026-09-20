@@ -311,13 +311,13 @@ class TestBudget(unittest.TestCase):
             ),
             0,
         )
-        # Canned cash line: 5-day window (Aug 29 → Sep 3) misses CSAA on the 5th
+        # 3-day window (Aug 29 → Sep 1) includes Grok, misses CSAA on the 5th
         self.assertEqual(
             upcoming_unpaid_bills_cents(
                 [grok, spot, csaa],
                 [],
                 date(2026, 8, 29),
-                horizon_days=5,
+                horizon_days=3,
             ),
             3000,
         )
@@ -344,26 +344,41 @@ class TestBudget(unittest.TestCase):
             "match": r"HETZNER",
         }
         bills = [grok, usm, csaa, apple, hetz]
+        prior = [
+            Transaction(id="g-aug", date="2026-08-01", amount_cents=3000, name="GROK"),
+            Transaction(id="u-aug", date="2026-08-05", amount_cents=2700, name="US MOBILE"),
+            Transaction(id="c-aug", date="2026-08-05", amount_cents=6892, name="CSAA"),
+        ]
         # $1050 / 30 / 2 = $17.50 floor → Apple + Hetzner hidden
         as_of = date(2026, 9, 3)
         due = canned_cash_bills_cents(
             bills,
-            [],
+            prior,
             as_of,
             hardcap_cents=105_000,
             days_in_period=30,
             cash_cents=5_000,  # tight → show
         )
-        self.assertEqual(due, 2700 + 6892)  # USM + CSAA (Grok due 1st already passed)
+        self.assertEqual(due, 3000 + 2700 + 6892)  # Grok Sep arrears + USM + CSAA
         hidden = canned_cash_bills_cents(
             bills,
-            [],
+            prior,
             as_of,
             hardcap_cents=105_000,
             days_in_period=30,
-            cash_cents=30_000,  # 2× $95.92 = $192; $300 covers → hide
+            cash_cents=40_000,  # 2× $125.92 = $252; $400 covers → hide
         )
         self.assertEqual(hidden, 0)
+        # 3d window: Sep 1 includes Grok, not yet CSAA/USM (due the 5th)
+        grok_only = canned_cash_bills_cents(
+            bills,
+            prior,
+            date(2026, 9, 1),
+            hardcap_cents=105_000,
+            days_in_period=30,
+            cash_cents=5_000,
+        )
+        self.assertEqual(grok_only, 3000)
 
     def test_cash_bills_alert_disabled_by_default(self):
         cfg = {
@@ -390,17 +405,73 @@ class TestBudget(unittest.TestCase):
         }
         as_of = date(2026, 9, 3)
         due = 6892 + 2700
-        short = cash_bills_alert(cfg, [], as_of, cash_cents=5_000)
+        prior = [
+            Transaction(id="c-aug", date="2026-08-05", amount_cents=6892, name="CSAA"),
+            Transaction(id="u-aug", date="2026-08-05", amount_cents=2700, name="US MOBILE"),
+        ]
+        short = cash_bills_alert(cfg, prior, as_of, cash_cents=5_000)
         self.assertIsNotNone(short)
         assert short is not None
         self.assertEqual(short.kind, "cash_short")
         self.assertEqual(short.key, "cash_short|2026-09-03")
         self.assertIn("<", short.subject)
-        # tight but can cover: canned may show, push must not
-        covered = cash_bills_alert(cfg, [], as_of, cash_cents=due + 100)
+        # 3d 200% both: between 100% and 200% still pages
+        mid = cash_bills_alert(cfg, prior, as_of, cash_cents=due + 100)
+        self.assertIsNotNone(mid)
+        covered = cash_bills_alert(cfg, prior, as_of, cash_cents=int(round(2 * due)) + 100)
         self.assertIsNone(covered)
-        plenty = cash_bills_alert(cfg, [], as_of, cash_cents=50_000)
+        plenty = cash_bills_alert(cfg, prior, as_of, cash_cents=50_000)
         self.assertIsNone(plenty)
+
+    def test_cash_bills_stays_until_named_post(self):
+        csaa = {"name": "CSAA", "amount_cents": 6892, "day_of_month": 5, "match": r"CSAA"}
+        grok = {"name": "Grok", "amount_cents": 3000, "day_of_month": 1, "match": r"GROK"}
+        bills = [csaa, grok]
+        kwargs = dict(hardcap_cents=105_000, days_in_period=30, cash_cents=5_000)
+        prior = [
+            Transaction(id="g-aug", date="2026-08-01", amount_cents=3000, name="GROK"),
+            Transaction(id="c-aug", date="2026-08-05", amount_cents=6892, name="CSAA"),
+        ]
+        # 3d start: Sep 1 is Grok only, not yet CSAA
+        self.assertEqual(
+            canned_cash_bills_cents(bills, prior, date(2026, 9, 1), **kwargs),
+            3000,
+        )
+        # morning after due, still unpaid → stay alive
+        self.assertEqual(
+            canned_cash_bills_cents(bills, prior, date(2026, 9, 6), **kwargs),
+            3000 + 6892,
+        )
+        posted = prior + [
+            Transaction(
+                id="csaa-sep8",
+                date="2026-09-08",
+                amount_cents=7009,
+                name="Withdrawal CSAA INSURANCE",
+            )
+        ]
+        # named post clears; Grok still unpaid arrears
+        self.assertEqual(
+            canned_cash_bills_cents(bills, posted, date(2026, 9, 9), **kwargs),
+            3000,
+        )
+        both = posted + [
+            Transaction(
+                id="grok-sep1",
+                date="2026-09-01",
+                amount_cents=3000,
+                name="GROK XAI",
+            )
+        ]
+        self.assertEqual(
+            canned_cash_bills_cents(bills, both, date(2026, 9, 9), **kwargs),
+            0,
+        )
+        # grace cap: Sep 5 due is gone by Oct 16; Oct 5 still unpaid arrears
+        self.assertEqual(
+            canned_cash_bills_cents([csaa], [], date(2026, 10, 16), **kwargs),
+            6892,
+        )
 
     def test_cash_bills_alliant_empty_without_alliant_bills_is_silent(self):
         cfg = {
@@ -1581,10 +1652,11 @@ class TestAnnualCadence(unittest.TestCase):
             0,
         )
         # Material floor would hide 1/12 ($8.50); cash pull stays visible
+        # 3d window: as_of Feb 9 → Feb 12 anniversary still in range
         shown = canned_cash_bills_cents(
             bills,
             [],
-            date(2026, 2, 8),
+            date(2026, 2, 9),
             hardcap_cents=105_000,
             days_in_period=28,
             cash_cents=5_000,
