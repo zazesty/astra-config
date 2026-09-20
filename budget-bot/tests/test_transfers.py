@@ -99,8 +99,44 @@ class TestRealTransfers(unittest.TestCase):
         for name in (
             "Withdrawal Ach Paypal Type: Acctverify Id: Paypalrd33 Data: Verifybank Co: Paypal",
             "Deposit Ach Paypal Type: Acctverify Id: Paypalrd33 Data: Verifybank Co: Paypal",
+            "Deposit Ach Ebay Comizoedzdv Type: Acctverify Id: 795397186 Data: Acctverify Co:",
         ):
             self.assertTrue(looks_like_transfer(name=name), msg=name)
+
+    def test_alliant_membership_share_is_transfer(self):
+        from hermes_finance.transfers import is_alliant_membership_share
+
+        self.assertTrue(
+            is_alliant_membership_share(
+                name="Deposit",
+                merchant_name="Deposit",
+                institution="alliant-credit-union",
+                amount_cents=-500,
+            )
+        )
+        self.assertTrue(
+            looks_like_transfer(
+                name="Deposit",
+                merchant_name="Deposit",
+                institution="alliant-credit-union",
+                amount_cents=-500,
+            )
+        )
+        self.assertFalse(
+            looks_like_transfer(
+                name="Deposit CONTRA - CO: CONTRA",
+                institution="alliant-credit-union",
+                amount_cents=-500,
+            )
+        )
+        self.assertFalse(
+            looks_like_transfer(
+                name="Deposit",
+                merchant_name="Deposit",
+                institution="alliant-credit-union",
+                amount_cents=-19458,
+            )
+        )
 
     def test_paypal_bridge(self):
         for name in (

@@ -315,7 +315,11 @@ def rule_review(t: Transaction) -> ReviewResult:
         if not is_import_institution(t.institution):
             t.excluded = False
     elif t.transfer and not looks_like_transfer(
-        name=t.name or "", merchant_name=t.merchant_name, category=""
+        name=t.name or "",
+        merchant_name=t.merchant_name,
+        category="",
+        institution=t.institution,
+        amount_cents=t.amount_cents,
     ):
         # Stale ACH bill-pay tagged Transfer (CSAA). Statement twins stay excluded.
         t.transfer = False
@@ -402,9 +406,21 @@ def rule_review(t: Transaction) -> ReviewResult:
             if best and best.category not in ("Income", "Transfer", ""):
                 cat = best.category
             return ReviewResult(cat, 0.93, "auto_accepted", "inflow_refund")
+        if re.search(r"\bACCTVERIFY\b|\bVERIFYBANK\b", blob, re.I):
+            return ReviewResult("Transfer", 0.95, "excluded", "acctverify")
+        if looks_like_transfer(
+            name=t.name or "",
+            merchant_name=t.merchant_name,
+            institution=t.institution,
+            amount_cents=t.amount_cents,
+        ):
+            return ReviewResult("Transfer", 0.95, "excluded", "inflow_transfer_name")
         # eBay seller payouts (Deposit eBay / CO: eBay) are sales, not purchase refunds.
-        if re.search(r"\bEBAY\b", blob, re.I) and re.search(
-            r"\bDEPOSIT\b|\bCO:\s*EBAY", blob, re.I
+        # Bank-link micros (Acctverify) are transfers, not sales.
+        if (
+            re.search(r"\bEBAY\b", blob, re.I)
+            and re.search(r"\bDEPOSIT\b|\bCO:\s*EBAY", blob, re.I)
+            and not re.search(r"ACCTVERIFY|VERIFYBANK", blob, re.I)
         ):
             return ReviewResult("Income", 0.93, "auto_accepted", "ebay_sale")
         # money in: prefer Income unless rule said Transfer/Shopping refund etc.

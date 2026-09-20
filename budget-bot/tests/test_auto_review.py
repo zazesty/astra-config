@@ -312,6 +312,34 @@ class TestRules(unittest.TestCase):
         self.assertTrue(txns[0].transfer)
         self.assertEqual(txns[0].category, "Transfer")
 
+    def test_ebay_acctverify_is_transfer_not_sale(self):
+        t = Transaction(
+            id="ev",
+            date="2026-09-18",
+            amount_cents=-9,
+            name="Deposit Ach Ebay Comizoedzdv Type: Acctverify Id: 795397186 Data: Acctverify Co:",
+            merchant_name="eBay",
+            institution="alliant-credit-union",
+        )
+        txns, _ = apply_review([t])
+        self.assertTrue(txns[0].excluded)
+        self.assertTrue(txns[0].transfer)
+        self.assertEqual(txns[0].category, "Transfer")
+
+    def test_alliant_membership_share_excluded(self):
+        t = Transaction(
+            id="share",
+            date="2026-09-08",
+            amount_cents=-500,
+            name="Deposit",
+            merchant_name="Deposit",
+            institution="alliant-credit-union",
+        )
+        txns, _ = apply_review([t])
+        self.assertTrue(txns[0].excluded)
+        self.assertTrue(txns[0].transfer)
+        self.assertEqual(txns[0].category, "Transfer")
+
     def test_ebay_deposit_is_sale_not_refund(self):
         t = Transaction(
             id="e",

@@ -26,6 +26,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # saas: true → fuzzy $ also allows ~10% over (CA tax-inclusive SaaS).
     "bills": [],
     "goals": [],  # [{name, amount_cents}]
+    # Leftover-funded buy queue. Auto-pulled on high-conf named+amount spend.
+    # [{id, name, amount_cents, match, amount_tol_cents?}]
+    "buy_queue": [],
     "anomaly": {
         # Loosened 2026-08-05: normal restocks (e.g. iHerb ~$100) were 2× noise.
         "merchant_mult_7d": 4.0,
@@ -194,4 +197,7 @@ def persist_bill_rewrites(
     """Annual prepay conversion first, then SaaS tax reserve follow."""
     annual = persist_auto_annual_conversions(cfg, txns, as_of)
     saas = persist_saas_bill_reserves(cfg, txns, as_of)
-    return {"auto_annual": annual, "saas": saas}
+    from .buy_queue import persist_buy_queue_pulls
+
+    pulled = persist_buy_queue_pulls(cfg, txns)
+    return {"auto_annual": annual, "saas": saas, "buy_queue": pulled}

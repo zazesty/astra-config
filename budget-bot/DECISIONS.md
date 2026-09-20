@@ -51,7 +51,7 @@
 
 | Item | Notes |
 |------|--------|
-| Firm-pace Push → Overall | **Pinned 2026-09-08.** Trigger stays calendar. When NorCal Plaid is solid (no multi-day LOGIN_REQUIRED holes), **discuss** retargeting to canned Overall — do not auto-ship. |
+| Firm-pace Push → Overall | **Skipped 2026-09-20.** Trigger stays calendar. Do not discuss or ship. |
 | ~~Bill lead-time window (pace v2.1)~~ | **Moved to Locked 2026-08-12** — was listed deferred after the code already shipped. |
 | Plaid Trial keys | User creates account; store in `/etc/hermes-finance.env` |
 | PayPal Link OAuth | User browser session; first live Item |

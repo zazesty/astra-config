@@ -248,6 +248,8 @@ def plaid_txn_to_hermes(
         merchant_name=str(merchant) if merchant else None,
         category=str(category),
         plaid_raw=raw,
+        institution=institution,
+        amount_cents=amount_cents,
     )
     # Belt-and-suspenders: never treat CU debit-card purchases as transfers
     if is_debit_card_purchase(name=str(name), merchant_name=str(merchant or "")):

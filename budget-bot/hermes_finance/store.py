@@ -77,9 +77,13 @@ def upsert_txns(incoming: list[Transaction]) -> tuple[list[Transaction], list[Tr
             prev = existing.get(t.id)
             if prev is None:
                 new.append(t)
-            elif prev.excluded:
-                # Keep a manual exclude across Plaid re-upsert (twin scrub).
-                t.excluded = True
+            else:
+                # Keep a manual exclude / transfer across Plaid re-upsert.
+                if prev.excluded:
+                    t.excluded = True
+                if prev.transfer:
+                    t.transfer = True
+                    t.excluded = True
             existing[t.id] = t
         all_tx = sorted(existing.values(), key=lambda x: (x.date, x.id))
         _write_json(txns_path(), [t.to_dict() for t in all_tx])

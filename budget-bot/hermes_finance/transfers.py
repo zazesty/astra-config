@@ -95,18 +95,43 @@ def is_opaque_mastermoney(*, name: str = "", merchant_name: str | None = None) -
     return False
 
 
+def is_alliant_membership_share(
+    *,
+    name: str = "",
+    merchant_name: str | None = None,
+    institution: str | None = None,
+    amount_cents: int | None = None,
+) -> bool:
+    """Alliant $5 savings-share open (`Deposit`, no ACH tail). Not paycheck."""
+    if not institution or "alliant" not in institution.lower():
+        return False
+    if amount_cents is None or abs(int(amount_cents)) != 500:
+        return False
+    blob = f"{merchant_name or ''} {name or ''}".strip()
+    return bool(re.fullmatch(r"(deposit\s*)+", blob, re.I))
+
+
 def looks_like_transfer(
     *,
     name: str = "",
     merchant_name: str | None = None,
     category: str = "",
     plaid_raw: dict[str, Any] | None = None,
+    institution: str | None = None,
+    amount_cents: int | None = None,
 ) -> bool:
     """True if this should be excluded from spend (move money, not purchase)."""
     name_blob = f"{merchant_name or ''} {name or ''}"
 
     # Explicit transfer language on the name always wins (Share / Home Banking / PayPal ACH).
     if _TRANSFER_RE.search(name_blob):
+        return True
+    if is_alliant_membership_share(
+        name=name,
+        merchant_name=merchant_name,
+        institution=institution,
+        amount_cents=amount_cents,
+    ):
         return True
 
     # ACH bill pay (CSAA etc.) is spend, not an internal transfer. Plaid often
