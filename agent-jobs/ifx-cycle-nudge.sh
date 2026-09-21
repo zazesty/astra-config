@@ -3,7 +3,7 @@
 set -euo pipefail
 
 NOTIFY="${IFX_NOTIFY_CMD:-/root/astra-config/scripts/notify-email.sh}"
-STATE="${IFX_LOG_DIR:-$HOME/.local/state/health/ifx-cycle}"
+STATE="${IFX_LOG_DIR:-$HOME/.local/state/health-bot/ifx-cycle}"
 HOST="${IFX_PUBLIC_HOST:-zaz-astra.tail5d74e1.ts.net}"
 
 mkdir -p "$STATE"

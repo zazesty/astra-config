@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.import_statement_pdf import parse_statement_text
+from budget_bot.import_statement_pdf import parse_statement_text
 
 _SNIPPET = """
                                                 CHECKING

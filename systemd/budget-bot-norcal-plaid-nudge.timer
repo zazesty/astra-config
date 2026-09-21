@@ -6,7 +6,8 @@ Description=Daily 11:00 PT gate — Budget Bot MasterMoney-labels email (every 1
 OnCalendar=*-*-* 11:00:00
 Persistent=true
 AccuracySec=1min
-Unit=hermes-norcal-plaid-nudge.service
+Unit=budget-bot-norcal-plaid-nudge.service
 
 [Install]
 WantedBy=timers.target
+Alias=hermes-norcal-plaid-nudge.timer

@@ -22,7 +22,7 @@ sudo bash setup.sh
 #    - apt: curl, git, python3, poppler-utils, tailscale
 #    - nvm + node v22.22.3
 #    - clone ad-astra -> /root/grok-mcp, npm ci, build, cp kalshi-series.json
-#    - link Budget Bot code: /root/hermes-finance -> astra-config/budget-bot
+#    - link Budget Bot code: /root/budget-bot -> astra-config/budget-bot
 #    - recreate 2G /swapfile + swappiness=10
 #    - symlink config (system -> repo), enable units, nightly commit timer
 #    - tailscale up      <-- INTERACTIVE: open the printed URL, auth the box

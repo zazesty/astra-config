@@ -10,8 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.dedupe import apply_import_plaid_dedupe
-from hermes_finance.models import Transaction
+from budget_bot.dedupe import apply_import_plaid_dedupe
+from budget_bot.models import Transaction
 
 
 def _t(

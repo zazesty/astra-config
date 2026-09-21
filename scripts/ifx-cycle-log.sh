@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ifx-cycle-log.sh — private IFX end-of-cycle symptom log (not git / not Hermes).
 set -euo pipefail
-DIR="${IFX_LOG_DIR:-$HOME/.local/state/health/ifx-cycle}"
+DIR="${IFX_LOG_DIR:-$HOME/.local/state/health-bot/ifx-cycle}"
 JSONL="$DIR/log.jsonl"
 CSV="$DIR/log.csv"
 CFG="$DIR/config.json"

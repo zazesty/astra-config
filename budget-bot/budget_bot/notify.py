@@ -6,7 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from .config import state_dir
+from .config import _env_first, state_dir
 from .models import AlertEvent
 from .store import already_notified, mark_notified, notified_lock
 
@@ -26,29 +26,23 @@ SMS_KINDS = PUSH_KINDS
 
 def notify_email_script() -> Path:
     return Path(
-        os.environ.get(
-            "HERMES_NOTIFY_CMD",
-            "/root/astra-config/scripts/notify-email.sh",
-        )
+        _env_first("BUDGET_BOT_NOTIFY_CMD", "HERMES_NOTIFY_CMD")
+        or "/root/astra-config/scripts/notify-email.sh"
     )
 
 
 def notify_push_script() -> Path:
     return Path(
-        os.environ.get(
-            "HERMES_PUSH_CMD",
-            "/root/astra-config/scripts/notify-pushover.sh",
-        )
+        _env_first("BUDGET_BOT_PUSH_CMD", "HERMES_PUSH_CMD")
+        or "/root/astra-config/scripts/notify-pushover.sh"
     )
 
 
 def notify_sms_script() -> Path:
     """Legacy Twilio path (optional override only)."""
     return Path(
-        os.environ.get(
-            "HERMES_SMS_CMD",
-            "/root/astra-config/scripts/notify-sms.sh",
-        )
+        _env_first("BUDGET_BOT_SMS_CMD", "HERMES_SMS_CMD")
+        or "/root/astra-config/scripts/notify-sms.sh"
     )
 
 
@@ -151,7 +145,7 @@ def send_alert(
         f"kind={event.kind} key={event.key} priority={priority} "
         f"subject={event.subject!r}"
     )
-    ch = channel or os.environ.get("HERMES_NOTIFY_CHANNEL", "auto")
+    ch = channel or _env_first("BUDGET_BOT_NOTIFY_CHANNEL", "HERMES_NOTIFY_CHANNEL") or "auto"
 
     with notified_lock():
         return _send_alert_locked(

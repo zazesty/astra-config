@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from .config import load_config, state_dir
+from .config import live_flag, load_config, state_dir
 from .models import AlertEvent
 from .notify import send_alert
 
@@ -436,7 +436,7 @@ def handle_item_webhook(
     if dry_run is None:
         dry_run = not (
             bool(cfg.get("notify_enabled"))
-            or __import__("os").environ.get("HERMES_LIVE", "0") == "1"
+            or live_flag()
         )
 
     if code in ITEM_REPAIR_WEBHOOK_CODES:

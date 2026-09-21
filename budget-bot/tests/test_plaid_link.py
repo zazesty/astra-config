@@ -13,7 +13,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.plaid_link_server import (
+from budget_bot.plaid_link_server import (
     configured_redirect_uri,
     page_html,
     redirect_mount,
@@ -33,7 +33,7 @@ class TestRedirectUri(unittest.TestCase):
     def test_missing_uri_is_none(self):
         with patch.dict("os.environ", {"PLAID_REDIRECT_URI": ""}, clear=False):
             with patch(
-                "hermes_finance.plaid_link_server.load_plaid_env",
+                "budget_bot.plaid_link_server.load_plaid_env",
                 return_value={},
             ):
                 self.assertIsNone(configured_redirect_uri({}))
@@ -57,7 +57,7 @@ class TestPageHtmlOauth(unittest.TestCase):
 class TestSaveItemQuarantine(unittest.TestCase):
     def setUp(self):
         self._td = tempfile.TemporaryDirectory()
-        self.env = patch.dict("os.environ", {"HERMES_FINANCE_STATE": self._td.name})
+        self.env = patch.dict("os.environ", {"BUDGET_BOT_STATE": self._td.name})
         self.env.start()
 
     def tearDown(self):

@@ -9,14 +9,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-ENV_FILE = Path(os.environ.get("HERMES_PLAID_ENV", "/etc/hermes-finance.env"))
+from .config import default_env_file
 
 
 def load_plaid_env() -> dict[str, str]:
     env: dict[str, str] = {}
-    if not ENV_FILE.is_file():
-        raise FileNotFoundError(f"missing {ENV_FILE}")
-    for line in ENV_FILE.read_text().splitlines():
+    env_file = default_env_file()
+    if not env_file.is_file():
+        raise FileNotFoundError(f"missing {env_file}")
+    for line in env_file.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -74,7 +75,7 @@ def create_link_token(
     access_token: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
-        "client_name": "Hermes Finance",
+        "client_name": "Budget Bot",
         "language": "en",
         "country_codes": ["US"],
         "user": {"client_user_id": client_user_id},

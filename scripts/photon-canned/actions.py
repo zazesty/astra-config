@@ -11,11 +11,11 @@ from classify import Intent
 BUDGET_CMD = [
     "python3",
     "-m",
-    "hermes_finance",
+    "budget_bot",
     "budget-status",
 ]
 TODOS = Path("/root/astra-config/scripts/standing-todos.sh")
-FINANCE_CWD = Path("/root/hermes-finance")
+FINANCE_CWD = Path("/root/budget-bot")
 
 
 def _run(cmd: list[str], *, cwd: Path | None = None, timeout: int = 20) -> str:

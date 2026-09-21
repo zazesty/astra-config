@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hermes-Finance CLI — fixture watch, evaluate, dry-run notify."""
+"""Budget Bot CLI — fixture watch, evaluate, dry-run notify."""
 
 from __future__ import annotations
 
@@ -160,7 +160,7 @@ def _finish_plaid_link(result: dict, update_id: str | None) -> None:
         print(json.dumps({
             "synced_after_link": False,
             "reason": "quarantined_preview",
-            "next": "python3 -m hermes_finance plaid-preview --item-id "
+            "next": "python3 -m budget_bot plaid-preview --item-id "
             + str(result.get("item_id") or ""),
         }, indent=2))
         return
@@ -223,7 +223,7 @@ def cmd_plaid_link(args: argparse.Namespace) -> int:
     elif not redirect:
         print(json.dumps({
             "error": "missing_PLAID_REDIRECT_URI",
-            "hint": "Set PLAID_REDIRECT_URI in /etc/hermes-finance.env and allow it in the Plaid dashboard.",
+            "hint": "Set PLAID_REDIRECT_URI in /etc/budget-bot.env and allow it in the Plaid dashboard.",
         }))
         return 2
 
@@ -741,7 +741,7 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="hermes-finance", description="Hermes-Finance watch CLI")
+    p = argparse.ArgumentParser(prog="budget-bot", description="Budget Bot watch CLI")
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
 

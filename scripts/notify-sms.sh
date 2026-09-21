@@ -3,7 +3,7 @@
 #   notify-sms.sh "message body"
 #   echo "body" | notify-sms.sh
 #
-# Env (from /etc/hermes-finance.env or /etc/grok-mcp.env, chmod 600):
+# Env (from /etc/budget-bot.env or /etc/grok-mcp.env, chmod 600):
 #   TWILIO_ACCOUNT_SID
 #   TWILIO_AUTH_TOKEN
 #   TWILIO_FROM   E.164 e.g. +15551234567
@@ -20,13 +20,15 @@ BODY="${BODY:-}"
 
 ENV_FILE="${TWILIO_ENV:-}"
 if [ -z "$ENV_FILE" ]; then
-  if [ -f /etc/hermes-finance.env ]; then
+  if [ -f /etc/budget-bot.env ]; then
+    ENV_FILE=/etc/budget-bot.env
+  elif [ -f /etc/hermes-finance.env ]; then
     ENV_FILE=/etc/hermes-finance.env
   else
     ENV_FILE=/etc/grok-mcp.env
   fi
 fi
-LOG="${TWILIO_LOG:-/root/.local/state/hermes-finance/notify.log}"
+LOG="${TWILIO_LOG:-${BUDGET_BOT_STATE:-$HOME/.local/state/budget-bot}/notify.log}"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 
 set -a

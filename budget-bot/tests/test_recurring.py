@@ -11,8 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.models import Transaction
-from hermes_finance.recurring import detect_recurring, normalize_merchant_key
+from budget_bot.models import Transaction
+from budget_bot.recurring import detect_recurring, normalize_merchant_key
 
 
 class TestRecurring(unittest.TestCase):

@@ -19,7 +19,7 @@ Directory variants (trailing slash required on Funnel static serve):
 - `…/health-bot/oauth/sandbox/callback/`
 - `…/health-bot/oauth/callback/`
 
-Callback pages show `code` / `state` / errors after redirect. Token exchange stays on-box (`/etc/health-bot.env`, state under `~/.local/state/health/`). Never commit auth codes.
+Callback pages show `code` / `state` / errors after redirect. Token exchange stays on-box (`/etc/health-bot.env`, state under `~/.local/state/health-bot/`). Never commit auth codes.
 
 ## Funnel
 

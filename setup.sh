@@ -226,15 +226,21 @@ install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-pres
 if [ -f "$REPO/docs/OPERATOR.md" ]; then
   cp -a "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
 fi
-# Budget Bot code (user-facing name). Live path stays /root/hermes-finance
-# for systemd WorkingDirectory. State stays off git.
+# Budget Bot code. Canonical live path is /root/budget-bot; old
+# /root/hermes-finance symlink is kept as a compatibility alias.
 if [ -d "$REPO/budget-bot" ]; then
+  ln -sfnT "$REPO/budget-bot" /root/budget-bot
   ln -sfnT "$REPO/budget-bot" /root/hermes-finance
 fi
-install -d -m 700 /root/.local/state/hermes-finance
+install -d -m 700 /root/.local/state/budget-bot
+if [ -d /root/.local/state/hermes-finance ] && [ ! -L /root/.local/state/hermes-finance ]; then
+  : # live data may still sit at the old path until a one-time migrate
+else
+  ln -sfnT /root/.local/state/budget-bot /root/.local/state/hermes-finance
+fi
 # Secrets template only (never a filled file)
-if [ ! -f /etc/hermes-finance.env ]; then
-  echo "  (optional) later: sudo cp $REPO/hermes-finance.env.example /etc/hermes-finance.env && chmod 600 ..."
+if [ ! -f /etc/budget-bot.env ] && [ ! -f /etc/hermes-finance.env ]; then
+  echo "  (optional) later: sudo cp $REPO/budget-bot.env.example /etc/budget-bot.env && chmod 600 ..."
 fi
 
 # Journaling scheduler: install the hourly 1-6am PT root crontab. This is the

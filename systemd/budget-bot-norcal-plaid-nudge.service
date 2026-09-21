@@ -1,0 +1,11 @@
+[Unit]
+Description=Budget Bot biweekly email: are NorCal MasterMoney labels still opaque
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/budget-bot
+Environment=BUDGET_BOT_STATE=/root/.local/state/budget-bot
+EnvironmentFile=-/etc/grok-mcp.env
+EnvironmentFile=-/etc/budget-bot.env
+ExecStart=/root/astra-config/agent-jobs/budget-bot-norcal-plaid-nudge.sh

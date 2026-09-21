@@ -1,0 +1,10 @@
+[Unit]
+Description=Budget Bot EOM leftover congrats (prior-month calendar STS)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/budget-bot
+Environment=BUDGET_BOT_STATE=/root/.local/state/budget-bot
+EnvironmentFile=-/etc/budget-bot.env
+ExecStart=/root/astra-config/agent-jobs/budget-bot-eom-leftover.sh

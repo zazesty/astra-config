@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.transfers import (
+from budget_bot.transfers import (
     is_debit_card_purchase,
     is_opaque_mastermoney,
     looks_like_transfer,
@@ -104,7 +104,7 @@ class TestRealTransfers(unittest.TestCase):
             self.assertTrue(looks_like_transfer(name=name), msg=name)
 
     def test_alliant_membership_share_is_transfer(self):
-        from hermes_finance.transfers import is_alliant_membership_share
+        from budget_bot.transfers import is_alliant_membership_share
 
         self.assertTrue(
             is_alliant_membership_share(

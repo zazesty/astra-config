@@ -4,7 +4,7 @@ set -euo pipefail
 # systemd oneshots often lack HOME
 export HOME="${HOME:-/root}"
 PORT="${IFX_FORM_PORT:-8767}"
-STATE="${IFX_LOG_DIR:-$HOME/.local/state/health/ifx-cycle}"
+STATE="${IFX_LOG_DIR:-$HOME/.local/state/health-bot/ifx-cycle}"
 CFG="$STATE/config.json"
 
 # Ensure secret exists (server also does this; idempotent)
@@ -12,7 +12,7 @@ python3 - <<'PY'
 from pathlib import Path
 import json, secrets
 from datetime import datetime, timezone
-state = Path.home() / ".local/state" / "health" / "ifx-cycle"
+state = Path.home() / ".local/state" / "health-bot" / "ifx-cycle"
 state.mkdir(parents=True, exist_ok=True)
 cfg_p = state / "config.json"
 data = {}

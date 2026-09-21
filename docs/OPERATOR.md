@@ -55,7 +55,7 @@ Source: `user-permission-language`.
 5. **Keep `/root` clean** after deploy; whitelist permanent design docs (ask_oracle_*, etc.). Keep `.bak`s but don’t litter `src/`.
 6. **Don’t add a second swap** (2 GB already active).
 7. **Secrets stay in chmod-600 files outside git.** Presence-only discovery: `~/.local/state/astra/env-presence.sh`.
-8. **Bank / Hermes personal finance data NEVER goes to GitHub** (txns, xlsx/csv exports, tokens, digests with live merchants, filled hermes env). Lives only under `~/.local/state/hermes-finance/` (mode 700/600) or `/etc/hermes-finance.env`. No auto-commit path includes it; astra-config only commits that repo’s tree. If hermes code is ever published, ship **code + synthetic fixtures only**.
+8. **Bank / Budget Bot personal finance data NEVER goes to GitHub** (txns, xlsx/csv exports, tokens, digests with live merchants, filled budget-bot env). Lives only under `~/.local/state/budget-bot/` (mode 700/600) or `/etc/budget-bot.env`. No auto-commit path includes it; astra-config only commits that repo’s tree. If budget-bot code is ever published, ship **code + synthetic fixtures only**.
 
 Sources: `astra-mcp-path-is-a-secret`, `astra-url-rotation-consumers`, `grok-mcp-push-reminder-pref`, `prefer-self-healing-defaults`, `keep-workspace-clean`, AGENTS.md.
 
@@ -76,11 +76,14 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 5. Prefer short complete sentences; warm OK; abbreviated style preferred when dense Qs.
 6. **Questions:** generally **one question per turn** (blocking decisions). Prefer shipping over multi-question menus.
 7. **MCP consumers (live):** after rotation/restart, only remind about **Grok** (cloud, per-URL tool cache) + Grok Build loopback reload. **Never** nag claude.ai reconnect, Claude Code CLI, or journaling-routine MCP (Zavdi owns claude.ai himself).
-8. **ask_consortium** (ex-ask_oracle) default is Grok-primary (gemini/gpt Terra; no grok opinion seat). `exclude_family:"none"` only if a non-Grok caller wants grok-direct dissent. **ask_panel** models: grok|gemini|openai (Terra pin). Live-X: panel grok+grounded / consortium force_x (no `grok_x_search` tool).
+8. **ask_consortium** (ex-ask_oracle) default is Grok-primary (gemini/gpt Terra; no grok opinion seat). `exclude_family:"none"` only if a non-Grok caller wants grok-direct dissent. **ask_panel** models: grok|gemini|openai|sonnet (Terra pin). Enum still lists `opus` so Grok chat cache works, but **opus remaps to sonnet** (not a live Opus seat; schema cull later = rotation). Live-X: panel grok+grounded / consortium force_x (no `grok_x_search` tool). Detail: [[grok-chat-return-envelope]].
 9. **2026-08 rotation batch SHIPPED:** panel GPT + x_search cull + ask_oracle→ask_consortium + desc refresh + single astra entry. Tool-surface change still needs MCP_PATH rotate; box syncs Grok Build; Zavdi handles cloud reconnects (Grok at least).
 10. **Claude transcript memory-harvest: OFF permanently** (disabled early 2026-08; setup must not re-arm; cleanup archive/delete re-disable). Do not relitigate; in-session `memory_*` only for durable high-conf facts. No auto-harvest of design-chat.
 11. **Incoming messages are casual-asap** (2026-08-16): read immediately, **finish current work**, then take the new request. Do not drop in-progress work unless he says stop / now / urgent. TUI: `[ui].follow_up_behavior = "queue"` in `~/.grok/config.toml` (plain Enter queues; send-now is the interrupt).
 12. **Hermes Photon parks substantive work** (2026-08-19): code/config/templates/bot changes → `standing-todos.sh` for Grok Build. Do not investigate to see if it is "small." Phone-ok: canned $0 intercept (budget / todo add / list), else one known CLI or Astra capture. Override only if he says do it here / spend the credits. Detail in `~/.hermes/SOUL.md`.
+13. **grok.com custom instructions stay minimal** (2026-09-17): do not propose adding them. Astra SSOT for box/co-admin facts lives in `memory_*` tool descriptions; he will not maintain a parallel instruction block. Same pass: **no** Grok Build Mechanism B harvester, **no** grok.com Astra-digest automation. Mechanism A (in-session `memory_*`) only. Reopen only if he says so.
+14. **“Tomorrow morning” date line is 06:00 PT, not midnight** (2026-09-20): if he hasn’t slept yet, “tomorrow morning” / “tomorrow 930” means **later this calendar morning**. Until **06:00 PT**, schedule Hermes/Photon/cron one-shots onto **today’s** morning, not the next calendar date. After 06:00 PT, tomorrow is the next calendar day.
+15. **Astra vs grok.com memory** (2026-09-20): monthly **sort** is operator-run in grok chat (`memory_retrieve kb-sync-watermarks`, then follow it). grok.com Memories = small personal residue; Astra = box/co-admin SSOT. Sort assigns each item to one store and **deletes the other copy** — do **not** copy Astra into grok.com. Do not upsert standing-todos into the KB. Grok Build is the Astra-side archive surface. Detail: [[kb-sync-watermarks]].
 
 ---
 
@@ -98,13 +101,14 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 - **No daily digests.** Coaching = hardcap / firm pace / rare anomalies, plus one EOM leftover congrats.
 - **No weekly AI usage emails** (paused 2026-09-06).
 - **Soft pace: culled** (2026-08-24). Firm pace superseded it.
-- **Firm pace:** committed% of hardcap **>** month% elapsed (e.g. 10% through month & >10% of hardcap) → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**). **Trigger stays calendar.** Retarget to canned **Overall** is **pinned to discuss** once NorCal Plaid is solid (no multi-day `LOGIN_REQUIRED` holes) — not auto-ship, not “wait for a later go.”
+- **Firm pace:** committed% of hardcap **>** month% elapsed (e.g. 10% through month & >10% of hardcap) → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**). **Trigger stays calendar.** Retarget to canned **Overall** is **skipped** (2026-09-20) — do not discuss or ship.
 - **Breach:** spend ≥100% hardcap → **pri 2** for first crossing *and* further txns while over (same dump collapse). Copy: `{N days above}` (overage/daily allotment, not `days_off_pace`) + `{P}% of cap` (not `$X vs $Y`). **No merchant names** on pace/breach (anomaly still names the merchant). One Pushover per dump — Plaid `DEFAULT_UPDATE`+`SYNC_UPDATES_AVAILABLE` must not double-page.
 - **Anomalies:** **$100 over baseline OR 4× baseline** (ratio path only if day total ≥ **$100**); once/merchant/month; pri 0.
 - **EOM leftover:** 1st ~09:00 PT; leftover = prior-month **calendar STS minus pending spend**; copy `{Month} leftover is $X saved, well done!`; pri 0; skip if ≤ $0; no auto-transfer.
 - **Near-instant:** Plaid webhooks + 15m poll → sync → auto-review → alerts.
-- **Canned Overall days** = mean of calendar and rolling **pace-days** (ceil fraction). Rolling’s printed line is always pace, even when that window is over cap. Calendar over-cap line still uses overage (matches breach Push). Leftover $ is the **average** of calendar and rolling STS, copy **`$N left`** not `safe $N`.
-- **Sync-break:** **Pushover immediately** (pri 1) with a 24h Funnel re-login URL. **No email.** 6h suppress after a successful update-mode Link.
+- **Canned Overall days** = mean of calendar and rolling **pace-days** (ceil fraction). Rolling’s printed line is always pace, even when that window is over cap. Calendar over-cap line still uses overage (matches breach Push). Leftover $ is the **average** of calendar and rolling STS, copy **`$N left`** not `safe $N`. Cash-vs-bills line only if unpaid **material** dues (≥ half daily allotment) starting **3** days before due **and staying until the named post clears** (40d grace cap) **and** cash < **2×** those dues (3d 200% both, stay-alive 2026-09-20). Annuals in that window count at the **cash pull** (e.g. $280), not 1/12. Cash-vs-bills **Pushover on** (`cash_bills_notify: true`, 2026-09-09): once/day pri 1 when **any CU checking** is under **2×** that CU’s material dues in that window. Bills default to NorCal. Tag `institution: alliant` from the closed port list in the Alliant ACH/card fact (don’t wait for the first Alliant post). New/moved subs: **Alliant debit**, not PayPal-on-Alliant-ACH, unless PayPal is the native rail (Apple $0.99 — PayPal ACH from Alliant only if PayPal is empty). Empty Alliant with no Alliant bills stays silent. Combined cash is not the trigger. Firm-pace/breach Push stays **calendar** (2026-09-09; Overall retarget skipped 2026-09-20). `names_health` auto-skips the MasterMoney nudge when live Plaid names or Alliant named spend recover; it does **not** flip calendar notify, statement SSOT, or cash source. DD is on Alliant (2026-09-20).
+- **NorCal register SSOT = monthly statements** (PDF/xlsx). Plaid is the live fill-in (PayPal + days after the last statement) and is **superseded** on (date, amount) overlap. Budget numbers are only as complete as the last imported statement for posted CU activity.
+- **Sync-break:** **Pushover immediately** (pri 1) with a 24h Funnel re-login URL. **No email.** 6h suppress after a successful update-mode Link. If the URL expires unused and the Item is still broken, **mint a new 24h URL and Pushover again** (same episode — don’t wait for a fresh break).
 - **Transfers ignored:** PayPal↔CU and CU savings/MM↔checking (name/category heuristics).
 - Twilio optional override only; A2P deferred.
 
@@ -148,13 +152,13 @@ Status and todos are **not** each other. Status is recomputed; todos are curated
 
 Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, git-access-check, grok-journal, astra-commit/push, etc. (Claude journal oauth-watch + memory-harvest: off / self-destruct schedule.)
 
-**Hermes-finance-watch** exists as agent-job but **no timer yet** — not in the “important stuff already covered” set until armed.
+**budget-bot-watch** exists as agent-job but **no timer yet** — not in the “important stuff already covered” set until armed.
 
 ---
 
 ## 7. Budget Bot rails (budget co-pilot)
 
-**Name:** **Budget Bot** (user-facing). Code/state slug may still be `hermes-finance` — see memory `budget-bot-naming`.
+**Name:** **Budget Bot.** Package/CLI `budget_bot`; state `/etc/budget-bot.env` + `~/.local/state/budget-bot/`. Old `hermes-finance` paths are aliases.
 
 - Hardcap **$1050 / calendar month** PT (rolling 30d **pinned later**). Daily allotment is hardcap / days_in_period (calendar month length, or 30 on rolling) — not a fixed $35.
 - Goal: **coaching + behavioral optimization**, not accounting export.
@@ -162,7 +166,8 @@ Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, g
 - New recurring proposals: **on-box only** (status/todos), no push.
 - Pace v1: raw hardcap vs spend (**no** remaining-bills in pace); bills reservation in safe-to-spend v1; pace+bills later v2/3.
 - Recurring rule: must appear in **current and previous calendar month** or drop.
-- SuperGrok: treat **$30** as monthly sub; **$5 / $15** usage as discretionary spend when charged.
+- SuperGrok: treat **$30** as monthly sub; **$5 / $15** usage as discretionary spend when charged. Grok + US Mobile **`auto_annual`**: a ~10× monthly post ($300 / $280) flips the bill to annual cadence the same evaluate (1/12 leftover, cash-vs-bills uses the lump).
+- Known annual bills (NSSI **$102**, CSAA Renters **$115.73**): leftover **1/12** every month; charge month counts 1/12 toward hardcap (timing spread, not a category carve-out); cash-vs-bills uses the **cash pull** in the 3d window.
 - Runtime: **cron + rules**, not an always-on “Hermes Agent” process (see design notes).
 
 ---
@@ -188,10 +193,10 @@ KB is still shared (Claude Code + Grok). Don’t fork the store; extend it.
 
 ---
 
-## 10. Hermes data + backup (short)
+## 10. Budget Bot data + backup (short)
 
 - Live txns/tokens: **local only**, never git.
-- Hermes **state does not auto-regenerate** on a new box — needs re-import and/or Plaid re-Link + secrets re-paste.
+- Budget Bot **state does not auto-regenerate** on a new box — needs re-import and/or Plaid re-Link + secrets re-paste.
 - Standing todos: JSON on box (not memory SSOT). Optional private backup of memory KB + todos is smart; not the same as astra-config auto-push.
 
 ---

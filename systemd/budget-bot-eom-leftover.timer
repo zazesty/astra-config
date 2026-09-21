@@ -5,7 +5,8 @@ Description=1st of month 09:00 PT — Budget Bot leftover congrats
 OnCalendar=*-*-01 09:00:00
 Persistent=true
 AccuracySec=1min
-Unit=hermes-eom-leftover.service
+Unit=budget-bot-eom-leftover.service
 
 [Install]
 WantedBy=timers.target
+Alias=hermes-eom-leftover.timer

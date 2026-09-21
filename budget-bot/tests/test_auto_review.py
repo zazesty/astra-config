@@ -10,10 +10,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.auto_review import apply_review, rule_review
-from hermes_finance.import_xlsx import extract_mcc, guess_merchant
-from hermes_finance.models import Transaction
-from hermes_finance.rules import counts_as_spend
+from budget_bot.auto_review import apply_review, rule_review
+from budget_bot.import_xlsx import extract_mcc, guess_merchant
+from budget_bot.models import Transaction
+from budget_bot.rules import counts_as_spend
 
 
 class TestMerchantParse(unittest.TestCase):
@@ -195,7 +195,7 @@ class TestRules(unittest.TestCase):
         Unique post-statement MasterMoney should stay live; same date+amount
         as a PDF/xlsx row must be excluded again after persist.
         """
-        from hermes_finance.dedupe import apply_import_plaid_dedupe
+        from budget_bot.dedupe import apply_import_plaid_dedupe
 
         unique = Transaction(
             id="plaid-unique",

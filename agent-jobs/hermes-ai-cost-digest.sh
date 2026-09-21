@@ -2,8 +2,9 @@
 # Weekly AI *usage* digest — consumption, not prepaid reloads.
 # Email via Resend. Fail-open. Stdout is archived locally (no Photon).
 set -uo pipefail
-export HERMES_FINANCE_STATE="${HERMES_FINANCE_STATE:-$HOME/.local/state/hermes-finance}"
-export PYTHONPATH="/root/hermes-finance${PYTHONPATH:+:$PYTHONPATH}"
+export BUDGET_BOT_STATE="${BUDGET_BOT_STATE:-${HERMES_FINANCE_STATE:-$HOME/.local/state/budget-bot}}"
+export HERMES_FINANCE_STATE="$BUDGET_BOT_STATE"
+export PYTHONPATH="/root/budget-bot${PYTHONPATH:+:$PYTHONPATH}"
 BODY="$(python3 /root/astra-config/scripts/ai_usage_digest.py)" || BODY=""
 SUBJECT="Budget Bot: weekly AI usage $(date +%Y-%m-%d)"
 if [ -z "${BODY// }" ]; then

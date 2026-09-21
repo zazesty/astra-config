@@ -1,6 +1,6 @@
 # Budget Bot — pinned decisions
 
-> **Product name: Budget Bot.** Package/path may still say `hermes-finance` (legacy slug).
+> **Product name: Budget Bot.** Package is `budget_bot`; `/root/hermes-finance` and `python3 -m hermes_finance` are compatibility aliases.
 
 ## Locked (do not re-litigate without user)
 
@@ -14,7 +14,7 @@
 
 
 | Remaining bills | **Reserve until matching post** in period; `day_of_month` = due/overdue coaching only (does not drop unpaid past-due) | 2026-08-03 |
-| Recurring auto-detect | Must appear in **current + previous calendar month** or drop (cancel → immediate drop). **Shipped** `hermes_finance recurring` → `recurring.json` | 2026-07-26/27 |
+| Recurring auto-detect | Must appear in **current + previous calendar month** or drop (cancel → immediate drop). **Shipped** `budget_bot recurring` → `recurring.json` | 2026-07-26/27 |
 | Push notify | Firm pace + hardcap breach + rare anomalies **plus** one EOM leftover congrats (pri 0). Soft near-pace **culled**. Not mail; not ntfy; new-recurring = on-box only | 2026-08-24 |
 | EOM leftover | Calendar STS of **prior** month **minus pending spend**; Pushover `Budget Bot: you saved $X` / `{Month} leftover is $X saved, well done!`; 1st 09:00 PT; skip if leftover ≤ 0; no auto-transfer | 2026-08-24 |
 | Daily digests | **OFF** | 2026-08-02 |
@@ -40,7 +40,7 @@
 | Merchants in coaching | **Yes** — shoulder-taps name merchants | 2026-07-21 |
 | Institution order | **PayPal v1** → **1st Nor Cal v1.5/2.0** (on Plaid; deferred by choice) | 2026-07-21 |
 | Runtime | No Hermes SaaS sub; box jobs + Grok Build as co-admin builder | 2026-07-21 |
-| Package home | `/root/hermes-finance` (Python CLI) + astra-config agent-job | 2026-07-21 (pinned tonight) |
+| Package home | `/root/budget-bot` (Python CLI `budget_bot`) + astra-config agent-job | 2026-09-20 (was `/root/hermes-finance`) |
 | Amount sign | **Positive cents = spend/outflow** toward hardcap. **Refunds net spend** (credit vouchers / merchant returns). True income (sales, payroll, checks) does not. | 2026-08-20 |
 | Pending txns | **Excluded** from hardcap until posted | 2026-07-21 (pinned tonight) |
 | Transfers | **Excluded** (`transfer: true`) | 2026-07-21 (pinned tonight) |
@@ -53,7 +53,7 @@
 |------|--------|
 | Firm-pace Push → Overall | **Skipped 2026-09-20.** Trigger stays calendar. Do not discuss or ship. |
 | ~~Bill lead-time window (pace v2.1)~~ | **Moved to Locked 2026-08-12** — was listed deferred after the code already shipped. |
-| Plaid Trial keys | User creates account; store in `/etc/hermes-finance.env` |
+| Plaid Trial keys | User creates account; store in `/etc/budget-bot.env` |
 | PayPal Link OAuth | User browser session; first live Item |
 | 1st Nor Cal Link | After PayPal proven |
 | Live email on | Flip `notify_enabled` when digests look right |
@@ -78,7 +78,7 @@
 | Decision | Value |
 |----------|--------|
 | Bank/txn data → GitHub | **NEVER** (txns, xlsx, tokens, live digests, filled env) |
-| Runtime home | `~/.local/state/hermes-finance/` mode 700/600 only |
+| Runtime home | `~/.local/state/budget-bot/` mode 700/600 only |
 | Code publish | code + synthetic fixtures only |
 
 ## Not chosen (explicit non-decisions)

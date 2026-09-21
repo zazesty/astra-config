@@ -13,12 +13,12 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.buy_queue import (
+from budget_bot.buy_queue import (
     apply_buy_queue_pulls,
     persist_buy_queue_pulls,
     proposed_buy_queue_pulls,
 )
-from hermes_finance.models import Transaction
+from budget_bot.models import Transaction
 
 
 QUEUE = [
@@ -133,9 +133,9 @@ class TestPersist(unittest.TestCase):
             root = Path(td)
             cfg = {"buy_queue": list(QUEUE), "hardcap_cents": 105000}
             with (
-                patch("hermes_finance.buy_queue.state_dir", lambda: root),
-                patch("hermes_finance.config.state_dir", lambda: root),
-                patch("hermes_finance.config.config_path", lambda: root / "config.json"),
+                patch("budget_bot.buy_queue.state_dir", lambda: root),
+                patch("budget_bot.config.state_dir", lambda: root),
+                patch("budget_bot.config.config_path", lambda: root / "config.json"),
             ):
                 pulls = persist_buy_queue_pulls(cfg, [_t()])
                 self.assertEqual([p["id"] for p in pulls], ["honda-oil"])

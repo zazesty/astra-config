@@ -12,8 +12,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.models import Transaction
-from hermes_finance import store
+from budget_bot.models import Transaction
+from budget_bot import store
 
 
 class TestExcludeSurvivesUpsert(unittest.TestCase):

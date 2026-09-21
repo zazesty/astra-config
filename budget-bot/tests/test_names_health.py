@@ -11,8 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.models import Transaction
-from hermes_finance.names_health import assess_names_health
+from budget_bot.models import Transaction
+from budget_bot.names_health import assess_names_health
 
 
 def _t(i: str, d: str, name: str, inst: str, cents: int = 1000, **kw) -> Transaction:

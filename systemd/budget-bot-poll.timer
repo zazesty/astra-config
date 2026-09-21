@@ -6,7 +6,8 @@ OnBootSec=3min
 OnUnitActiveSec=15min
 AccuracySec=1min
 Persistent=true
-Unit=hermes-finance-poll.service
+Unit=budget-bot-poll.service
 
 [Install]
 WantedBy=timers.target
+Alias=hermes-finance-poll.timer

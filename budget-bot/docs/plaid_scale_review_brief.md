@@ -9,7 +9,7 @@
 
 Write **exactly** this file when you finish (or when budget runs low — partial OK):
 
-**`/root/hermes-finance/docs/plaid_scale_review_results.md`**
+**`/root/budget-bot/docs/plaid_scale_review_results.md`**
 
 Grok Build will read only that path to rework/fix. Do not bury findings only in chat.
 
@@ -42,21 +42,21 @@ Second pair of eyes on the **100× amount-scale path** for Plaid Items (NorCal C
 
 | Fact | Value |
 |------|--------|
-| Repo | `/root/hermes-finance` |
-| State dir | `~/.local/state/hermes-finance/` (mode 700; **never git**) |
+| Repo | `/root/budget-bot` |
+| State dir | `~/.local/state/budget-bot/` (mode 700; **never git**) |
 | Item | 1st NorCal — quarantine on; `amount_unit` path ready if needed |
-| Commands | `cd /root/hermes-finance && python3 -m hermes_finance <cmd>` |
+| Commands | `cd /root/budget-bot && python3 -m budget_bot <cmd>` |
 | Ops rails | `/root/OPERATOR.md` § bank data never GitHub; Hermes local-only |
 
 ## Files to review (tight set)
 
 | File | Why |
 |------|-----|
-| `hermes_finance/plaid_sync.py` | Core: `plaid_txn_to_hermes` amount_unit, `assess_scale`, `preview_item`, quarantine skip in `sync_item` / `sync_all_items`, `set_item_flags` |
-| `hermes_finance/run.py` | CLI: `plaid-preview`, `plaid-promote`, `plaid-quarantine`, `plaid-sync --force` |
-| `hermes_finance/plaid_webhook.py` | Must **not** force-sync quarantined Items |
-| `hermes_finance/models.py` | `amount_cents` contract |
-| `agent-jobs/hermes-finance-poll.sh` + `hermes-norcal-quarantine-recheck.sh` (astra-config) | Ops path respects quarantine |
+| `budget_bot/plaid_sync.py` | Core: `plaid_txn_to_hermes` amount_unit, `assess_scale`, `preview_item`, quarantine skip in `sync_item` / `sync_all_items`, `set_item_flags` |
+| `budget_bot/run.py` | CLI: `plaid-preview`, `plaid-promote`, `plaid-quarantine`, `plaid-sync --force` |
+| `budget_bot/plaid_webhook.py` | Must **not** force-sync quarantined Items |
+| `budget_bot/models.py` | `amount_cents` contract |
+| `agent-jobs/budget-bot-poll.sh` + `budget-bot-norcal-quarantine-recheck.sh` (astra-config) | Ops path respects quarantine |
 | `tests/` | **Gap:** no dedicated scale / amount_unit tests today |
 
 ## Correctness contracts (check these)
@@ -90,7 +90,7 @@ Second pair of eyes on the **100× amount-scale path** for Plaid Items (NorCal C
 ## How to run tests
 
 ```bash
-cd /root/hermes-finance
+cd /root/budget-bot
 python3 -m pytest tests/ -q
 # after adding scale tests:
 python3 -m pytest tests/test_plaid_scale.py -q
@@ -99,8 +99,8 @@ python3 -m pytest tests/test_plaid_scale.py -q
 Preview (read-only-ish; may hit Plaid API — OK; must not write txns):
 
 ```bash
-python3 -m hermes_finance plaid-status
-python3 -m hermes_finance plaid-preview --item-id <from status>
+python3 -m budget_bot plaid-status
+python3 -m budget_bot plaid-preview --item-id <from status>
 ```
 
 ## Out of scope
@@ -112,7 +112,7 @@ python3 -m hermes_finance plaid-preview --item-id <from status>
 
 ## When done
 
-1. **Write** `/root/hermes-finance/docs/plaid_scale_review_results.md` (required).
+1. **Write** `/root/budget-bot/docs/plaid_scale_review_results.md` (required).
 2. Update this file’s top **Status** → `reviewed` + date + short outcome.
 3. One-line pointer in `docs/session_next.md` → results path.
 4. Tell Zavdi: promote only after PRODUCT_READY + preview verdict with real txns.

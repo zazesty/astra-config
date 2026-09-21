@@ -27,7 +27,7 @@ for k in PLAID_CLIENT_ID PLAID_SECRET PLAID_SECRET_SANDBOX PLAID_ENV \
   PLAID_WEBHOOK_SECRET PLAID_REDIRECT_URI \
   PUSHOVER_TOKEN PUSHOVER_USER \
   TWILIO_ACCOUNT_SID TWILIO_AUTH_TOKEN TWILIO_FROM TWILIO_TO; do
-  presence /etc/hermes-finance.env "$k"
+  presence /etc/budget-bot.env "$k"
 done
 presence /root/.hermes/.env OPENROUTER_API_KEY
 presence /root/.hermes/.env XAI_API_KEY
@@ -35,5 +35,7 @@ file_presence /root/.config/journal-trigger/endpoint
 file_presence /root/.config/journal-trigger/secret
 file_presence /root/.git-credentials
 file_presence /root/.new-mcp-url
-file_presence /root/.local/state/hermes-finance/config.json
+file_presence /root/.local/state/budget-bot/config.json
+file_presence /etc/health-bot.env
+file_presence /root/.local/state/health-bot/last_callback.json
 echo "# full map: $HOME/.local/state/astra/env-map.md (private, not git)"

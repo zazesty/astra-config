@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Minimal IFX cycle log form — 127.0.0.1 only; secret path via Funnel.
 
-State: ~/.local/state/health/ifx-cycle/
+State: ~/.local/state/health-bot/ifx-cycle/
   config.json  — last_infusion_date, form_secret
   log.jsonl    — symptom rows
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
-STATE = Path.home() / ".local/state" / "health" / "ifx-cycle"
+STATE = Path.home() / ".local/state" / "health-bot" / "ifx-cycle"
 CFG = STATE / "config.json"
 JSONL = STATE / "log.jsonl"
 CSV = STATE / "log.csv"

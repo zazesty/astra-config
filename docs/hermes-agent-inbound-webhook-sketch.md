@@ -1,6 +1,6 @@
 # Sketch: inbound wake (Twilio SMS → box) for a future Hermes **Agent**
 
-> **Not Hermes-Finance.** Finance = rules/cron. This is a hypothetical always-addressable co-admin agent.
+> **Not Budget Bot.** Finance = rules/cron. This is a hypothetical always-addressable co-admin agent.
 
 ## Goal
 

@@ -14,8 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.rules import BudgetSnapshot
-from hermes_finance.store import (
+from budget_bot.rules import BudgetSnapshot
+from budget_bot.store import (
     compact_period_snap,
     load_period_series,
     record_period_series,
@@ -47,8 +47,8 @@ def _snap(*, spend: int, reserved: int, kind: str, as_of: date) -> BudgetSnapsho
 class TestPeriodSeries(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
-        os.environ["HERMES_FINANCE_STATE"] = self.tmp.name
-        import hermes_finance.config as cfg
+        os.environ["BUDGET_BOT_STATE"] = self.tmp.name
+        import budget_bot.config as cfg
 
         cfg.DEFAULT_STATE_DIR = Path(self.tmp.name)
 

@@ -1,0 +1,20 @@
+[Unit]
+Description=Budget Bot Plaid webhook receiver (near-instant sync)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/budget-bot
+Environment=BUDGET_BOT_STATE=/root/.local/state/budget-bot
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/budget-bot.env
+ExecStartPre=-/bin/bash /root/astra-config/scripts/budget-bot-plaid-webhook-funnel.sh
+ExecStart=/usr/bin/python3 -m budget_bot plaid-webhook-serve --no-funnel
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+Alias=hermes-plaid-webhook.service

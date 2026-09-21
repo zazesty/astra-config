@@ -13,9 +13,9 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.models import Transaction
-from hermes_finance.plaid_client import transactions_sync
-from hermes_finance.plaid_sync import (
+from budget_bot.models import Transaction
+from budget_bot.plaid_client import transactions_sync
+from budget_bot.plaid_sync import (
     normalize_amount_unit,
     plaid_amount_to_cents,
     plaid_txn_to_hermes,
@@ -24,7 +24,7 @@ from hermes_finance.plaid_sync import (
     sync_item,
     _removed_to_hermes_ids,
 )
-from hermes_finance import store
+from budget_bot import store
 
 
 class TestAmountUnit(unittest.TestCase):
@@ -34,7 +34,7 @@ class TestAmountUnit(unittest.TestCase):
         self.assertEqual(plaid_amount_to_cents(5.0, "dollars"), 500)
 
     def test_norcal_balance_unit_detects_100x_and_fix(self):
-        from hermes_finance.plaid_sync import norcal_balance_unit
+        from budget_bot.plaid_sync import norcal_balance_unit
 
         still = [
             {
@@ -114,7 +114,7 @@ class TestRemovedIds(unittest.TestCase):
 class TestStoreRemove(unittest.TestCase):
     def test_remove_txns(self):
         with tempfile.TemporaryDirectory() as td:
-            with patch.dict("os.environ", {"HERMES_FINANCE_STATE": td}):
+            with patch.dict("os.environ", {"BUDGET_BOT_STATE": td}):
                 # re-import path uses env at call time via state_dir
                 a = Transaction(id="plaid-1", date="2026-08-01", amount_cents=100, name="a")
                 b = Transaction(id="plaid-2", date="2026-08-01", amount_cents=200, name="b")
@@ -129,7 +129,7 @@ class TestQuarantineAndCursor(unittest.TestCase):
     def setUp(self):
         self._td = tempfile.TemporaryDirectory()
         self.state = self._td.name
-        self.env = patch.dict("os.environ", {"HERMES_FINANCE_STATE": self.state})
+        self.env = patch.dict("os.environ", {"BUDGET_BOT_STATE": self.state})
         self.env.start()
         tokens = Path(self.state) / "tokens"
         tokens.mkdir(parents=True, exist_ok=True)
@@ -155,7 +155,7 @@ class TestQuarantineAndCursor(unittest.TestCase):
         for name in ("tok-ok.json", "tok-q.json"):
             (tokens / name).write_text(json.dumps({"access_token": "access-test"}) + "\n")
         self._accounts = patch(
-            "hermes_finance.plaid_sync.accounts_get",
+            "budget_bot.plaid_sync.accounts_get",
             return_value={"accounts": []},
         )
         self._accounts.start()
@@ -166,13 +166,13 @@ class TestQuarantineAndCursor(unittest.TestCase):
         self._td.cleanup()
 
     def test_sync_item_skips_quarantine_without_force(self):
-        with patch("hermes_finance.plaid_sync.transactions_sync") as ts:
+        with patch("budget_bot.plaid_sync.transactions_sync") as ts:
             summary = sync_item("item-q", force=False)
             self.assertTrue(summary.get("skipped_quarantine"))
             ts.assert_not_called()
 
     def test_sync_all_skips_quarantine_by_default(self):
-        with patch("hermes_finance.plaid_sync.transactions_sync") as ts:
+        with patch("budget_bot.plaid_sync.transactions_sync") as ts:
             ts.return_value = {
                 "added": [],
                 "modified": [],
@@ -196,7 +196,7 @@ class TestQuarantineAndCursor(unittest.TestCase):
             raise RuntimeError("store fail")
 
         with patch(
-            "hermes_finance.plaid_sync.transactions_sync",
+            "budget_bot.plaid_sync.transactions_sync",
             return_value={
                 "added": [
                     {
@@ -212,7 +212,7 @@ class TestQuarantineAndCursor(unittest.TestCase):
                 "has_more": False,
             },
         ):
-            with patch("hermes_finance.plaid_sync.upsert_txns", side_effect=boom_upsert):
+            with patch("budget_bot.plaid_sync.upsert_txns", side_effect=boom_upsert):
                 with self.assertRaises(RuntimeError):
                     sync_item("item-ok", force=False)
         self.assertFalse(
@@ -233,7 +233,7 @@ class TestQuarantineAndCursor(unittest.TestCase):
             ]
         )
         with patch(
-            "hermes_finance.plaid_sync.transactions_sync",
+            "budget_bot.plaid_sync.transactions_sync",
             return_value={
                 "added": [],
                 "modified": [],
@@ -261,7 +261,7 @@ class TestQuarantineAndCursor(unittest.TestCase):
 
     def test_transactions_sync_omits_empty_cursor(self):
         """Client omits falsy cursor from body (preview start_cursor='')."""
-        with patch("hermes_finance.plaid_client.plaid_post") as post:
+        with patch("budget_bot.plaid_client.plaid_post") as post:
             post.return_value = {"added": [], "has_more": False, "next_cursor": ""}
             transactions_sync("tok", "")
             args, _kwargs = post.call_args
@@ -271,10 +271,10 @@ class TestQuarantineAndCursor(unittest.TestCase):
 
 class TestAssessScaleAlliant(unittest.TestCase):
     def test_alliant_does_not_borrow_norcal_baseline(self):
-        from hermes_finance.plaid_sync import assess_scale
+        from budget_bot.plaid_sync import assess_scale
 
         with tempfile.TemporaryDirectory() as td:
-            with patch.dict("os.environ", {"HERMES_FINANCE_STATE": td}):
+            with patch.dict("os.environ", {"BUDGET_BOT_STATE": td}):
                 store.save_txns(
                     [
                         Transaction(
@@ -305,9 +305,9 @@ class TestAssessScaleAlliant(unittest.TestCase):
 class TestCmdForceFootgun(unittest.TestCase):
     def test_force_without_item_does_not_include_quarantine(self):
         import argparse
-        from hermes_finance.run import cmd_plaid_sync
+        from budget_bot.run import cmd_plaid_sync
 
-        with patch("hermes_finance.plaid_sync.sync_all_items") as sa:
+        with patch("budget_bot.plaid_sync.sync_all_items") as sa:
             sa.return_value = {"items": [], "skipped_quarantine": []}
             args = argparse.Namespace(force=True, item_id=None, include_quarantine=False)
             with patch("builtins.print"):

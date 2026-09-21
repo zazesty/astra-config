@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.balances import (
+from budget_bot.balances import (
     cash_on_hand_cents,
     checking_cash_by_cu,
     is_spendable_cash,
@@ -91,7 +91,7 @@ class TestCashOnHand(unittest.TestCase):
         )
 
     def test_alliant_checking_is_not_norcal_cash(self):
-        from hermes_finance.balances import is_norcal_institution, is_norcal_item
+        from budget_bot.balances import is_norcal_institution, is_norcal_item
 
         alliant = {
             "institution": "alliant-credit-union",

@@ -254,7 +254,7 @@ def page_html(link_token: str, mount: str, *, heading: str, blurb: str, button: 
     }}
     const params = new URLSearchParams(location.search);
     const returning = params.has('oauth_state_id');
-    const storageKey = 'hermes_plaid_link_token';
+    const storageKey = 'budget_bot_plaid_link_token';
     try {{ if ({token_js}) sessionStorage.setItem(storageKey, {token_js}); }} catch (e) {{}}
     const token = {token_js} || (function(){{
       try {{ return sessionStorage.getItem(storageKey); }} catch (e) {{ return null; }}
@@ -389,7 +389,7 @@ def run_link_server(
 ) -> dict[str, Any]:
     if mount is None:
         mount = redirect_mount(redirect_uri or configured_redirect_uri()) or (
-            "/hermes-link-" + secrets.token_hex(8)
+            "/budget-bot-link-" + secrets.token_hex(8)
         )
     if not mount.startswith("/"):
         mount = "/" + mount
@@ -499,7 +499,7 @@ def mint_repair_link(
     sessions: dict[str, Any] = data.setdefault("sessions", {})
     now = datetime.now(timezone.utc)
     row = sessions.get(item_id) or {}
-    mount = str(row.get("mount") or ("/hermes-repair-" + secrets.token_hex(8)))
+    mount = str(row.get("mount") or ("/budget-bot-repair-" + secrets.token_hex(8)))
     if not mount.startswith("/"):
         mount = "/" + mount
     expires = now + timedelta(hours=max(1, int(ttl_hours)))

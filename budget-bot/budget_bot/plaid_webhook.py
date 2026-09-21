@@ -20,7 +20,7 @@ from typing import Any, Iterator
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
-from .config import load_config, persist_bill_rewrites, state_dir
+from .config import default_env_file, live_flag, load_config, persist_bill_rewrites, state_dir
 from .notify import PUSH_KINDS, send_alert, send_alerts
 from .plaid_client import item_webhook_update, load_plaid_env
 from .plaid_sync import list_items, load_access_token, sync_all_items, sync_item
@@ -29,7 +29,6 @@ from .store import load_balances, load_last_run, load_txns, record_period_series
 
 DEFAULT_PORT = 8766
 FUNNEL_HOST = "zaz-astra.tail5d74e1.ts.net"
-ENV_FILE = Path(os.environ.get("HERMES_PLAID_ENV", "/etc/hermes-finance.env"))
 
 # TRANSACTIONS codes that mean "pull sync now".
 # SYNC_UPDATES_AVAILABLE is the /transactions/sync webhook. DEFAULT_UPDATE /
@@ -68,12 +67,13 @@ def ensure_webhook_secret() -> str:
     if sec:
         return sec
     sec = secrets.token_hex(16)
-    # append presence-only style secret to hermes env
+    # append presence-only style secret to budget-bot env
+    env_file = default_env_file()
     try:
-        with ENV_FILE.open("a") as f:
+        with env_file.open("a") as f:
             f.write(f"\n# Budget Bot Plaid webhook path secret (Funnel path credential)\n")
             f.write(f"PLAID_WEBHOOK_SECRET={sec}\n")
-        os.chmod(ENV_FILE, 0o600)
+        os.chmod(env_file, 0o600)
     except OSError as e:
         whlog(f"warn could not persist PLAID_WEBHOOK_SECRET: {e}")
     os.environ["PLAID_WEBHOOK_SECRET"] = sec
@@ -170,7 +170,7 @@ def _process_update_unlocked(
     *, item_id: str | None = None, source: str = "webhook"
 ) -> dict[str, Any]:
     cfg = load_config()
-    live = bool(cfg.get("notify_enabled")) or os.environ.get("HERMES_LIVE", "0") == "1"
+    live = bool(cfg.get("notify_enabled")) or live_flag()
     dry_run = not live
 
     if item_id:
@@ -340,7 +340,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path, mount = self._paths()
         if path in (mount + "/health", "/health", mount):
-            body = json.dumps({"ok": True, "service": "hermes-plaid-webhook"}).encode()
+            body = json.dumps({"ok": True, "service": "budget-bot-plaid-webhook"}).encode()
             self._send(200, body)
             return
         self._send(404, b'{"error":"not_found"}')

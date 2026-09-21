@@ -10,8 +10,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.models import AlertEvent
-from hermes_finance.notify import _push_body, coalesce_push_events
+from budget_bot.models import AlertEvent
+from budget_bot.notify import _push_body, coalesce_push_events
 
 
 def _ev(kind: str, key: str, subject: str, body: str, pri: int = 1, **payload) -> AlertEvent:
@@ -73,7 +73,7 @@ class TestCoalesce(unittest.TestCase):
 
 class TestSyncCodes(unittest.TestCase):
     def test_ignores_legacy_default_update(self):
-        from hermes_finance.plaid_webhook import SYNC_CODES
+        from budget_bot.plaid_webhook import SYNC_CODES
 
         self.assertIn("SYNC_UPDATES_AVAILABLE", SYNC_CODES)
         self.assertIn("TRANSACTIONS_REMOVED", SYNC_CODES)

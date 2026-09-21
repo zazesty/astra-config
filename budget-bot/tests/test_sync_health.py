@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.sync_health import (
+from budget_bot.sync_health import (
     ITEM_BREAK_CODES,
     append_relogin_event,
     break_email_body,
@@ -126,7 +126,7 @@ class TestCollectAndMerge(unittest.TestCase):
         import tempfile
         from unittest.mock import patch
 
-        from hermes_finance import sync_health
+        from budget_bot import sync_health
 
         with tempfile.TemporaryDirectory() as td:
             health_path = Path(td) / "sync_health.json"
@@ -186,7 +186,7 @@ class TestCollectAndMerge(unittest.TestCase):
         import tempfile
         from unittest.mock import patch
 
-        from hermes_finance import sync_health
+        from budget_bot import sync_health
 
         calls: list[str] = []
         clock = {"t": datetime(2026, 8, 25, 6, 55, 14, tzinfo=UTC)}
@@ -228,11 +228,11 @@ class TestCollectAndMerge(unittest.TestCase):
                 patch.object(sync_health, "send_alert", side_effect=_send),
                 patch.object(sync_health, "load_config", return_value=cfg),
                 patch(
-                    "hermes_finance.plaid_sync.item_repair_grace_active",
+                    "budget_bot.plaid_sync.item_repair_grace_active",
                     return_value=False,
                 ),
                 patch(
-                    "hermes_finance.plaid_link_server.mint_repair_link",
+                    "budget_bot.plaid_link_server.mint_repair_link",
                     return_value={"public_url": "https://example.invalid/r"},
                 ),
             ):
@@ -314,7 +314,7 @@ class TestRemintPush(unittest.TestCase):
     def test_expired_link_pushes_again_same_episode(self):
         import tempfile
         from unittest.mock import patch
-        from hermes_finance import sync_health
+        from budget_bot import sync_health
 
         calls: list[str] = []
         clock = {"t": datetime(2026, 8, 30, 12, 26, 52, tzinfo=UTC)}
@@ -360,11 +360,11 @@ class TestRemintPush(unittest.TestCase):
                 patch.object(sync_health, "send_alert", side_effect=_send),
                 patch.object(sync_health, "load_config", return_value=cfg),
                 patch(
-                    "hermes_finance.plaid_sync.item_repair_grace_active",
+                    "budget_bot.plaid_sync.item_repair_grace_active",
                     return_value=False,
                 ),
                 patch(
-                    "hermes_finance.plaid_link_server.mint_repair_link",
+                    "budget_bot.plaid_link_server.mint_repair_link",
                     side_effect=_mint,
                 ),
             ):
@@ -403,9 +403,9 @@ class TestEmailCopy(unittest.TestCase):
         with_url = break_email_body(
             "1st-northern-california-credit-union",
             err,
-            repair_url="https://example.invalid/hermes-repair-test",
+            repair_url="https://example.invalid/budget-bot-repair-test",
         )
-        self.assertIn("https://example.invalid/hermes-repair-test", with_url)
+        self.assertIn("https://example.invalid/budget-bot-repair-test", with_url)
         self.assertIn("24h", with_url)
         self.assertNotIn("Ask the box for an update-mode Link", with_url)
 
@@ -414,12 +414,12 @@ class TestEmailCopy(unittest.TestCase):
             "1st-northern-california-credit-union",
             "ITEM_LOGIN_REQUIRED",
             days=0,
-            repair_url="https://example.invalid/hermes-repair-test",
+            repair_url="https://example.invalid/budget-bot-repair-test",
         )
         self.assertEqual(
             body,
             "NorCal needs a re-login. Re-login here (link expires in 24h):\n"
-            "https://example.invalid/hermes-repair-test\n",
+            "https://example.invalid/budget-bot-repair-test\n",
         )
         self.assertNotIn("LOGIN", body)
 
@@ -434,7 +434,7 @@ class TestReloginLog(unittest.TestCase):
         import tempfile
         from unittest.mock import patch
 
-        from hermes_finance import sync_health
+        from budget_bot import sync_health
 
         with tempfile.TemporaryDirectory() as td:
             logp = Path(td) / "norcal-relogin.jsonl"
@@ -471,11 +471,11 @@ class TestReloginLog(unittest.TestCase):
                     },
                 ),
                 patch(
-                    "hermes_finance.plaid_sync.item_repair_grace_active",
+                    "budget_bot.plaid_sync.item_repair_grace_active",
                     return_value=False,
                 ),
                 patch(
-                    "hermes_finance.plaid_link_server.mint_repair_link",
+                    "budget_bot.plaid_link_server.mint_repair_link",
                     return_value={
                         "public_url": "https://example.invalid/r",
                         "expires_at": "2026-09-09T03:19:37Z",
@@ -520,11 +520,11 @@ class TestDeprecatedItem(unittest.TestCase):
         import tempfile
         from unittest.mock import patch
 
-        from hermes_finance.sync_health import DEPRECATED_ITEM_IDS, handle_item_webhook
+        from budget_bot.sync_health import DEPRECATED_ITEM_IDS, handle_item_webhook
 
         iid = next(iter(DEPRECATED_ITEM_IDS))
         with tempfile.TemporaryDirectory() as td:
-            with patch.dict("os.environ", {"HERMES_FINANCE_STATE": td}):
+            with patch.dict("os.environ", {"BUDGET_BOT_STATE": td}):
                 out = handle_item_webhook(
                     {
                         "webhook_code": "ERROR",

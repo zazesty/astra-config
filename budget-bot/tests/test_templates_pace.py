@@ -11,8 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.rules import BudgetSnapshot
-from hermes_finance.templates import (
+from budget_bot.rules import BudgetSnapshot
+from budget_bot.templates import (
     anomaly_body,
     anomaly_subject,
     budget_status_text,

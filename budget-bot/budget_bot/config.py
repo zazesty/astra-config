@@ -1,4 +1,4 @@
-"""Config load/save for Hermes-Finance."""
+"""Config load/save for Budget Bot."""
 
 from __future__ import annotations
 
@@ -8,9 +8,43 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-DEFAULT_STATE_DIR = Path(
-    os.environ.get("HERMES_FINANCE_STATE", Path.home() / ".local/state/hermes-finance")
-)
+
+def _env_first(*names: str) -> str | None:
+    for n in names:
+        v = os.environ.get(n)
+        if v:
+            return v
+    return None
+
+
+def default_state_dir() -> Path:
+    explicit = _env_first("BUDGET_BOT_STATE", "HERMES_FINANCE_STATE")
+    if explicit:
+        return Path(explicit)
+    new = Path.home() / ".local/state/budget-bot"
+    old = Path.home() / ".local/state/hermes-finance"
+    if new.exists() or not old.exists():
+        return new
+    return old
+
+
+def default_env_file() -> Path:
+    explicit = _env_first("BUDGET_BOT_ENV", "HERMES_PLAID_ENV")
+    if explicit:
+        return Path(explicit)
+    new = Path("/etc/budget-bot.env")
+    old = Path("/etc/hermes-finance.env")
+    if new.exists() or not old.exists():
+        return new
+    return old
+
+
+def live_flag() -> bool:
+    v = _env_first("BUDGET_BOT_LIVE", "HERMES_LIVE")
+    return v == "1"
+
+
+DEFAULT_STATE_DIR = default_state_dir()
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "hardcap_cents": 105_000,  # $1,050.00 monthly hardcap
@@ -78,7 +112,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 
 def state_dir() -> Path:
-    p = Path(os.environ.get("HERMES_FINANCE_STATE", DEFAULT_STATE_DIR))
+    p = default_state_dir()
     p.mkdir(parents=True, exist_ok=True)
     (p / "tokens").mkdir(exist_ok=True)
     (p / "digests").mkdir(exist_ok=True)

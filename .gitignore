@@ -15,6 +15,9 @@
 **/*transactions*.csv
 hermes-finance.env
 /etc/hermes-finance.env
+budget-bot.env
+/etc/budget-bot.env
+/etc/health-bot.env
 # synthetic fixtures are allowed
 !budget-bot/fixtures/sample_txns.json
 

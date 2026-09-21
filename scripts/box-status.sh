@@ -7,7 +7,7 @@
 #   box-status.sh --stdout  # write + compact JSON on stdout
 set -euo pipefail
 export BOX_STATUS_OUT="${BOX_STATUS_OUT:-$HOME/.local/state/astra/box-status.json}"
-export HERMES_FINANCE_STATE="${HERMES_FINANCE_STATE:-$HOME/.local/state/hermes-finance}"
+export BUDGET_BOT_STATE="${BUDGET_BOT_STATE:-${HERMES_FINANCE_STATE:-$HOME/.local/state/budget-bot}}"
 export AGENT_REPO="${AGENT_REPO:-/root/astra-config}"
 exec python3 - "$@" <<'PY'
 import json, os, shutil, socket, subprocess, sys
@@ -18,7 +18,7 @@ out_path = Path(os.environ["BOX_STATUS_OUT"])
 state = out_path.parent
 state.mkdir(parents=True, exist_ok=True)
 repo = os.environ.get("AGENT_REPO", "/root/astra-config")
-hermes_state = Path(os.environ["HERMES_FINANCE_STATE"])
+hermes_state = Path(os.environ["BUDGET_BOT_STATE"])
 agent_state = Path.home() / ".local/state/agent-jobs"
 todos_path = state / "standing-todos.json"
 env_script = state / "env-presence.sh"
@@ -151,7 +151,8 @@ doc = {
         "mem_available_kb": avail,
         "mem_used_pct": round(100 * (1 - avail / total), 1) if total else None,
     },
-    "hermes": hermes,
+    "budget_bot": hermes,
+    "hermes": hermes,  # compatibility alias
     "agent_jobs": jobs,
     "standing_todos": {
         "open_count": len(open_items),
@@ -164,6 +165,7 @@ doc = {
         "operator_md": "/root/OPERATOR.md",
         "standing_todos": str(todos_path),
         "env_map": str(state / "env-map.md"),
+        "budget_bot_state": str(hermes_state),
         "hermes_state": str(hermes_state),
         "this_file": str(out_path),
         "script": f"{repo}/scripts/box-status.sh",

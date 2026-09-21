@@ -126,7 +126,7 @@ Privacy already states: no sharing/selling of mobile numbers for third-party mar
 
 1. Save/resubmit the **same** campaign SID (`CMcae012931590a65524407a48ef94c0b3`) when possible — re-vetting fee is usually once per campaign.
 2. Wait for TCR review (sole prop: often hours–days).
-3. When **Approved**, put Twilio creds in `/etc/hermes-finance.env`:
+3. When **Approved**, put Twilio creds in `/etc/budget-bot.env`:
    ```
    TWILIO_ACCOUNT_SID=AC...
    TWILIO_AUTH_TOKEN=...

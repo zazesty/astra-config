@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for Hermes-Finance rules (no network)."""
+"""Unit tests for Budget Bot rules (no network)."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from hermes_finance.config import DEFAULT_CONFIG
-from hermes_finance.models import Transaction
-from hermes_finance.rules import (
+from budget_bot.config import DEFAULT_CONFIG
+from budget_bot.models import Transaction
+from budget_bot.rules import (
     bill_due_phase,
     bill_is_remaining,
     budget_alerts,
@@ -33,7 +33,7 @@ from hermes_finance.rules import (
     canned_cash_bills_cents,
     cash_bills_alert,
 )
-from hermes_finance.store import load_fixture
+from budget_bot.store import load_fixture
 
 FIXTURE = ROOT / "fixtures" / "sample_txns.json"
 
@@ -566,7 +566,7 @@ class TestBudget(unittest.TestCase):
         self.assertNotIn("NorCal", ev.subject)
 
     def test_active_from_skips_dues_before_start(self):
-        from hermes_finance.rules import bill_due_dates_in_range
+        from budget_bot.rules import bill_due_dates_in_range
 
         bill = {
             "name": "EFF",
@@ -622,7 +622,7 @@ class TestBudget(unittest.TestCase):
         self.assertEqual(after, 2575)
 
     def test_arrears_stack_unpaid_months(self):
-        from hermes_finance.rules import effective_bills_reserve_cents
+        from budget_bot.rules import effective_bills_reserve_cents
 
         bill = {
             "name": "CSAA",
@@ -661,7 +661,7 @@ class TestBudget(unittest.TestCase):
 
     def test_csaa_bounce_then_double_pay_and_fee(self):
         """Bounce then next autopay: 2× premium + CSAA-tacked fee — not bank NSF."""
-        from hermes_finance.rules import effective_bills_reserve_cents
+        from budget_bot.rules import effective_bills_reserve_cents
 
         bill = {
             "name": "CSAA",
@@ -758,7 +758,7 @@ class TestBudget(unittest.TestCase):
 
     def test_csaa_split_catchup_clears_this_and_next_month(self):
         """$50 + $111.86 in late July is Jul+Aug, not a dropped fee + one month."""
-        from hermes_finance.rules import effective_bills_reserve_cents
+        from budget_bot.rules import effective_bills_reserve_cents
 
         bill = {
             "name": "CSAA",
@@ -795,7 +795,7 @@ class TestBudget(unittest.TestCase):
 
     def test_csaa_split_after_regular_june_still_prepays_aug(self):
         """Regular June + $50/$111.86 split: July takes the $50, leftover prepays Aug."""
-        from hermes_finance.rules import effective_bills_reserve_cents
+        from budget_bot.rules import effective_bills_reserve_cents
 
         bill = {
             "name": "CSAA",
@@ -839,7 +839,7 @@ class TestBudget(unittest.TestCase):
 
     def test_csaa_split_after_overpay_leftover_still_uses_both_halves(self):
         """A $30 leftover from June plus $50 must not strand the $111.86 sibling."""
-        from hermes_finance.rules import effective_bills_reserve_cents
+        from budget_bot.rules import effective_bills_reserve_cents
 
         bill = {
             "name": "CSAA",
@@ -882,7 +882,7 @@ class TestBudget(unittest.TestCase):
         self.assertEqual(r, 0)
 
     def test_fuzzy_bill_clear_by_amount_near_due(self):
-        from hermes_finance.rules import bill_posted_in_period
+        from budget_bot.rules import bill_posted_in_period
 
         bill = {
             "name": "Spotify",
@@ -932,7 +932,7 @@ class TestBudget(unittest.TestCase):
 
     def test_opaque_us_mobile_two_days_early_clears(self):
         """NorCal MasterMoney $27 on the 3rd is US Mobile (due 5th)."""
-        from hermes_finance.rules import bill_posted_in_period, effective_bills_reserve_cents
+        from budget_bot.rules import bill_posted_in_period, effective_bills_reserve_cents
 
         bill = {
             "name": "US Mobile",
@@ -974,7 +974,7 @@ class TestBudget(unittest.TestCase):
 
     def test_saas_tax_inclusive_opaque_clears(self):
         """CA SaaS tax ~10%: opaque SuperGrok $33 still clears the $30 reserve."""
-        from hermes_finance.rules import (
+        from budget_bot.rules import (
             amount_matches_bill,
             bill_amount_band,
             bill_posted_in_period,
@@ -1039,7 +1039,7 @@ class TestBudget(unittest.TestCase):
 
     def test_saas_tax_does_not_steal_us_mobile(self):
         """$27 opaque on the 5th is US Mobile, not a discounted SuperGrok."""
-        from hermes_finance.rules import bill_posted_in_period, effective_bills_reserve_cents
+        from budget_bot.rules import bill_posted_in_period, effective_bills_reserve_cents
 
         grok = {
             "name": "Grok / xAI",
@@ -1096,7 +1096,7 @@ class TestBudget(unittest.TestCase):
 
     def test_named_saas_tax_inclusive_still_clears(self):
         """Name-matched SuperGrok $33 already credited in full; saas flag is extra."""
-        from hermes_finance.rules import bill_posted_in_period
+        from budget_bot.rules import bill_posted_in_period
 
         bill = {
             "name": "Grok / xAI",
@@ -1127,7 +1127,7 @@ class TestBudget(unittest.TestCase):
 
     def test_saas_reserve_follows_tax_inclusive_post(self):
         """Opaque $33 SuperGrok rewrites the $30 reserve; $15 usage does not."""
-        from hermes_finance.rules import (
+        from budget_bot.rules import (
             amount_matches_bill,
             apply_saas_reserve_updates_to_bills,
             bill_posted_in_period,
@@ -1203,7 +1203,7 @@ class TestBudget(unittest.TestCase):
         )
 
     def test_saas_reserve_ignores_unrelated_opaque(self):
-        from hermes_finance.rules import proposed_saas_reserve_updates
+        from budget_bot.rules import proposed_saas_reserve_updates
 
         grok = {
             "name": "Grok / xAI",
@@ -1226,14 +1226,14 @@ class TestBudget(unittest.TestCase):
         )
 
     def test_days_off_pace(self):
-        from hermes_finance.rules import days_off_pace
+        from budget_bot.rules import days_off_pace
 
         # day 10/30, committed half hardcap → expected day 15 → +5 days ahead
         d = days_off_pace(50_000, 100_000, days_elapsed=10, days_in_period=30)
         self.assertAlmostEqual(d, 5.0, places=2)
 
     def test_annual_bill_monthly_reserve(self):
-        from hermes_finance.rules import bill_monthly_reserve_cents, safe_to_spend_cents
+        from budget_bot.rules import bill_monthly_reserve_cents, safe_to_spend_cents
 
         self.assertEqual(
             bill_monthly_reserve_cents({"annual_cents": 120_000}),
@@ -1535,7 +1535,7 @@ class TestAnnualCadence(unittest.TestCase):
     }
 
     def test_due_only_on_anniversary(self):
-        from hermes_finance.rules import bill_due_dates_in_range
+        from budget_bot.rules import bill_due_dates_in_range
 
         dues = bill_due_dates_in_range(
             self.nssi, date(2026, 1, 1), date(2026, 12, 31)
@@ -1628,7 +1628,7 @@ class TestAnnualCadence(unittest.TestCase):
         snap = evaluate_budget(tx, cfg, as_of=date(2026, 8, 13))
         self.assertEqual(snap.spend_to_date, 625)  # 7500/12
         # $75 is not ~10× of $27, so the service bill stays monthly
-        from hermes_finance.rules import proposed_auto_annual_conversions
+        from budget_bot.rules import proposed_auto_annual_conversions
 
         self.assertEqual(
             proposed_auto_annual_conversions(
@@ -1710,7 +1710,7 @@ class TestAnnualCadence(unittest.TestCase):
         )
 
     def test_spotify_stays_monthly(self):
-        from hermes_finance.rules import bill_due_dates_in_range, bill_is_annual
+        from budget_bot.rules import bill_due_dates_in_range, bill_is_annual
 
         self.assertFalse(bill_is_annual(self.spot))
         dues = bill_due_dates_in_range(
@@ -1737,7 +1737,7 @@ class TestAnnualCadence(unittest.TestCase):
         self.assertEqual(alerts, [])
 
     def test_auto_annual_named_10x_converts_and_amortizes(self):
-        from hermes_finance.rules import (
+        from budget_bot.rules import (
             apply_auto_annual_conversions_to_bills,
             bill_is_annual,
             proposed_auto_annual_conversions,
@@ -1799,7 +1799,7 @@ class TestAnnualCadence(unittest.TestCase):
         self.assertEqual(snap.bills_reserved_cents, 699)  # Spotify only (due 19th)
 
     def test_auto_annual_opaque_prefers_closer_due(self):
-        from hermes_finance.rules import proposed_auto_annual_conversions
+        from budget_bot.rules import proposed_auto_annual_conversions
 
         usm = {
             "name": "US Mobile",
@@ -1840,7 +1840,7 @@ class TestAnnualCadence(unittest.TestCase):
         self.assertEqual(g[0]["name"], "Grok / xAI")
 
     def test_auto_annual_ignores_tax_and_usage_and_untagged(self):
-        from hermes_finance.rules import proposed_auto_annual_conversions
+        from budget_bot.rules import proposed_auto_annual_conversions
 
         grok = {
             "name": "Grok / xAI",
