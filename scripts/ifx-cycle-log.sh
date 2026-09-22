@@ -13,8 +13,9 @@ usage() {
 usage:
   ifx-cycle-log.sh set-infusion YYYY-MM-DD   # last infusion date (PT calendar)
   ifx-cycle-log.sh add [--date YYYY-MM-DD] [--days-since N] \\
-       --sleep 1-5 --energy 1-5 --stool 2-6 --cramp none|mild|moderate \\
+       --sleep 1-5 --energy 1-5 [--stool 2-6] --cramp none|mild|moderate \\
        [--bm N] [--notes text]
+  # stool required unless --bm 0
   ifx-cycle-log.sh add          # interactive (days-since auto from last infusion if set)
   ifx-cycle-log.sh list [-n N]
   ifx-cycle-log.sh status       # last infusion + days since + recent rows
@@ -73,6 +74,16 @@ if inf:
     print(f"last_infusion: {inf}  days_since: {days}  (today PT {today})")
 else:
     print("last_infusion: (not set — run set-infusion)")
+nxt = cfg.get("next_infusion_date")
+if nxt:
+    weeks = cfg.get("cycle_weeks")
+    usual = cfg.get("usual_cycle_weeks")
+    extra = ""
+    if weeks and usual:
+        extra = f"  ({weeks} weeks; usually {usual})"
+    elif weeks:
+        extra = f"  ({weeks} weeks)"
+    print(f"next_infusion: {nxt}{extra}")
 jsonl = d / "log.jsonl"
 if not jsonl.is_file():
     print("rows: 0")
@@ -136,7 +147,8 @@ PYL
         *) echo "unknown: $1" >&2; usage; exit 2 ;;
       esac
     done
-    if [[ -z "$sleep" || -z "$energy" || -z "$stool" || -z "$cramp" ]]; then
+    # Flag mode with --bm 0 may omit --stool. Anything else missing → prompt.
+    if [[ -z "$sleep" || -z "$energy" || -z "$cramp" || ( -z "$stool" && "$bm" != "0" ) ]]; then
       date="${date:-$(TZ=America/Los_Angeles date +%F)}"
       if [[ -z "$days" && -f "$CFG" ]]; then
         days="$(python3 - "$CFG" <<'PY'
@@ -158,13 +170,16 @@ PY
       days="${d_in:-$days}"
       read -r -p "sleep 1-5: " sleep
       read -r -p "energy/floaty 1-5 (5=solid): " energy
-      echo "stool 2-6:"
-      echo "  2 lumpy log  3 dense log  4 soft fully formed log (ideal)"
-      echo "  5 soft blobs with edges    6 no form / loose mush"
-      read -r -p "  stool: " stool
       read -r -p "cramp none/mild/moderate: " cramp
-      read -r -p "bm count today [1]: " bm
+      read -r -p "bm count today [1] (0 skips stool): " bm
       bm="${bm:-1}"
+      if [[ "$bm" != "0" ]]; then
+        echo "stool 2-6:"
+        echo "  2 lumpy log  3 dense log  4 soft fully formed log (ideal)"
+        echo "  5 soft blobs with edges    6 no form / loose mush"
+        echo "  Two today? Log the less-formed one; put the other in notes."
+        read -r -p "  stool: " stool
+      fi
       read -r -p "notes: " notes
     fi
     # auto days-since if still empty
@@ -183,8 +198,8 @@ print((today - date.fromisoformat(inf)).days)
 PY
 )"
     fi
-    if [[ -z "$days" || -z "$sleep" || -z "$energy" || -z "$stool" || -z "$cramp" ]]; then
-      echo "need --days-since (or set-infusion) + --sleep + --energy + --stool + --cramp" >&2
+    if [[ -z "$days" || -z "$sleep" || -z "$energy" || -z "$cramp" || ( -z "$stool" && "$bm" != "0" ) ]]; then
+      echo "need --days-since (or set-infusion) + --sleep + --energy + --cramp + --stool (omit stool only with --bm 0)" >&2
       exit 2
     fi
     date="${date:-$(TZ=America/Los_Angeles date +%F)}"
@@ -193,26 +208,34 @@ import json, sys, csv
 from pathlib import Path
 from datetime import datetime, timezone
 jsonl, csv_path, d, days, sleep, energy, stool, cramp, bm_raw, notes = sys.argv[1:11]
+bm_count = None
+if bm_raw.strip() != "":
+    bm_count = int(bm_raw)
+    if not (0 <= bm_count <= 30):
+        raise SystemExit("bm_count must be 0-30")
+stool_val = None
+if bm_count == 0:
+    stool_val = None
+else:
+    if stool.strip() == "":
+        raise SystemExit("stool form is required when there was a bowel movement")
+    stool_val = int(stool)
+    if not (2 <= stool_val <= 6):
+        raise SystemExit("stool form must be 2-6")
 row = {
   "date": d,
   "days_since_infusion": int(days),
   "sleep_1_5": int(sleep),
   "energy_floaty_1_5": int(energy),
-  "stool_form_1_7": int(stool),
+  "stool_form_1_7": stool_val,
   "cramp": cramp.strip().lower(),
-  "bm_count": None,
+  "bm_count": bm_count,
   "notes": notes or "",
   "logged_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
   "source": "cli",
 }
-if bm_raw.strip() != "":
-    row["bm_count"] = int(bm_raw)
-    if not (0 <= row["bm_count"] <= 30):
-        raise SystemExit("bm_count must be 0-30")
 if not (1 <= row["sleep_1_5"] <= 5 and 1 <= row["energy_floaty_1_5"] <= 5):
     raise SystemExit("sleep/energy must be 1-5")
-if not (2 <= row["stool_form_1_7"] <= 6):
-    raise SystemExit("stool form must be 2-6")
 if row["cramp"] not in ("none", "mild", "moderate"):
     raise SystemExit("cramp must be none|mild|moderate")
 

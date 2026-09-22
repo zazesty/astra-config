@@ -1637,6 +1637,90 @@ class TestAnnualCadence(unittest.TestCase):
             [],
         )
 
+    def test_nonrenew_ends_twelve_months_after_last_post(self):
+        from budget_bot.rules import bill_due_dates_in_range, bill_nonrenew_end
+
+        nssi = {**self.nssi, "renews": False}
+        feb = [
+            Transaction(
+                id="nssi",
+                date="2026-02-12",
+                amount_cents=10200,
+                name="NATLSTDNTSERVINSURANCE",
+                merchant_name="NATLSTDNTSERVINSURANCE",
+            )
+        ]
+        self.assertEqual(bill_nonrenew_end(nssi, feb), date(2027, 2, 12))
+        # The paid anniversary stays; the renewal date does not.
+        self.assertEqual(
+            bill_due_dates_in_range(nssi, date(2026, 1, 1), date(2027, 12, 31), feb),
+            [date(2026, 2, 12)],
+        )
+        # No ledger post yet → do not invent an end.
+        self.assertEqual(
+            bill_due_dates_in_range(
+                nssi, date(2027, 2, 1), date(2027, 2, 28), []
+            ),
+            [date(2027, 2, 12)],
+        )
+        # 1/12 through January 2027; gone once the renewal month starts.
+        self.assertEqual(
+            effective_bills_reserve_cents(
+                [nssi],
+                feb,
+                period_start=date(2027, 1, 1),
+                period_end=date(2027, 1, 31),
+                as_of=date(2027, 1, 15),
+                period_kind="calendar",
+            ),
+            850,
+        )
+        self.assertEqual(
+            effective_bills_reserve_cents(
+                [nssi],
+                feb,
+                period_start=date(2027, 2, 1),
+                period_end=date(2027, 2, 28),
+                as_of=date(2027, 2, 9),
+                period_kind="calendar",
+            ),
+            0,
+        )
+        # Cash-vs-bills does not expect the renewal lump.
+        self.assertEqual(
+            canned_cash_bills_cents(
+                [nssi],
+                feb,
+                date(2027, 2, 9),
+                hardcap_cents=105_000,
+                days_in_period=28,
+                cash_cents=5_000,
+            ),
+            0,
+        )
+
+    def test_cash_vs_bills_sums_monthly_and_annual_in_one_window(self):
+        # Feb 9: January auto already posted; February auto still unpaid (due the
+        # 5th, inside the stay-alive grace) plus the renters lump on the 12th.
+        prior = [
+            Transaction(
+                id="auto-jan",
+                date="2026-01-05",
+                amount_cents=6892,
+                name="CSAA INSURANCE",
+                merchant_name="CSAA INSURANCE",
+            )
+        ]
+        shown = canned_cash_bills_cents(
+            [self.auto, self.renters],
+            prior,
+            date(2026, 2, 9),
+            hardcap_cents=105_000,
+            days_in_period=28,
+            cash_cents=5_000,
+        )
+        self.assertEqual(shown, 6892 + 11573)
+
     def test_cash_vs_bills_uses_cash_pull_in_window(self):
         bills = [self.nssi, self.renters, self.spot]
         # 5d before anniversary: full lumps, not 1/12; Spotify not in window

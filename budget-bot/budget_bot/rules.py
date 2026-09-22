@@ -270,10 +270,48 @@ def bill_due_date_for_month(bill: dict[str, Any], year: int, month: int) -> date
     return date(year, month, min(due, last))
 
 
+def bill_renews(bill: dict[str, Any]) -> bool:
+    """False only when the row explicitly will not renew. Default is renew."""
+    return bill.get("renews") is not False
+
+
+def _plus_months(d: date, months: int) -> date:
+    y, m = _add_months(d.year, d.month, months)
+    last = calendar.monthrange(y, m)[1]
+    return date(y, m, min(d.day, last))
+
+
+def bill_nonrenew_end(
+    bill: dict[str, Any],
+    txns: list[Transaction] | None,
+) -> date | None:
+    """Day a non-renewing annual would have billed again: last in-band post + 12 months.
+
+    None when the bill renews, or when no in-band post is on the ledger yet.
+    Dues on or after this day are not forecast. The 1/12 spread stops at the
+    first of that month (charge month through the month before = 12 slices).
+    """
+    if bill_renews(bill) or not bill_is_annual(bill):
+        return None
+    last: date | None = None
+    for t in txns or []:
+        if t.transfer or t.excluded or t.pending:
+            continue
+        if not _txn_in_annual_band(bill, t):
+            continue
+        d = parse_ymd(t.date)
+        if last is None or d > last:
+            last = d
+    if last is None:
+        return None
+    return _plus_months(last, 12)
+
+
 def bill_due_dates_in_range(
     bill: dict[str, Any],
     range_start: date,
     range_end: date,
+    txns: list[Transaction] | None = None,
 ) -> list[date]:
     """All due dates for bill whose calendar day falls in [range_start, range_end]."""
     due = bill_due_day(bill)
@@ -286,6 +324,7 @@ def bill_due_dates_in_range(
             active_from = parse_ymd(str(raw_start))
         except ValueError:
             active_from = None
+    coverage_end = bill_nonrenew_end(bill, txns)
     out: list[date] = []
     y, m = range_start.year, range_start.month
     while True:
@@ -294,6 +333,7 @@ def bill_due_dates_in_range(
             d is not None
             and range_start <= d <= range_end
             and (active_from is None or d >= active_from)
+            and (coverage_end is None or d < coverage_end)
         ):
             out.append(d)
         if y == range_end.year and m == range_end.month:
@@ -1112,6 +1152,10 @@ def effective_bills_reserve_cents(
                         continue
                 except ValueError:
                     pass
+            coverage_end = bill_nonrenew_end(b, txns)
+            # Paid term is fully spread once the renewal month starts.
+            if coverage_end is not None and ref >= date(coverage_end.year, coverage_end.month, 1):
+                continue
             month_start = date(ref.year, ref.month, 1)
             if annual_bill_posted_in_range(
                 b,
@@ -1233,8 +1277,8 @@ def upcoming_unpaid_bills_cents(
             arrears_end = as_of - timedelta(days=1)
             arrears_start = as_of - timedelta(days=grace)
             if arrears_start <= arrears_end:
-                dues.extend(bill_due_dates_in_range(b, arrears_start, arrears_end))
-        dues.extend(bill_due_dates_in_range(b, as_of, end))
+                dues.extend(bill_due_dates_in_range(b, arrears_start, arrears_end, txns))
+        dues.extend(bill_due_dates_in_range(b, as_of, end, txns))
         seen: set[date] = set()
         for due_d in dues:
             if due_d in seen:

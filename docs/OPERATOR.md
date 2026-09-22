@@ -167,7 +167,7 @@ Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, g
 - Pace v1: raw hardcap vs spend (**no** remaining-bills in pace); bills reservation in safe-to-spend v1; pace+bills later v2/3.
 - Recurring rule: must appear in **current and previous calendar month** or drop.
 - SuperGrok: treat **$30** as monthly sub; **$5 / $15** usage as discretionary spend when charged. Grok + US Mobile **`auto_annual`**: a ~10× monthly post ($300 / $280) flips the bill to annual cadence the same evaluate (1/12 leftover, cash-vs-bills uses the lump).
-- Known annual bills (NSSI **$102**, CSAA Renters **$115.73**): leftover **1/12** every month; charge month counts 1/12 toward hardcap (timing spread, not a category carve-out); cash-vs-bills uses the **cash pull** in the 3d window.
+- Known annual bills (NSSI **$102**, CSAA Renters **$115.73**, US Mobile device insurance **$75**): leftover **1/12** every month; charge month counts 1/12 toward hardcap (timing spread, not a category carve-out); cash-vs-bills uses the **cash pull** in the 3d window, summed with any monthly dues in that same window. **NSSI `renews: false`** (confirmed 2026-09-21): term ends 12 months after the last in-band post (2026-02-12 → 2027-02-12). 1/12 through January 2027; no February 2027 cash pull.
 - Runtime: **cron + rules**, not an always-on “Hermes Agent” process (see design notes).
 
 ---

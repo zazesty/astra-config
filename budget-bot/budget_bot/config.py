@@ -54,6 +54,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Fields: name, amount_cents (monthly) OR annual_cents (/12),
     # cadence: "annual" → once-yearly due (month + day_of_month); leftover always
     # 1/12; cash-vs-bills uses the cash pull; charge month spend counts 1/12.
+    # renews: false → term ends 12 months after the last in-band post (no next pull).
     # auto_annual: true → ~10× monthly post (named, or opaque in due window)
     # flips the row to annual cadence (Grok / US Mobile).
     # match (regex; when spend matches in period, reserve clears that month).

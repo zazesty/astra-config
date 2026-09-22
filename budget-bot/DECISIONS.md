@@ -23,7 +23,7 @@
 | Pace-hot / soft near-pace | **Culled 2026-08-24.** Firm pace only. | 2026-08-24 |
 | Interrupt sleep | Firm over-budget pri 1; **all hardcap breaches pri 2** (incl. further txns while over); else pri 0 | 2026-08-24 |
 | Transfers | PayPal↔CU + internal CU savings/MM/checking **excluded** from hardcap | 2026-08-02 |
-| Bills | **Annual cadence:** NSSI personal property **$102** (Feb 12), CSAA Renters **$115.73** (Feb 12 endorsement). Leftover 1/12 every month; cash-vs-bills uses the cash pull in the 3d window; charge month spend counts 1/12. **Monthly:** CSAA auto $68.92, Spotify, SuperGrok $30, US Mobile $27, T-Mobile, Apple $0.99, EFF **$25.75 debit card EOM** (`active_from` 2026-08-01), Hetzner ~$15 on the **7th** (usage; pinned to invoice post). **Grok + US Mobile `auto_annual`:** a ~10× monthly post (8.5–11.5×; $280/$300) flips the row to annual the same evaluate — named always, opaque MasterMoney in the due window. Spotify/Apple untagged. | 2026-09-05 |
+| Bills | **Annual cadence:** NSSI personal property **$102** (Feb 12, `renews: false` — ends 12 months after the last in-band post, 2026-02-12 → 2027-02-12; 1/12 through Jan 2027, no Feb 2027 pull), CSAA Renters **$115.73** (Feb 12 endorsement), US Mobile device insurance **$75** (Aug 13). Cash-vs-bills sums the annual lump with monthly dues in the same 3d window. Leftover 1/12 every month; cash-vs-bills uses the cash pull in the 3d window; charge month spend counts 1/12. **Monthly:** CSAA auto $68.92, Spotify, SuperGrok $30, US Mobile $27, T-Mobile, Apple $0.99, EFF **$25.75 debit card EOM** (`active_from` 2026-08-01), Hetzner ~$15 on the **7th** (usage; pinned to invoice post). **Grok + US Mobile `auto_annual`:** a ~10× monthly post (8.5–11.5×; $280/$300) flips the row to annual the same evaluate — named always, opaque MasterMoney in the due window. Spotify/Apple untagged. | 2026-09-05 |
 | Cash vs upcoming bills | Canned + Push: material dues, start **3d** before due, **stay until named post clears** (40d grace cap), cash < **2×**. Narrower, more cautious window than 5d 100%. Floor ≈ $17.50 → CSAA / Grok / US Mobile; hide Apple/T-Mobile/Spotify/Hetzner. | 2026-09-20 |
 | Canned Overall days | Mean of calendar + rolling **pace-days** (ceil fraction). Rolling line always pace, even over cap. Calendar over-cap line still overage (matches breach Push). Do not mix overage into Overall. | 2026-09-08 |
 | Product goal | Financial coaching + behavioral optimization | 2026-07-26 |
@@ -71,7 +71,7 @@
 
 | Item | Notes |
 |------|--------|
-| **Annual cadence + 1/12 amortize** | ✅ shipped 2026-09-05. `cadence: annual` + `annual_cents` + anniversary `month`/`day_of_month`: leftover always 1/12 (no 12-month arrears stack); cash-vs-bills uses cash pull; charge month hardcap spend = 1/12. Monthly `annual_cents` without cadence still just sizes a monthly due. Seeded NSSI $102 + CSAA Renters $115.73. |
+| **Annual cadence + 1/12 amortize** | ✅ shipped 2026-09-05. `cadence: annual` + `annual_cents` + anniversary `month`/`day_of_month`: leftover always 1/12 (no 12-month arrears stack); cash-vs-bills uses cash pull; charge month hardcap spend = 1/12. Monthly `annual_cents` without cadence still just sizes a monthly due. Seeded NSSI $102 (`renews: false` as of 2026-09-21) + CSAA Renters $115.73 + US Mobile insurance $75. |
 
 ## Data safety (locked)
 

@@ -119,6 +119,55 @@ def rewrite_csv_from_jsonl() -> None:
     CSV.chmod(0o600)
 
 
+def build_row(
+    *,
+    sleep: int,
+    energy: int,
+    days: int,
+    stool_raw: str,
+    cramp: str,
+    bm_raw: str,
+    notes: str,
+    d: str,
+) -> dict:
+    """One log row. Stool is required only when there was at least one BM.
+
+    A submitted stool with bm_count 0 is dropped — the field used to be
+    required, so a 0-BM day could only be saved with a placeholder number.
+    """
+    if not (1 <= sleep <= 5 and 1 <= energy <= 5):
+        raise ValueError("sleep/energy must be 1-5")
+    if cramp not in ("none", "mild", "moderate"):
+        raise ValueError("cramp must be none|mild|moderate")
+    bm_count: int | None = None
+    if bm_raw != "":
+        bm_count = int(bm_raw)
+        if not (0 <= bm_count <= 30):
+            raise ValueError("bm_count must be 0-30")
+    stool: int | None
+    if bm_count == 0:
+        stool = None
+    else:
+        if stool_raw == "":
+            raise ValueError("stool form is required when there was a bowel movement")
+        stool = int(stool_raw)
+        if stool not in STOOL_CHOICES:
+            raise ValueError("stool form must be 2-6")
+    date.fromisoformat(d)
+    return {
+        "date": d,
+        "days_since_infusion": days,
+        "sleep_1_5": sleep,
+        "energy_floaty_1_5": energy,
+        "stool_form_1_7": stool,
+        "cramp": cramp,
+        "bm_count": bm_count,
+        "notes": notes,
+        "logged_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": "form",
+    }
+
+
 def append_row(row: dict) -> None:
     STATE.mkdir(parents=True, exist_ok=True)
     with JSONL.open("a") as f:
@@ -132,6 +181,17 @@ def page_html(cfg: dict, *, msg: str = "", err: str = "") -> bytes:
     days = days_since_infusion(cfg)
     days_s = "" if days is None else str(days)
     inf = cfg.get("last_infusion_date") or "(not set)"
+    nxt = cfg.get("next_infusion_date") or ""
+    weeks = cfg.get("cycle_weeks")
+    usual = cfg.get("usual_cycle_weeks")
+    next_line = ""
+    if nxt:
+        extra = ""
+        if weeks and usual:
+            extra = f" ({weeks} weeks; usually {usual})"
+        elif weeks:
+            extra = f" ({weeks} weeks)"
+        next_line = f"<br/>Next infusion: <strong>{nxt}</strong>{extra}"
     secret = cfg["form_secret"]
     mount = f"/ifx-log-{secret}"
     banner = ""
@@ -163,7 +223,8 @@ def page_html(cfg: dict, *, msg: str = "", err: str = "") -> bytes:
   <h1>IFX cycle log</h1>
   <p class="meta">Last infusion: <strong>{inf}</strong><br/>
   Today (PT): <strong>{today}</strong>
-  {f" · day <strong>+{days}</strong>" if days is not None else ""}</p>
+  {f" · day <strong>+{days}</strong>" if days is not None else ""}
+  {next_line}</p>
   {banner}
   <form method="POST" action="{mount}">
     <label>Days since infusion
@@ -189,12 +250,17 @@ def page_html(cfg: dict, *, msg: str = "", err: str = "") -> bytes:
         <option value="5">5 solid</option>
       </select>
     </label>
+    <label>Bowel movements today
+      <input name="bm_count" type="number" min="0" max="30" value="1"/>
+      <span class="hint">Defaults to 1. Set 0 if you have not gone — stool form then drops off.</span>
+    </label>
     <label>Stool form (softness)
-      <select name="stool_form" required>
+      <select name="stool_form">
         <option value="">—</option>
 {stool_opts}
       </select>
       <span class="hint">One piece? lumpy → 2, dense/firm → 3, soft fully formed → 4. Blobs with edges → 5. Shapeless mush → 6.</span>
+      <span class="hint">If multiple stools, log least-formed.</span>
     </label>
     <label>Abdominal pain / cramping
       <select name="cramp" required>
@@ -203,10 +269,18 @@ def page_html(cfg: dict, *, msg: str = "", err: str = "") -> bytes:
         <option value="moderate">moderate</option>
       </select>
     </label>
-    <label>Bowel movements today
-      <input name="bm_count" type="number" min="0" max="30" value="1"/>
-      <span class="hint">Defaults to 1; change if not</span>
-    </label>
+    <script>
+      const bm = document.querySelector('[name=bm_count]');
+      const stool = document.querySelector('[name=stool_form]');
+      function syncStool() {{
+        const none = bm.value !== '' && Number(bm.value) === 0;
+        stool.required = !none;
+        stool.disabled = none;
+        if (none) stool.value = '';
+      }}
+      bm.addEventListener('input', syncStool);
+      syncStool();
+    </script>
     <label>Notes
       <textarea name="notes" rows="3" placeholder="sleep, floaty, urgency, blood, anything else…"></textarea>
     </label>
@@ -276,38 +350,23 @@ class Handler(BaseHTTPRequestHandler):
             sleep = int(one("sleep"))
             energy = int(one("energy"))
             days = int(one("days_since"))
-            stool = int(one("stool_form"))
             # cramp is the clear label; accept legacy "gi" if present
             cramp = (one("cramp") or one("gi")).lower()
-            bm_raw = one("bm_count")
-            notes = one("notes")
             d = one("date") or datetime.now(TZ).date().isoformat()
-            if not (1 <= sleep <= 5 and 1 <= energy <= 5):
-                raise ValueError("sleep/energy must be 1-5")
-            if stool not in STOOL_CHOICES:
-                raise ValueError("stool form must be 2-6")
-            if cramp not in ("none", "mild", "moderate"):
-                raise ValueError("cramp must be none|mild|moderate")
-            bm_count: int | None = None
-            if bm_raw != "":
-                bm_count = int(bm_raw)
-                if not (0 <= bm_count <= 30):
-                    raise ValueError("bm_count must be 0-30")
-            date.fromisoformat(d)
-            row = {
-                "date": d,
-                "days_since_infusion": days,
-                "sleep_1_5": sleep,
-                "energy_floaty_1_5": energy,
-                "stool_form_1_7": stool,
-                "cramp": cramp,
-                "bm_count": bm_count,
-                "notes": notes,
-                "logged_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "source": "form",
-            }
+            row = build_row(
+                sleep=sleep,
+                energy=energy,
+                days=days,
+                stool_raw=one("stool_form"),
+                cramp=cramp,
+                bm_raw=one("bm_count"),
+                notes=one("notes"),
+                d=d,
+            )
             append_row(row)
-            stool_s = STOOL_LABELS.get(stool, str(stool))
+            stool = row["stool_form_1_7"]
+            bm_count = row["bm_count"]
+            stool_s = "—" if stool is None else STOOL_LABELS.get(stool, str(stool))
             bm_s = f" · bm {bm_count}" if bm_count is not None else ""
             self._send(
                 200,
