@@ -46,6 +46,17 @@ def notify_sms_script() -> Path:
     )
 
 
+def _push_env(event: AlertEvent) -> dict[str, str]:
+    """Pass a Yes/No link through without writing it into the notify log."""
+    env = os.environ.copy()
+    url = str((event.payload or {}).get("open_url") or "")
+    if url.startswith("https://") and len(url) <= 512:
+        env["PUSHOVER_URL"] = url
+        title = str((event.payload or {}).get("open_url_title") or "Yes or no")
+        env["PUSHOVER_URL_TITLE"] = title[:100]
+    return env
+
+
 def _push_body(event: AlertEvent) -> str:
     """Push body: non-empty lines, truncated (script also caps at 900)."""
     lines = [ln.strip() for ln in (event.body or "").strip().splitlines() if ln.strip()]
@@ -204,6 +215,7 @@ def _send_alert_locked(
                 capture_output=True,
                 timeout=60,
                 check=False,
+                env=_push_env(event),
             )
             with log_path.open("a") as f:
                 f.write(f"PUSH rc={proc.returncode} {line}\n")

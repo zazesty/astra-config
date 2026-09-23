@@ -15,7 +15,9 @@ sys.path.insert(0, str(ROOT))
 
 from budget_bot.buy_queue import (
     apply_buy_queue_pulls,
+    buy_queue_ask_events,
     persist_buy_queue_pulls,
+    proposed_buy_queue_asks,
     proposed_buy_queue_pulls,
 )
 from budget_bot.models import Transaction
@@ -121,6 +123,113 @@ class TestProposedPulls(unittest.TestCase):
         t = _t(name="NORELCO", merchant_name="NORELCO", amount_cents=12400)
         pulls = proposed_buy_queue_pulls(q, [t])
         self.assertEqual([p["id"] for p in pulls], ["b"])
+
+    def test_not_before_skips_older_ledger_hit(self):
+        row = {
+            "id": "rice-cooker",
+            "name": "Rice cooker",
+            "amount_cents": 10000,
+            "match": r"COSTCO WHSE|WWW\s*COSTCO|COSTCO\.COM",
+            "not_before": "2026-09-22",
+        }
+        old = _t(
+            id="whse-apr",
+            date="2026-04-01",
+            name="COSTCO WHSE #06 CONCORD",
+            merchant_name="COSTCO WHSE #06",
+            amount_cents=10060,
+        )
+        gas = _t(
+            id="gas",
+            date="2026-09-23",
+            name="COSTCO GAS #066",
+            merchant_name="COSTCO GAS",
+            amount_cents=10000,
+        )
+        bought = _t(
+            id="whse-new",
+            date="2026-09-22",
+            name="COSTCO WHSE #06",
+            merchant_name="COSTCO WHSE",
+            amount_cents=9900,
+        )
+        self.assertEqual(proposed_buy_queue_pulls([row], [old, gas]), [])
+        pulls = proposed_buy_queue_pulls([row], [old, bought])
+        self.assertEqual([p["id"] for p in pulls], ["rice-cooker"])
+        self.assertEqual(pulls[0]["txn_id"], "whse-new")
+
+    def test_costco_confirm_asks_and_does_not_clear(self):
+        row = {
+            "id": "rice-cooker",
+            "name": "Rice cooker",
+            "amount_cents": 10000,
+            "merchant": "Costco",
+            "match": r"COSTCO WHSE|WWW\s*COSTCO|COSTCO\.COM",
+            "not_before": "2026-09-22",
+            "confirm": True,
+        }
+        old = _t(
+            id="old",
+            date="2026-04-01",
+            name="COSTCO WHSE #06",
+            merchant_name="COSTCO WHSE",
+            amount_cents=10060,
+        )
+        gas = _t(
+            id="gas",
+            date="2026-09-23",
+            name="COSTCO GAS #066",
+            merchant_name="COSTCO GAS",
+            amount_cents=10500,
+        )
+        trip = _t(
+            id="whse",
+            date="2026-09-23",
+            name="COSTCO WHSE #06",
+            merchant_name="COSTCO WHSE",
+            amount_cents=10500,
+        )
+        philips = {
+            "id": "norelco-bt7670",
+            "name": "Philips Norelco Beard Trimmer 7000",
+            "amount_cents": 12000,
+            "merchant": "Philips",
+            "match": "PHILIPS|NORELCO",
+        }
+        bought = _t(
+            id="trim",
+            date="2026-09-23",
+            name="PHILIPS NORELCO",
+            merchant_name="PHILIPS",
+            amount_cents=12000,
+        )
+        queue = [row, philips]
+        self.assertEqual(proposed_buy_queue_pulls(queue, [old, gas, trip]), [])
+        self.assertEqual(
+            [a["txn_id"] for a in proposed_buy_queue_asks(queue, [old, gas, trip])],
+            ["whse"],
+        )
+        pulls = proposed_buy_queue_pulls(queue, [trip, bought])
+        self.assertEqual([p["id"] for p in pulls], ["norelco-bt7670"])
+        events = buy_queue_ask_events(queue, [trip])
+        self.assertEqual(events[0].kind, "buy_queue_ask")
+        self.assertEqual(events[0].payload["push_priority"], 0)
+        self.assertIn("Costco $105", events[0].body)
+        self.assertNotIn("WHSE", events[0].body)
+        self.assertNotIn("Grok", events[0].body)
+        self.assertEqual(events[0].payload["open_url_title"], "Yes or no")
+
+    def test_blank_merchant_does_not_match(self):
+        row = {
+            "id": "headphones",
+            "name": "Headphones",
+            "amount_cents": 4000,
+            "merchant": "",
+            "match": "",
+        }
+        t = _t(name="AMAZON", merchant_name="AMAZON", amount_cents=4000)
+        self.assertEqual(proposed_buy_queue_pulls([row], [t]), [])
+        self.assertEqual(proposed_buy_queue_asks([row], [t]), [])
 
     def test_apply_drops_pulled(self):
         left = apply_buy_queue_pulls(QUEUE, [{"id": "honda-oil"}])

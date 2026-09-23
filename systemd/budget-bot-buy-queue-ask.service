@@ -1,0 +1,18 @@
+[Unit]
+Description=Budget Bot buy-queue Yes/No page (127.0.0.1; Funnel secret path)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/budget-bot
+Environment=HOME=/root
+Environment=BUDGET_BOT_STATE=/root/.local/state/budget-bot
+Environment=BUY_QUEUE_ASK_PORT=8773
+ExecStartPre=/root/astra-config/scripts/budget-bot-buy-queue-ask-funnel.sh
+ExecStart=/usr/bin/python3 -m budget_bot.buy_queue_ask
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

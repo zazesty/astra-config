@@ -578,6 +578,22 @@ def cmd_eom_leftover(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_buy_queue_drop(args: argparse.Namespace) -> int:
+    """Clear one queue row after a yes (Costco ask, or any manual drop)."""
+    from .buy_queue import drop_buy_queue_row
+    from .buy_queue_sync import reconcile_buy_queue
+
+    cfg = load_config()
+    ok = drop_buy_queue_row(cfg, args.id, reason="manual")
+    if not ok:
+        print(json.dumps({"ok": False, "error": "no such id"}))
+        return 1
+    cfg = load_config()
+    reconcile_buy_queue(cfg)
+    print(json.dumps({"ok": True, "dropped": args.id}))
+    return 0
+
+
 def cmd_names_health(args: argparse.Namespace) -> int:
     from .names_health import persist_names_health
 
@@ -692,6 +708,10 @@ def cmd_watch(args: argparse.Namespace) -> int:
         flags.extend(anomalies)
 
     results = send_alerts(flags, dry_run=dry_run)
+    if not args.fixture:
+        from .buy_queue import notify_buy_queue_asks
+
+        results.extend(notify_buy_queue_asks(cfg, all_tx, dry_run=dry_run))
 
     # Daily digest OFF by default (owner: irregular coaching only)
     digest_status = "disabled"
@@ -887,6 +907,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     s.add_argument("--item-id", default=None, help="optional single Item id")
     s.set_defaults(func=cmd_plaid_webhook_process)
+
+    s = sub.add_parser("buy-queue-drop", help="Clear one buy-queue row after a yes")
+    s.add_argument("id", help="row id, e.g. rice-cooker")
+    s.set_defaults(func=cmd_buy_queue_drop)
 
     s = sub.add_parser("names-health", help="NorCal MasterMoney / Alliant name detector")
     s.add_argument("--as-of", default=None, help="YYYY-MM-DD")

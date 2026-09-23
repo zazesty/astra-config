@@ -62,7 +62,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "bills": [],
     "goals": [],  # [{name, amount_cents}]
     # Leftover-funded buy queue. Auto-pulled on high-conf named+amount spend.
-    # [{id, name, amount_cents, match, amount_tol_cents?}]
+    # [{id, name, amount_cents, match, merchant?, confirm?, amount_tol_cents?, not_before?}]
+    # confirm (or merchant Costco): ask, do not auto-clear. Blank match: list only.
     "buy_queue": [],
     "anomaly": {
         # Loosened 2026-08-05: normal restocks (e.g. iHerb ~$100) were 2× noise.
@@ -230,9 +231,13 @@ def persist_bill_rewrites(
     as_of: Any,
 ) -> dict[str, list[dict[str, Any]]]:
     """Annual prepay conversion first, then SaaS tax reserve follow."""
+    from .buy_queue_sync import reconcile_buy_queue
+
+    reconcile_buy_queue(cfg)
     annual = persist_auto_annual_conversions(cfg, txns, as_of)
     saas = persist_saas_bill_reserves(cfg, txns, as_of)
     from .buy_queue import persist_buy_queue_pulls
 
     pulled = persist_buy_queue_pulls(cfg, txns)
+    reconcile_buy_queue(cfg)
     return {"auto_annual": annual, "saas": saas, "buy_queue": pulled}

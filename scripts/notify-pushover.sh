@@ -89,6 +89,14 @@ if [ "$PRIORITY" = "2" ]; then
   ARGS+=(--form-string "retry=60" --form-string "expire=600")
 fi
 
+LINK="${PUSHOVER_URL:-}"
+case "$LINK" in
+  https://*)
+    ARGS+=(--form-string "url=${LINK}")
+    ARGS+=(--form-string "url_title=${PUSHOVER_URL_TITLE:-Yes or no}")
+    ;;
+esac
+
 if [ -n "${PUSHOVER_DEVICE:-}" ]; then
   ARGS+=(--form-string "device=${PUSHOVER_DEVICE}")
 fi

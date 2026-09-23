@@ -250,6 +250,12 @@ def _process_update_unlocked(
 
     push_events = [ev for ev in alerts if ev.kind in PUSH_KINDS]
     results = send_alerts(push_events, dry_run=dry_run)
+    try:
+        from .buy_queue import notify_buy_queue_asks
+
+        results.extend(notify_buy_queue_asks(cfg, txns, dry_run=dry_run))
+    except Exception as e:
+        whlog(f"buy-queue ask error: {e}")
     pri_by_key = {ev.key: (ev.payload or {}).get("push_priority") for ev in push_events}
     for row in results:
         row["priority"] = pri_by_key.get(row["key"])
