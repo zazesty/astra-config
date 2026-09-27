@@ -216,16 +216,15 @@ def _process_update_unlocked(
     except Exception as e:
         whlog(f"names_health error: {e}")
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
-    snap = both["calendar"]  # notify SSOT
-    record_period_series(
-        as_of, both["calendar"], both["rolling_30d"], source="webhook"
-    )
+    snap = both["calendar"]
+    notify = both["rolling_30d"]
+    record_period_series(as_of, snap, notify, source="webhook")
     prev_risk = load_last_run().get("last_risk")
     new_ids = list(sync_summary.get("new_txn_ids") or [])
     by_id = {t.id: t for t in txns}
     new_tx_objs = [by_id[i] for i in new_ids if i in by_id]
     alerts = budget_alerts(
-        snap,
+        notify,
         cfg,
         prev_risk=prev_risk,
         new_txn_ids=new_ids,
@@ -275,7 +274,7 @@ def _process_update_unlocked(
             **load_last_run(),
             "updated": datetime.now(ZoneInfo("UTC")).isoformat(),
             "as_of": as_of.isoformat(),
-            "last_risk": snap.risk,
+            "last_risk": notify.risk,
             "last_webhook_source": source,
             "last_webhook_sync": sync_summary,
             "snapshot": snap.to_dict(),
@@ -298,7 +297,7 @@ def _process_update_unlocked(
         "item_id": item_id,
         "sync": sync_summary,
         "auto_review": {k: v for k, v in ar_brief.items() if v is not None},
-        "risk": snap.risk,
+        "risk": notify.risk,
         "spend_cents": snap.spend_to_date,
         "new_txns": new_n,
         "notify": results,
@@ -306,7 +305,7 @@ def _process_update_unlocked(
     }
     whlog(
         f"processed source={source} item={item_id or '*'} "
-        f"new={new_n} risk={snap.risk} alerts={len(results)} dry_run={dry_run}"
+        f"new={new_n} risk={notify.risk} alerts={len(results)} dry_run={dry_run}"
     )
     return out
 

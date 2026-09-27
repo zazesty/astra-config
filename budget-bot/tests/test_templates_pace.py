@@ -59,7 +59,7 @@ class TestPaceCopy(unittest.TestCase):
 
     def test_body_days_only_no_merchant(self):
         body = pace_body(self._snap(), merchants=["Cafe Nero"])
-        self.assertEqual(body, "Spend pace is 4 days ahead of pace.\n")
+        self.assertEqual(body, "4 days ahead of pace.\n")
         self.assertNotIn("Pertinent", body)
         self.assertNotIn("Cafe Nero", body)
         self.assertNotIn("% above", body)
@@ -70,7 +70,7 @@ class TestPaceCopy(unittest.TestCase):
 
     def test_body_no_merchant_when_unknown(self):
         body = pace_body(self._snap())
-        self.assertEqual(body, "Spend pace is 4 days ahead of pace.\n")
+        self.assertEqual(body, "4 days ahead of pace.\n")
         self.assertNotIn("Committed", body)
         self.assertNotIn("allotted", body)
         self.assertNotIn("Pertinent txn", body)
@@ -122,20 +122,18 @@ class TestPaceCopy(unittest.TestCase):
         snap.spend_to_date = 112_000
         snap.pct = 1.12
         body = hardcap_body(snap, True, merchants=["Big"])
-        # 120 over / (1000/31) = 3.72 → 4 days; 112% of cap
-        self.assertEqual(
-            body,
-            "Over the monthly cap. 4 days above. Spent 112% of cap.\n",
-        )
+        # days_off_pace 3.58 → 4. Crossing the cap does not switch the count.
+        self.assertEqual(body, "4 days ahead of pace.\n")
+        self.assertEqual(body, pace_body(snap))
         self.assertNotIn("Pertinent", body)
         self.assertNotIn("Big", body)
         self.assertNotIn("Hardcap", body)
         self.assertNotIn("Safe-to-spend", body)
         self.assertNotIn("versus", body)
-        self.assertNotIn("ahead of pace", body)
+        self.assertNotIn("%", body)
 
-    def test_hardcap_breach_uses_overage_not_pace(self):
-        # Day 28/31, $1,210 spend: days_off_pace ≈ 9.5, overage days ≈ 6.51 → 7
+    def test_hardcap_breach_stays_on_pace(self):
+        # Day 28/31, $1,210 spend: pace 9.5 → 10. Overage would have said 7.
         snap = self._snap()
         snap.as_of = date(2026, 8, 28)
         snap.days_elapsed = 28
@@ -145,14 +143,10 @@ class TestPaceCopy(unittest.TestCase):
         snap.days_off_pace = 9.5
         snap.risk = "breach"
         body = hardcap_body(snap, True)
-        self.assertEqual(
-            body,
-            "Over the monthly cap. 7 days above. Spent 121% of cap.\n",
-        )
-        self.assertNotIn("9 day", body)
-        self.assertNotIn("10 day", body)
+        self.assertEqual(body, "10 days ahead of pace.\n")
+        self.assertNotIn("7 day", body)
+        self.assertNotIn("%", body)
         self.assertNotIn("versus", body)
-        self.assertNotIn("pace", body)
 
     def test_leftover_plain_english(self):
         self.assertEqual(eom_leftover_subject(24_856), "Budget Bot: you saved $249")
@@ -185,145 +179,56 @@ class TestPaceCopy(unittest.TestCase):
         self.assertNotIn("Dining Out", body)
         self.assertNotIn(" · ", body)
 
-    def test_budget_status_omits_day_of(self):
+    def test_budget_status_is_rolling_pace_only(self):
         cal = self._snap()
         cal.days_off_pace = -2.0
-        cal.safe_to_spend_cents = 29_300
         roll = self._snap()
         roll.period_kind = "rolling_30d"
-        roll.days_off_pace = 2.0
-        roll.safe_to_spend_cents = 40_800
+        roll.days_off_pace = 19.0
         text = budget_status_text(cal, roll)
-        self.assertEqual(
-            text,
-            "Overall: on pace · $351 left\n"
-            "Calendar: 2 days under pace\n"
-            "Rolling: 2 days above pace",
-        )
-        self.assertNotIn("spent", text)
-        self.assertNotIn("$1,000", text)
-        self.assertNotIn("warn", text)
+        self.assertEqual(text, "19 days ahead of pace")
+        self.assertNotIn("under", text)
+        self.assertNotIn("Overall", text)
 
-    def test_overall_pace_rounds_half_away(self):
+    def test_budget_status_rolling_two_days(self):
         cal = self._snap()
         cal.days_off_pace = -1.0
-        cal.safe_to_spend_cents = 50_000
         roll = self._snap()
         roll.days_off_pace = 2.0
-        roll.safe_to_spend_cents = 40_000
         text = budget_status_text(cal, roll)
-        self.assertIn("Overall: 1 day above pace · $450 left", text)
+        self.assertEqual(text, "2 days ahead of pace")
 
-    def test_budget_status_over_cap_percent_and_days(self):
+    def test_photon_ignores_calendar_cap(self):
         cal = self._snap()
-        cal.as_of = date(2026, 8, 28)
-        cal.days_elapsed = 28
         cal.spend_to_date = 121_000
-        cal.committed_cents = 121_000
-        cal.pct = 1.21
         cal.days_off_pace = 9.5
-        cal.safe_to_spend_cents = -21_000
         cal.risk = "breach"
         roll = self._snap()
         roll.period_kind = "rolling_30d"
         roll.days_off_pace = 2.0
-        roll.safe_to_spend_cents = 40_800
         text = budget_status_text(cal, roll)
-        # Overall = pace 10 + 2 → 6; Calendar line stays overage (7)
+        self.assertEqual(text, "2 days ahead of pace")
         self.assertEqual(
-            text,
-            "Overall: 6 days above pace · 121% of cap\n"
-            "Calendar: 7 days above\n"
-            "Rolling: 2 days above pace",
+            hardcap_body(cal, True),
+            "10 days ahead of pace.\n",
         )
-        self.assertNotIn("versus", text)
-        self.assertNotIn("9 day", text)
-        self.assertNotIn("safe", text)
+        self.assertNotIn("%", text)
 
-    def test_overall_averages_pace_days_round_up(self):
-        # Pace 10 + 15 → 12.5 → 13. Calendar line still overage (6).
+    def test_photon_under_and_on_pace(self):
         cal = self._snap()
-        cal.as_of = date(2026, 8, 28)
-        cal.days_elapsed = 28
-        cal.spend_to_date = 120_959
-        cal.committed_cents = 120_959
-        cal.pct = 1.20959
-        cal.days_off_pace = 9.5
-        cal.safe_to_spend_cents = -20_959
-        cal.risk = "breach"
         roll = self._snap()
-        roll.period_kind = "rolling_30d"
-        roll.days_in_period = 30
-        roll.days_elapsed = 16
-        roll.spend_to_date = 88_249
-        roll.committed_cents = 101_841
-        roll.days_off_pace = 14.55
-        roll.safe_to_spend_cents = -1_841
-        text = budget_status_text(cal, roll)
+        roll.days_off_pace = -2.0
         self.assertEqual(
-            text,
-            "Overall: 13 days above pace · 121% of cap\n"
-            "Calendar: 6 days above\n"
-            "Rolling: 15 days above pace",
+            budget_status_text(cal, roll),
+            "2 days under pace",
         )
-
-    def test_rolling_over_cap_uses_pace_not_overage(self):
-        # 2026-09-08: calendar under cap 7 pace; rolling over cap would have
-        # printed 3 overage-days. Blend pace 7+19 → 13.
-        cal = self._snap()
-        cal.as_of = date(2026, 9, 8)
-        cal.days_in_period = 30
-        cal.days_elapsed = 8
-        cal.hardcap_cents = 105_000
-        cal.spend_to_date = 45_037
-        cal.committed_cents = 51_657
-        cal.days_off_pace = 6.76
-        cal.safe_to_spend_cents = 53_343
-        cal.pct = 0.4289
-        roll = self._snap()
-        roll.period_kind = "rolling_30d"
-        roll.days_in_period = 30
-        roll.days_elapsed = 16
-        roll.hardcap_cents = 105_000
-        roll.spend_to_date = 116_965
-        roll.committed_cents = 121_010
-        roll.days_off_pace = 18.57
-        roll.safe_to_spend_cents = -16_010
-        text = budget_status_text(cal, roll)
+        roll.days_off_pace = 0.2
+        self.assertEqual(budget_status_text(cal, roll), "On pace")
+        roll.days_off_pace = 1.0
         self.assertEqual(
-            text,
-            "Overall: 13 days above pace · $187 left\n"
-            "Calendar: 7 days above pace\n"
-            "Rolling: 19 days above pace",
+            budget_status_text(cal, roll),
+            "1 day ahead of pace",
         )
-
-    def test_negative_sts_is_over_by_not_safe_minus(self):
-        cal = self._snap()
-        cal.days_in_period = 30
-        cal.days_elapsed = 2
-        cal.hardcap_cents = 105_000
-        cal.spend_to_date = 14_900
-        cal.committed_cents = 39_415
-        cal.days_off_pace = 9.26
-        cal.safe_to_spend_cents = 65_585
-        roll = self._snap()
-        roll.period_kind = "rolling_30d"
-        roll.days_in_period = 30
-        roll.days_elapsed = 16
-        roll.hardcap_cents = 105_000
-        roll.spend_to_date = 105_171
-        roll.committed_cents = 126_487
-        roll.days_off_pace = 20.14
-        roll.safe_to_spend_cents = -21_487
-        text = budget_status_text(cal, roll)
-        self.assertNotIn("safe -", text)
-        # mean of +$656 and -$215 → +$220, not the lesser (over by $215)
-        self.assertIn("$220 left", text)
-        self.assertNotIn("over by $215", text)
-        # rolling is over cap; still pace-days (20), not overage ≈ 0
-        self.assertIn("Rolling: 20 days above pace", text)
-        self.assertIn("Calendar: 9 days above pace", text)
-        self.assertIn("Overall: 15 days above pace · $220 left", text)
 
     def test_cash_vs_bills_silent_when_no_bills(self):
         self.assertEqual(cash_vs_bills_line(8_400, 0), "")
@@ -332,7 +237,7 @@ class TestPaceCopy(unittest.TestCase):
         roll = self._snap()
         roll.period_kind = "rolling_30d"
         text = budget_status_text(cal, roll, cash_cents=8_400, upcoming_bills_cents=0)
-        self.assertEqual(text.count("\n"), 2)
+        self.assertNotIn("\n", text)
         self.assertNotIn("cash", text)
 
     def test_cash_vs_bills_terse_ops(self):

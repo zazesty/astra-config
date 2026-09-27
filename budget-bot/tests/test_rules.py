@@ -114,12 +114,12 @@ class TestBudget(unittest.TestCase):
         self.assertIn(snap.risk, ("ok", "warn", "breach"))
         self.assertEqual(snap.period_kind, "calendar")
 
-    def test_rolling_period_bounds_30d(self):
+    def test_rolling_period_bounds_21_plus_7(self):
         start, end, days_in, days_elapsed = period_bounds_rolling(date(2026, 8, 15))
-        self.assertEqual(days_in, 30)
-        self.assertEqual(days_elapsed, 16)  # 15 past + as_of
-        self.assertEqual(start, date(2026, 7, 31))
-        self.assertEqual(end, date(2026, 8, 29))
+        self.assertEqual(days_in, 29)  # 21 back + today + 7 ahead
+        self.assertEqual(days_elapsed, 22)
+        self.assertEqual(start, date(2026, 7, 25))
+        self.assertEqual(end, date(2026, 8, 22))
 
     def test_rolling_parallel_snapshot(self):
         both = evaluate_budget_both(self.txns, self.cfg, as_of=date(2026, 7, 21))
@@ -127,10 +127,10 @@ class TestBudget(unittest.TestCase):
         self.assertEqual(cal.period_kind, "calendar")
         self.assertEqual(roll.period_kind, "rolling_30d")
         self.assertEqual(cal.days_in_period, 31)
-        self.assertEqual(roll.days_in_period, 30)
-        self.assertEqual(roll.days_elapsed, 16)
-        # both share hardcap; spends may differ
-        self.assertEqual(cal.hardcap_cents, roll.hardcap_cents)
+        self.assertEqual(roll.days_in_period, 29)
+        self.assertEqual(roll.days_elapsed, 22)
+        # Rolling cap is calendar-daily × window length, so on-pace is elapsed × daily.
+        self.assertEqual(roll.hardcap_cents, int(round(105_000 * 29 / 31)))
         d = roll.to_dict()
         self.assertEqual(d["period_kind"], "rolling_30d")
         self.assertIn("spend_through", d)
@@ -1358,7 +1358,7 @@ class TestBudgetAlertBatch(unittest.TestCase):
                 Transaction(
                     id="big",
                     date="2026-08-02",
-                    amount_cents=70_000,
+                    amount_cents=61_000,
                     name="Cafe",
                     merchant_name="Cafe",
                     category="Dining Out",

@@ -77,7 +77,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "hardcap_warn_pct": 0.90,
     # Soft when spend > soft_pace_frac * (hardcap * month_frac)  e.g. 0.90 → 45% spend at mid-month
     "soft_pace_frac": 0.90,
-    # Firm (interrupt) when spend_pct > month_frac  (strictly ahead of calendar)
+    # Firm (pri 1) at 1–4 rolling days ahead. Loud (pri 2) at this many.
+    "pace_loud_days": 5,
+    "rolling_past_days": 21,
+    # Includes today, so 8 means 7 days strictly ahead.
+    "rolling_future_days": 8,
     "pace_warn_ratio": 1.0,
     "pace_warn_min_over_cents": 0,
     "exclude_pending": True,
@@ -90,7 +94,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "mode": "fixture",  # fixture | live
     # --- bills horizon / fuzzy clear ---
     # Calendar STS: rest of the current month (this key is ignored; kept for old configs).
-    # Rolling 30d: upcoming bills due inside the 15d-ahead window.
+    # Rolling: upcoming bills due inside the 7-day-ahead window.
     "bill_horizon_days_calendar": 0,
     # rolling display: all unposted bills with due date in the rolling window
     "bill_fuzzy_match": True,
@@ -109,7 +113,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Culled Plaid Items (token gone). Webhooks ignored; does not free Trial slots.
     "deprecated_item_ids": [],
     # Firm-pace / breach Push SSOT. names_health never flips this.
-    "notify_period": "calendar",
+    "notify_period": "rolling_30d",
 }
 
 

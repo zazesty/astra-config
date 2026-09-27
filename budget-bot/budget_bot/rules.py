@@ -24,6 +24,7 @@ from .templates import (
     hardcap_body,
     hardcap_subject,
     pace_body,
+    pace_days_signed,
     pace_subject,
 )
 
@@ -53,14 +54,14 @@ def period_bounds(as_of: date, tz_name: str = "America/Los_Angeles") -> tuple[da
 
 def period_bounds_rolling(
     as_of: date,
-    past_days: int = 15,
-    future_days: int = 15,
+    past_days: int = 21,
+    future_days: int = 8,
 ) -> tuple[date, date, int, int]:
-    """Centered rolling window (default 15 past + 15 future = 30 days).
+    """21 days back, today, and 7 days ahead.
 
+    future_days includes today, so 8 means 7 days strictly ahead.
     Window: [as_of - past_days, as_of + (future_days - 1)] inclusive.
     days_elapsed counts start..as_of (spend only accrues through as_of).
-    Notify / alerts still use calendar period_bounds — this is parallel display.
     """
     if past_days < 0 or future_days < 1:
         raise ValueError("past_days >= 0 and future_days >= 1 required")
@@ -1633,8 +1634,10 @@ def evaluate_budget(
     """Evaluate hardcap/pace for one period window.
 
     period_kind:
-      - calendar (default): calendar month PT — **notify SSOT**
-      - rolling_30d: centered 15 past + 15 future (parallel display only)
+      - calendar: calendar month PT. Hardcap stays the monthly dollar cap.
+      - rolling_30d: 21 back + today + 7 ahead. Notify SSOT.
+        Pace uses the calendar daily allotment, so the on-pace line is
+        elapsed days × that allotment (22 × $35 in a 30-day month).
     """
     tz = ZoneInfo(cfg.get("timezone") or "America/Los_Angeles")
     if as_of is None:
@@ -1642,14 +1645,22 @@ def evaluate_budget(
     kind = (period_kind or "calendar").strip().lower()
     if kind in ("rolling", "rolling_30d", "rolling30", "r30"):
         kind = "rolling_30d"
-        past = int(cfg.get("rolling_past_days", 15))
-        future = int(cfg.get("rolling_future_days", 15))
+        past = int(cfg.get("rolling_past_days", 21))
+        future = int(cfg.get("rolling_future_days", 8))
         start, end, days_in, days_elapsed = period_bounds_rolling(as_of, past, future)
     else:
         kind = "calendar"
         start, end, days_in, days_elapsed = period_bounds(as_of)
 
-    hardcap = int(cfg["hardcap_cents"])
+    monthly_cap = int(cfg["hardcap_cents"])
+    if kind == "rolling_30d":
+        # Daily allotment is the calendar month's, not monthly_cap / rolling length.
+        # hardcap = daily × window length keeps days_off = committed/daily − elapsed,
+        # so the on-pace committed amount is elapsed × daily.
+        cal_days = month_end(as_of).day
+        hardcap = int(round(monthly_cap * days_in / cal_days))
+    else:
+        hardcap = monthly_cap
     exclude_pending = bool(cfg.get("exclude_pending", True))
     # Unused for calendar (rest-of-month). Kept so callers/config still parse.
     horizon = int(cfg.get("bill_horizon_days_calendar", 7) or 0)
@@ -1717,14 +1728,40 @@ def evaluate_budget(
     dop = days_off_pace(committed, hardcap, days_elapsed, days_in)
 
     # Pro-rated lines use **committed** (spend + unposted bills) for pace risk.
-    # Hardcap breach uses spend after annual 1/12 amortization.
     month_frac = days_elapsed / max(days_in, 1)
     expected = hardcap * month_frac
     soft_pace = float(cfg.get("soft_pace_frac", 0.90))
     abs_soft = float(cfg.get("hardcap_warn_pct", 0.90))  # absolute % of full hardcap
     soft_line = soft_pace * expected
     committed_pct = (committed / hardcap) if hardcap else 0.0
-    if spend >= hardcap:
+    if kind == "rolling_30d":
+        # Loud state is N days ahead, not a dollar-cap crossing.
+        whole = pace_days_signed(
+            BudgetSnapshot(
+                as_of=as_of,
+                period_start=start,
+                period_end=end,
+                days_in_period=days_in,
+                days_elapsed=days_elapsed,
+                hardcap_cents=hardcap,
+                spend_to_date=spend,
+                remaining_cents=hardcap - spend,
+                pct=(spend / hardcap) if hardcap else 0.0,
+                pace_ratio=0.0,
+                safe_to_spend_cents=0,
+                risk="ok",
+                committed_cents=committed,
+                days_off_pace=dop,
+            )
+        )
+        loud = int(cfg.get("pace_loud_days", 5))
+        if whole >= loud:
+            risk = "breach"
+        elif whole >= 1:
+            risk = "warn"
+        else:
+            risk = "ok"
+    elif spend >= hardcap:
         risk = "breach"
     elif (month_frac > 0 and committed_pct > month_frac) or pct >= abs_soft or (
         expected > 0 and committed >= soft_line
@@ -2029,13 +2066,11 @@ def budget_alerts(
     new_txn_ids: list[str] | None = None,
     new_txns: list[Transaction] | None = None,
 ) -> list[AlertEvent]:
-    """Hardcap / pace alerts (pro-rated calendar model).
+    """Pace alerts on the snapshot's window (rolling, for live pushes).
 
-    - **Firm (pri 1 interrupt):** committed% > month% elapsed
-    - **Breach (pri 2 every time, including further txns while over):** spend ≥ full hardcap
-    - Soft near-pace alerts are gone (superseded by firm).
-    - Firm re-buzz **per new txn** while condition holds — but a Plaid
-      dump of several new charges in one sync is **one** push, not N.
+    - **Firm (pri 1):** 1–4 days ahead. One push per sync.
+    - **Loud (pri 2):** 5 or more days ahead, including further txns while
+      still there. Same sentence as firm. Replaces the calendar dollar-cap bust.
     """
     out: list[AlertEvent] = []
     period = snap.period_start.strftime("%Y-%m")
@@ -2080,9 +2115,10 @@ def budget_alerts(
             },
         )
 
-    if snap.risk == "breach" or snap.spend_to_date >= snap.hardcap_cents:
-        # Every over-cap push is emergency (2), including further txns this month.
-        # One push if several land in the same sync.
+    loud_n = int(cfg.get("pace_loud_days", 5))
+    whole_days = pace_days_signed(snap)
+    if whole_days >= loud_n:
+        # 5+ days ahead. Emergency, including further txns while still there.
         first_breach = prev_risk != "breach"
         rest = list(ids)
         extra = _batch_line(len(ids), still_over=True) if ids else ""
@@ -2090,8 +2126,8 @@ def budget_alerts(
             out.append(
                 AlertEvent(
                     kind="hardcap_breach",
-                    subject=hardcap_subject(breach=True),
-                    body=hardcap_body(snap, breach=True, merchants=_merchants_for(ids))
+                    subject=pace_subject(snap),
+                    body=pace_body(snap, merchants=_merchants_for(ids))
                     + extra,
                     key=f"hardcap_breach|{period}",
                     payload={
@@ -2109,8 +2145,8 @@ def budget_alerts(
             out.append(
                 AlertEvent(
                     kind="hardcap_breach",
-                    subject=hardcap_subject(breach=True),
-                    body=hardcap_body(snap, breach=True, merchants=_merchants_for(rest))
+                    subject=pace_subject(snap),
+                    body=pace_body(snap, merchants=_merchants_for(rest))
                     + extra,
                     key=key,
                     payload={
@@ -2124,7 +2160,7 @@ def budget_alerts(
             )
         return out
 
-    if is_firm:
+    if whole_days >= 1:
         # Ahead of calendar: interrupt; one buzz per sync (1 txn or a dump).
         merchants = _merchants_for(ids)
         if ids:

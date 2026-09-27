@@ -130,28 +130,22 @@ def days_over_cap(spend_cents: int, hardcap_cents: int, days_in_period: int) -> 
     return (spend_cents - hardcap_cents) / (hardcap_cents / days_in_period)
 
 
-def _over_cap(snap: BudgetSnapshot) -> bool:
-    return snap.hardcap_cents > 0 and snap.spend_to_date >= snap.hardcap_cents
+def pace_days_signed(snap: BudgetSnapshot) -> int:
+    """Whole pace-days for this snapshot's window. Same count over or under the cap."""
+    return _round_half_away(_days_off_raw(snap))
 
 
-def _pct_of_cap(snap: BudgetSnapshot) -> int:
-    if snap.hardcap_cents <= 0:
-        return 0
-    return _round_half_away(100.0 * snap.spend_to_date / snap.hardcap_cents)
-
-
-def _days_above_phrase(snap: BudgetSnapshot) -> str:
-    """Over-cap 'N days above' — overage/daily allotment, not pace.
-
-    Rounded 0 (barely over) uses the same 'on pace' wording as the under-cap line.
-    """
-    n = _round_half_away(
-        days_over_cap(snap.spend_to_date, snap.hardcap_cents, snap.days_in_period)
-    )
-    if n <= 0:
-        return "on pace"
-    unit = "day" if n == 1 else "days"
-    return f"{n} {unit} above"
+def pace_action(snap: BudgetSnapshot) -> str:
+    """Pace count only. Cap breach does not switch this to overage."""
+    days = pace_days_signed(snap)
+    if days >= 1:
+        unit = "day" if days == 1 else "days"
+        return f"{days} {unit} ahead of pace."
+    if days <= -1:
+        n = abs(days)
+        unit = "day" if n == 1 else "days"
+        return f"{n} {unit} under pace."
+    return "On pace."
 
 
 def hardcap_body(
@@ -159,18 +153,15 @@ def hardcap_body(
     breach: bool,
     merchants: list[str] | None = None,
 ) -> str:
-    """Warn reuses near-pace copy; breach is the same three-beat shape.
+    """Breach uses the same wording as the firm push. Photon is the rolling window.
 
     Pace/breach copy is numbers-only — no merchant names (locked 2026-08-27).
-    Over-cap: percent of cap + days-over, not $X vs $Y / days_off_pace.
+    The subject still says the cap broke. The day count does not change formula.
     """
     del merchants
     if not breach:
         return pace_body(snap, soft=True)
-    return (
-        f"Over the monthly cap. {_days_above_phrase(snap)}. "
-        f"Spent {_pct_of_cap(snap)}% of cap.\n"
-    )
+    return pace_body(snap)
 
 
 def pace_subject(snap: BudgetSnapshot, *, soft: bool = False) -> str:
@@ -246,54 +237,7 @@ def pace_body(
             f"Spend pace is near allotted. "
             f"Committed {committed} versus {allotted} allotted.\n"
         )
-    return f"Spend pace is {_days_off_phrase(snap)}.\n"
-
-
-def _status_pace(raw: float) -> str:
-    """Canned status: 'above pace' not 'ahead of pace'."""
-    return _days_off_from_raw(raw).replace("ahead of pace", "above pace")
-
-
-def _is_rolling(snap: BudgetSnapshot) -> bool:
-    kind = str(getattr(snap, "period_kind", "") or "").strip().lower()
-    return kind in ("rolling", "rolling_30d", "rolling30", "r30")
-
-
-def _status_window(snap: BudgetSnapshot) -> str:
-    """Rolling is always pace-days. Calendar over cap keeps overage (breach lock)."""
-    if not _is_rolling(snap) and _over_cap(snap):
-        return _days_above_phrase(snap)
-    return _status_pace(_days_off_raw(snap))
-
-
-def _pace_days_signed(snap: BudgetSnapshot) -> int:
-    """Whole pace-days for Overall blend — never overage."""
-    return _round_half_away(_days_off_raw(snap))
-
-
-def _overall_days_signed(cal: BudgetSnapshot, roll: BudgetSnapshot) -> int:
-    """Mean of calendar and rolling pace-days; round up if a fraction."""
-    avg = (_pace_days_signed(cal) + _pace_days_signed(roll)) / 2.0
-    if abs(avg) < 1e-12:
-        return 0
-    if avg > 0:
-        return int(math.ceil(avg - 1e-12))
-    return int(math.floor(avg + 1e-12))
-
-
-def _overall_sts_cents(cal: BudgetSnapshot, roll: BudgetSnapshot) -> int:
-    """Mean of calendar and rolling STS, rounded to whole dollars (half away)."""
-    avg = (
-        int(cal.safe_to_spend_cents) + int(roll.safe_to_spend_cents)
-    ) / 2.0
-    return _round_half_away(avg / 100.0) * 100
-
-
-def _sts_clause(cents: int) -> str:
-    """Overall leftover. Not 'safe' — gas etc. still come out of this."""
-    if cents < 0:
-        return f"over by {money_dollars(-cents)}"
-    return f"{money_dollars(cents)} left"
+    return pace_action(snap) + "\n"
 
 
 def cash_vs_bills_line(
@@ -364,27 +308,12 @@ def budget_status_text(
     upcoming_bills_cents: int = 0,
     cash_piles: list[tuple[str | None, int, int]] | None = None,
 ) -> str:
-    """Overall = avg of calendar + rolling *pace-days* (ceil fraction) and STS.
+    """One rolling pace sentence. Pushover stays on the calendar snapshot.
 
-    Rolling's printed line is also pace-days, even when that window is over
-    cap. Calendar over cap still prints overage (matches breach Pushover).
-    Leftover $ on Overall is the mean of the two windows, not the lesser. Over
-    cap (calendar spend): percent of calendar cap, no leftover. Optional 4th
-    line: `$84 cash > $72 bills` only if unpaid bills due in the canned horizon.
+    Optional cash-vs-bills lines follow when unpaid dues are in the canned horizon.
     """
-    n = _overall_days_signed(calendar_snap, rolling_snap)
-    if _over_cap(calendar_snap):
-        overall = f"{_status_pace(float(n))} · {_pct_of_cap(calendar_snap)}% of cap"
-    else:
-        overall = (
-            f"{_status_pace(float(n))} · "
-            f"{_sts_clause(_overall_sts_cents(calendar_snap, rolling_snap))}"
-        )
-    lines = [
-        f"Overall: {overall}",
-        f"Calendar: {_status_window(calendar_snap)}",
-        f"Rolling: {_status_window(rolling_snap)}",
-    ]
+    del calendar_snap
+    lines = [pace_action(rolling_snap).rstrip(".")]
     extra = cash_vs_bills_line(cash_cents, upcoming_bills_cents)
     if extra:
         lines.append(extra)

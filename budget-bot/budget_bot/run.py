@@ -65,7 +65,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
             "hardcap_cents": cfg["hardcap_cents"],
             "notify_enabled": cfg.get("notify_enabled"),
             "mode": cfg.get("mode"),
-            "notify_period": "calendar",
+            "notify_period": "rolling_30d",
             "pace_v2_bills": True,
         },
         "txn_count": len(txns),
@@ -614,14 +614,14 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         persist_bill_rewrites(cfg, txns, as_of)
         cfg = load_config()
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
-    snap = both["calendar"]  # notify SSOT
+    snap = both["rolling_30d"]  # notify SSOT
     anomalies = detect_anomalies(txns, cfg, as_of=as_of)
     balerts = budget_alerts(snap, cfg, prev_risk=None)
     cash_ev = cash_bills_alert(
         cfg,
         txns,
         as_of,
-        snap=snap,
+        snap=both["calendar"],
         balances=load_balances(),
     )
     if cash_ev:
@@ -633,7 +633,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
             "calendar": both["calendar"].to_dict(),
             "rolling_30d": both["rolling_30d"].to_dict(),
         },
-        "notify_period": "calendar",
+        "notify_period": "rolling_30d",
         "budget_alerts": [a.to_dict() for a in balerts],
         "anomalies": [a.to_dict() for a in anomalies],
     }, indent=2))
@@ -677,16 +677,17 @@ def cmd_watch(args: argparse.Namespace) -> int:
         persist_bill_rewrites(cfg, all_tx, as_of)
         cfg = load_config()
     both = evaluate_budget_both(all_tx, cfg, as_of=as_of)
-    snap = both["calendar"]  # notify SSOT
+    snap = both["calendar"]
+    notify = both["rolling_30d"]
     record_period_series(
-        as_of, both["calendar"], both["rolling_30d"], source="watch"
+        as_of, snap, notify, source="watch"
     )
     prev_risk = load_last_run().get("last_risk")
     new_ids = list((sync_summary or {}).get("new_txn_ids") or [])
     by_id = {t.id: t for t in all_tx}
     new_tx_objs = [by_id[i] for i in new_ids if i in by_id]
     balerts = budget_alerts(
-        snap,
+        notify,
         cfg,
         prev_risk=prev_risk,
         new_txn_ids=new_ids,
@@ -731,7 +732,7 @@ def cmd_watch(args: argparse.Namespace) -> int:
     save_last_run({
         "updated": datetime.now(ZoneInfo("UTC")).isoformat(),
         "as_of": as_of.isoformat(),
-        "last_risk": snap.risk,
+        "last_risk": notify.risk,
         "last_digest_date": load_last_run().get("last_digest_date"),
         "snapshot": snap.to_dict(),
         "snapshot_rolling_30d": both["rolling_30d"].to_dict(),
@@ -744,10 +745,10 @@ def cmd_watch(args: argparse.Namespace) -> int:
 
     out = {
         "ok": True,
-        "risk": snap.risk,
-        "spend": snap.spend_to_date,
-        "hardcap": snap.hardcap_cents,
-        "pace": round(snap.pace_ratio, 3),
+        "risk": notify.risk,
+        "spend": notify.spend_to_date,
+        "hardcap": notify.hardcap_cents,
+        "pace": round(notify.pace_ratio, 3),
         "alerts": len(flags),
         "anomalies_on_box": len(anomalies),
         "digest": digest_status,
