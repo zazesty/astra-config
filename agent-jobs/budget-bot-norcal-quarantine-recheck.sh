@@ -9,6 +9,24 @@ export BUDGET_BOT_STATE="${BUDGET_BOT_STATE:-${HERMES_FINANCE_STATE:-$HOME/.loca
 export HERMES_FINANCE_STATE="$BUDGET_BOT_STATE"
 export PYTHONPATH="${BUDGET_BOT_ROOT}${PYTHONPATH:+:$PYTHONPATH}"
 NOTIFY="${BUDGET_BOT_NOTIFY_CMD:-${HERMES_NOTIFY_CMD:-/root/astra-config/scripts/notify-email.sh}}"
+if python3 - "$BUDGET_BOT_STATE/norcal-soft-close.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+if p.is_file():
+    try:
+        status = json.loads(p.read_text()).get("status")
+    except Exception:
+        status = None
+    if status in ("unlinked", "deprecated"):
+        print(f"norcal-recheck skipped ({status})")
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+then
+  exit 0
+fi
+
 STATE_DIR="$BUDGET_BOT_STATE/quarantine"
 mkdir -p "$STATE_DIR"
 LAST="$STATE_DIR/norcal-recheck-last.json"

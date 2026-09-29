@@ -180,6 +180,21 @@ def complete_public_token_exchange(
     item_id = ex["item_id"]
     inst_name = (meta.get("institution") or {}).get("name") or "unknown"
     inst_slug = inst_name.lower().replace(" ", "-")[:40]
+    from .balances import is_norcal_institution
+    from .norcal_soft_close import active
+
+    if active() and (is_norcal_institution(inst_slug) or is_norcal_institution(inst_name)):
+        from .plaid_client import item_remove
+
+        try:
+            item_remove(access)
+        except Exception:
+            pass
+        result = {"error": "norcal_soft_closed", "institution": inst_name}
+        inf = load_inflight()
+        inf["result"] = result
+        save_inflight(inf)
+        return result
     entry = save_item(
         access,
         item_id,

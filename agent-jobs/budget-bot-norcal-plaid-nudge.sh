@@ -10,6 +10,31 @@ INTERVAL_DAYS="${NORCAL_NUDGE_INTERVAL_DAYS:-14}"
 
 mkdir -p "$STATE_DIR"
 
+# Soft-close: Plaid is unlinked. Do not email about NorCal labels.
+if python3 - "$STATE_DIR/norcal-soft-close.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+if not p.is_file():
+    raise SystemExit(0)
+try:
+    status = json.loads(p.read_text()).get("status")
+except Exception:
+    raise SystemExit(0)
+if status in ("unlinked", "deprecated"):
+    print(f"nudge skipped (norcal {status})")
+    raise SystemExit(3)
+raise SystemExit(0)
+PY
+then
+  :
+else
+  rc=$?
+  if [ "$rc" = "3" ]; then
+    exit 0
+  fi
+fi
+
 # Detector: skip nag when live Plaid names (or Alliant spend) are already clear.
 if python3 - "$STATE_DIR" <<'PY'
 import json, sys

@@ -385,6 +385,15 @@ def cmd_plaid_quarantine(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plaid_unlink_norcal(_args: argparse.Namespace) -> int:
+    """Drop the NorCal Plaid Item. Does not delete the ledger."""
+    from .norcal_soft_close import unlink_norcal
+
+    out = unlink_norcal()
+    print(json.dumps(out, indent=2))
+    return 0 if out.get("ok") else 1
+
+
 def cmd_plaid_status(_args: argparse.Namespace) -> int:
     idx = state_dir() / "tokens" / "items.json"
     if not idx.is_file():
@@ -456,8 +465,12 @@ def cmd_import_statement_pdf(args: argparse.Namespace) -> int:
         print(json.dumps({"error": f"missing {path}"}))
         return 2
     incoming = import_pdf(path, institution=args.institution)
+    from .norcal_soft_close import arm_from_statement
+
+    # Statement rows are kept even after the close. The import itself extends it.
     all_tx, new = upsert_txns(incoming)
     deduped = _dedupe_after_import()
+    soft = arm_from_statement(incoming, source=str(path), institution=args.institution)
     spendish = sum(
         1
         for t in incoming
@@ -474,6 +487,7 @@ def cmd_import_statement_pdf(args: argparse.Namespace) -> int:
                 "spend_candidates": spendish,
                 "transfers": sum(1 for t in incoming if t.transfer),
                 "import_plaid_deduped": deduped,
+                "norcal_soft_close": soft,
             },
             indent=2,
         )
@@ -489,21 +503,26 @@ def cmd_import_xlsx(args: argparse.Namespace) -> int:
         print(f"missing xlsx: {path}", file=sys.stderr)
         return 2
     incoming = xlsx_to_transactions(path, sheet=args.sheet)
+    from .norcal_soft_close import arm_from_statement
+
     if args.replace:
         from .store import save_txns
 
         save_txns(incoming)
         deduped = _dedupe_after_import()
+        soft = arm_from_statement(incoming, source=str(path))
         print(
             f"replaced store with {len(incoming)} from {path} sheet={args.sheet}; "
-            f"import_plaid_deduped={deduped}"
+            f"import_plaid_deduped={deduped}; norcal_soft_close={soft.get('deprecated')}"
         )
         return 0
     all_tx, new = upsert_txns(incoming)
     deduped = _dedupe_after_import()
+    soft = arm_from_statement(incoming, source=str(path))
     print(
         f"imported {len(incoming)} from {path} sheet={args.sheet}; "
-        f"new={len(new)}; total={len(all_tx)}; import_plaid_deduped={deduped}"
+        f"new={len(new)}; total={len(all_tx)}; import_plaid_deduped={deduped}; "
+        f"norcal_soft_close={soft.get('deprecated')}"
     )
     return 0
 
@@ -880,6 +899,12 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("plaid-status", help="List linked Items (no tokens)")
     s.set_defaults(func=cmd_plaid_status)
+
+    s = sub.add_parser(
+        "plaid-unlink-norcal",
+        help="Soft-close: remove the NorCal Plaid Item. Ledger stays until the September statement.",
+    )
+    s.set_defaults(func=cmd_plaid_unlink_norcal)
 
     s = sub.add_parser(
         "plaid-webhook-serve",

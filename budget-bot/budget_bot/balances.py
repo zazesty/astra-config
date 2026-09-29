@@ -80,9 +80,19 @@ def is_spendable_cash(acct: dict[str, Any], item: dict[str, Any] | None = None) 
     return is_norcal_checking(acct, item=item)
 
 
+def _norcal_cash_live() -> bool:
+    """False once the September statement has deprecated NorCal."""
+    try:
+        from .norcal_soft_close import is_deprecated
+
+        return not is_deprecated()
+    except Exception:
+        return True
+
+
 def cash_on_hand_cents(snapshot: dict[str, Any] | None) -> int | None:
     """NorCal checking available (else current). None if that account isn't cached."""
-    if not snapshot:
+    if not snapshot or not _norcal_cash_live():
         return None
     total = 0
     n = 0
@@ -112,6 +122,8 @@ def checking_cash_by_cu(snapshot: dict[str, Any] | None) -> dict[str, int]:
     for item in snapshot.get("items") or []:
         pile = cu_pile_id(item)
         if not pile:
+            continue
+        if pile == "norcal" and not _norcal_cash_live():
             continue
         for acct in item.get("accounts") or []:
             if not is_cu_checking(acct, item=item):

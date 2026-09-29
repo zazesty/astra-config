@@ -6,6 +6,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -18,6 +19,12 @@ from budget_bot.balances import (
 
 
 class TestCashOnHand(unittest.TestCase):
+    def setUp(self):
+        # Box soft-close state must not change these fixture expectations.
+        self._dep = patch("budget_bot.norcal_soft_close.is_deprecated", return_value=False)
+        self._dep.start()
+        self.addCleanup(self._dep.stop)
+
     def test_norcal_checking_only_ignores_paypal_and_savings(self):
         snap = {
             "items": [

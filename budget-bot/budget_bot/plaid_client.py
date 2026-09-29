@@ -115,6 +115,11 @@ def item_get(access_token: str) -> dict[str, Any]:
     return plaid_post("/item/get", {"access_token": access_token})
 
 
+def item_remove(access_token: str) -> dict[str, Any]:
+    """Disconnect an Item at Plaid. The access token dies with it."""
+    return plaid_post("/item/remove", {"access_token": access_token})
+
+
 def item_webhook_update(access_token: str, webhook: str) -> dict[str, Any]:
     """Point an existing Item at a webhook URL (HTTPS required in production)."""
     return plaid_post(

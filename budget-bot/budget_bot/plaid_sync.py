@@ -81,6 +81,15 @@ def item_is_quarantined(item: dict[str, Any]) -> bool:
     return bool(item.get("quarantine"))
 
 
+def _norcal_sync_blocked(item: dict[str, Any]) -> bool:
+    """Soft-close: do not call Plaid for NorCal. No sync, no re-login probe."""
+    if not is_norcal_institution(str(item.get("institution") or "")):
+        return False
+    from .norcal_soft_close import active
+
+    return active()
+
+
 REPAIR_GRACE_HOURS = 6
 
 
@@ -639,6 +648,19 @@ def sync_item(item_id: str, *, force: bool = False) -> dict[str, Any]:
         summary["upserted_new"] = 0
         summary["upserted_total_batch"] = 0
         return summary
+    if _norcal_sync_blocked(match):
+        summary["skipped_soft_close"] = True
+        summary["items"].append(
+            {
+                "item_id": item_id,
+                "institution": match.get("institution"),
+                "skipped": "norcal_soft_close",
+            }
+        )
+        summary["upserted_new"] = 0
+        summary["upserted_total_batch"] = 0
+        summary["removed_applied"] = 0
+        return summary
     if item_is_quarantined(match) and not force:
         summary["skipped_quarantine"] = True
         summary["items"].append(
@@ -714,8 +736,18 @@ def sync_all_items(*, include_quarantine: bool = False) -> dict[str, Any]:
         "skipped_repair_grace": [],
     }
     summary.setdefault("failed_items", [])
+    summary.setdefault("skipped_soft_close", [])
     for item in _tokens():
         iid = str(item.get("item_id") or "")
+        if _norcal_sync_blocked(item):
+            summary["skipped_soft_close"].append(
+                {
+                    "item_id": iid,
+                    "institution": item.get("institution"),
+                    "reason": "norcal_soft_close",
+                }
+            )
+            continue
         if iid and item_repair_grace_active(iid):
             summary["skipped_repair_grace"].append(
                 {
@@ -786,6 +818,9 @@ def sync_all_items(*, include_quarantine: bool = False) -> dict[str, Any]:
         summary["added"] += meta["added"]
         summary["modified"] += meta["modified"]
         summary["removed"] += meta["removed"]
+    from .norcal_soft_close import sweep_forward
+
+    summary["norcal_forward_removed"] = sweep_forward()
     if "upserted_new" not in summary:
         summary["upserted_new"] = 0
         summary["upserted_total_batch"] = 0
