@@ -49,11 +49,35 @@ symlinks=(
   "/root/journal-trigger/journal-trigger.sh|home/journal-trigger/journal-trigger.sh"
   "/root/budget-bot|budget-bot"
 )
-for u in astra-commit health-check drift-check; do
+for u in astra-commit health-check drift-check or-timeout-review; do
   for k in service timer; do
     symlinks+=("/root/.config/systemd/user/$u.$k|home/.config/systemd/user/$u.$k")
   done
 done
+for u in \
+  budget-bot-buy-queue-ask.service \
+  budget-bot-eom-leftover.service \
+  budget-bot-eom-leftover.timer \
+  budget-bot-norcal-plaid-nudge.service \
+  budget-bot-norcal-plaid-nudge.timer \
+  budget-bot-norcal-quarantine-recheck.service \
+  budget-bot-norcal-quarantine-recheck.timer \
+  budget-bot-plaid-link.service \
+  budget-bot-plaid-webhook.service \
+  budget-bot-poll.service \
+  budget-bot-poll.timer \
+  health-bot.service \
+  hermes-gateway.service \
+  ifx-cycle-nudge.service \
+  ifx-cycle-nudge.timer \
+  ifx-form.service
+do
+  symlinks+=("/etc/systemd/system/$u|systemd/$u")
+done
+symlinks+=(
+  "/root/.hermes/skills/productivity/budget-bot|home/.hermes/skills/productivity/budget-bot"
+  "/root/.hermes/skills/productivity/budget-bot-ops|home/.hermes/skills/productivity/budget-bot-ops"
+)
 for pair in "${symlinks[@]}"; do
   live="${pair%%|*}"; rel="${pair##*|}"
   exp="$(readlink -f "$REPO/$rel" 2>/dev/null)"
@@ -70,15 +94,16 @@ while read -r t; do
   [ -n "$t" ] || continue
   [ -f "$REPO/home/.config/systemd/user/$t" ] \
     || findings+=("unit: enabled user timer '$t' has no tracked file in the repo")
-done < <(systemctl --user list-timers --all --no-legend 2>/dev/null \
-           | grep -oE '[A-Za-z0-9_.@-]+\.timer' | sort -u)
+done < <(systemctl --user list-unit-files --state=enabled --no-legend 2>/dev/null \
+           | awk '{print $1}' | grep -E '\.timer$' | sort -u)
 
 while read -r u; do
   [ -n "$u" ] || continue
-  [ -f "$REPO/etc/systemd/system/$u" ] \
-    || findings+=("unit: enabled custom system unit '$u' has no tracked file in the repo")
+  if [ ! -f "$REPO/etc/systemd/system/$u" ] && [ ! -f "$REPO/systemd/$u" ]; then
+    findings+=("unit: enabled custom system unit '$u' has no tracked file in the repo")
+  fi
 done < <(systemctl list-unit-files --state=enabled --no-legend 2>/dev/null \
-           | grep -oiE '(grok|astra|journal)[A-Za-z0-9_.@-]*\.(service|timer)' | sort -u)
+           | grep -oiE '(grok|astra|journal|budget-bot|hermes|ifx|health-bot)[A-Za-z0-9_.@-]*\.(service|timer)' | sort -u)
 
 # --- check 3: live root crontab == tracked crontab.txt -----------------------
 if [ -f "$CRONTAB_TRACKED" ]; then

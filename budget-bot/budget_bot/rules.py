@@ -1797,7 +1797,7 @@ def evaluate_budget_both(
     cfg: dict[str, Any],
     as_of: date | None = None,
 ) -> dict[str, BudgetSnapshot]:
-    """Calendar (notify SSOT) + rolling_30d in parallel for comparison."""
+    """Calendar month plus the rolling window. Photon and pushes use rolling."""
     cal = evaluate_budget(txns, cfg, as_of=as_of, period_kind="calendar")
     roll = evaluate_budget(txns, cfg, as_of=as_of, period_kind="rolling_30d")
     return {"calendar": cal, "rolling_30d": roll}

@@ -75,6 +75,34 @@ say "5/10  Symlink authored config (Stow-style: system -> repo)"
 # NEVER symlinked.
 ln -sfnT "$REPO/etc/systemd/system/grok-mcp.service" /etc/systemd/system/grok-mcp.service
 ln -sfnT "$REPO/etc/sysctl.d/99-swap.conf"            /etc/sysctl.d/99-swap.conf
+# Budget Bot, IFX, health-bot, Hermes gateway. Live path is the repo file.
+for u in \
+  budget-bot-buy-queue-ask.service \
+  budget-bot-eom-leftover.service \
+  budget-bot-eom-leftover.timer \
+  budget-bot-norcal-plaid-nudge.service \
+  budget-bot-norcal-plaid-nudge.timer \
+  budget-bot-norcal-quarantine-recheck.service \
+  budget-bot-norcal-quarantine-recheck.timer \
+  budget-bot-plaid-link.service \
+  budget-bot-plaid-webhook.service \
+  budget-bot-poll.service \
+  budget-bot-poll.timer \
+  health-bot.service \
+  hermes-gateway.service \
+  ifx-cycle-nudge.service \
+  ifx-cycle-nudge.timer \
+  ifx-form.service
+do
+  ln -sfnT "$REPO/systemd/$u" "/etc/systemd/system/$u"
+done
+# Old hermes-finance unit names, still pointed at the budget-bot units.
+ln -sfnT /etc/systemd/system/budget-bot-plaid-link.service /etc/systemd/system/hermes-plaid-link.service
+ln -sfnT /etc/systemd/system/budget-bot-plaid-webhook.service /etc/systemd/system/hermes-plaid-webhook.service
+ln -sfnT /etc/systemd/system/budget-bot-eom-leftover.timer /etc/systemd/system/hermes-eom-leftover.timer
+ln -sfnT /etc/systemd/system/budget-bot-poll.timer /etc/systemd/system/hermes-finance-poll.timer
+ln -sfnT /etc/systemd/system/budget-bot-norcal-plaid-nudge.timer /etc/systemd/system/hermes-norcal-plaid-nudge.timer
+ln -sfnT /etc/systemd/system/budget-bot-norcal-quarantine-recheck.timer /etc/systemd/system/hermes-norcal-quarantine-recheck.timer
 chmod 644 "$REPO/etc/systemd/system/grok-mcp.service" "$REPO/etc/sysctl.d/99-swap.conf"
 sysctl --system >/dev/null
 
@@ -99,6 +127,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.service" /r
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.timer"   /root/.config/systemd/user/grok-journal-read-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.service" /root/.config/systemd/user/claude-journal-cleanup.service
 ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.timer"   /root/.config/systemd/user/claude-journal-cleanup.timer
+ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.service" /root/.config/systemd/user/or-timeout-review.service
+ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.timer"   /root/.config/systemd/user/or-timeout-review.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -198,10 +228,10 @@ systemctl --user daemon-reload
 systemctl --user enable --now astra-commit.timer
 systemctl --user enable --now health-check.timer
 systemctl --user enable --now drift-check.timer
-# Claude transcript harvest: OFF by default (disabled early 2026-08; archive/delete
-# phases also disable). Do not re-enable on rebuild unless intentionally revived.
+# Claude transcript harvest and the OAuth watch are off. Do not re-enable.
 systemctl --user disable --now memory-harvest.timer 2>/dev/null || true
-systemctl --user enable --now journal-oauth-watch.timer
+systemctl --user disable --now journal-oauth-watch.timer 2>/dev/null || true
+systemctl --user enable --now or-timeout-review.timer
 systemctl --user enable --now grok-restart-reminder.timer
 systemctl --user enable --now grok-journal-pause-reminder.timer
 systemctl --user enable --now grok-journal-read-reminder.timer
@@ -226,6 +256,22 @@ install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-pres
 if [ -f "$REPO/docs/OPERATOR.md" ]; then
   cp -a "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
 fi
+# Budget Bot Photon skills. Canonical in the repo; live path is the symlink.
+mkdir -p /root/.hermes/skills/productivity
+ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot" /root/.hermes/skills/productivity/budget-bot
+ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot-ops" /root/.hermes/skills/productivity/budget-bot-ops
+systemctl enable --now \
+  budget-bot-buy-queue-ask.service \
+  budget-bot-plaid-link.service \
+  budget-bot-plaid-webhook.service \
+  health-bot.service \
+  hermes-gateway.service \
+  ifx-form.service \
+  budget-bot-eom-leftover.timer \
+  budget-bot-norcal-plaid-nudge.timer \
+  budget-bot-norcal-quarantine-recheck.timer \
+  budget-bot-poll.timer \
+  ifx-cycle-nudge.timer
 # Budget Bot code. Canonical live path is /root/budget-bot; old
 # /root/hermes-finance symlink is kept as a compatibility alias.
 if [ -d "$REPO/budget-bot" ]; then

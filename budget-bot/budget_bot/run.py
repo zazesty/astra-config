@@ -58,7 +58,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
     tz = ZoneInfo(cfg.get("timezone") or "America/Los_Angeles")
     as_of = datetime.now(tz).date()
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
-    # snapshot = calendar (notify SSOT); rolling_30d parallel for comparison
+    # snapshot stays the calendar month; pushes and Photon use rolling_30d.
     print(json.dumps({
         "version": __version__,
         "config": {

@@ -308,7 +308,7 @@ def budget_status_text(
     upcoming_bills_cents: int = 0,
     cash_piles: list[tuple[str | None, int, int]] | None = None,
 ) -> str:
-    """One rolling pace sentence. Pushover stays on the calendar snapshot.
+    """One rolling pace sentence. Photon and Pushover both use this count.
 
     Optional cash-vs-bills lines follow when unpaid dues are in the canned horizon.
     """
