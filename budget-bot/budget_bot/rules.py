@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from .models import AlertEvent, Transaction
 from .balances import CU_PILE_LABELS, checking_cash_by_cu
+from .transfers import is_opaque_mastermoney
 from .templates import (
     anomaly_body,
     anomaly_subject,
@@ -489,6 +490,17 @@ def _bill_window(
     return w0, w1
 
 
+def _bill_cycle_start(due_d: date, fuzzy_day_slop: int) -> date:
+    """Earliest pay date for this due: the 1st of its month, minus day slop.
+
+    `due - slop` misses a charge early in the due's month (US Mobile on the
+    2nd, EFF on the 4th) and an EOM debit on the last day of the prior month.
+    """
+    slop = max(0, int(fuzzy_day_slop))
+    month_open = date(due_d.year, due_d.month, 1) - timedelta(days=slop)
+    return min(due_d - timedelta(days=slop), month_open)
+
+
 def build_bill_payment_credits(
     bill: dict[str, Any],
     txns: list[Transaction],
@@ -586,7 +598,10 @@ def bill_occurrence_cleared(
 ) -> bool:
     """True if credits cover one monthly due; allocates from pool (supports 2× pays).
 
-    Match window: (due − slop) .. max(due + grace, day before next monthly due).
+    Pay dates run from the 1st of the due's month (minus slop) through the grace
+    cap. Named charges and opaque MasterMoney rows with a full in-band amount
+    share one date-ordered pool, so an earlier unnamed debit pays this due
+    before a later named charge in the grace tail.
     Leftover on a credit already applied to an earlier due rolls forward so a
     late-July catch-up can prepay August. Bounces netted in payment_credits;
     fee-sized name-matching crumbs stay ignored.
@@ -600,9 +615,10 @@ def bill_occurrence_cleared(
     under, over = bill_amount_band(
         bill, fuzzy_amount_tol_cents=tol, center_cents=pull
     )
-    w0, w1 = _bill_window(
+    _tight, w1 = _bill_window(
         bill, due_d, fuzzy_day_slop=fuzzy_day_slop, payment_grace_days=payment_grace_days
     )
+    w0 = min(_tight, _bill_cycle_start(due_d, fuzzy_day_slop))
 
     credits = payment_credits
     if credits is None:
@@ -612,6 +628,28 @@ def bill_occurrence_cleared(
             exclude_pending=exclude_pending,
             fuzzy_amount_tol_cents=tol,
         )
+    # Opaque full-amount MasterMoney joins the pool. Fuzzy below stays on the
+    # tight window so a random same-dollar purchase mid-month cannot clear.
+    cre = _bill_name_re(bill)
+    tax = saas_tax_pct(bill)
+    for t in txns:
+        if credits.get(t.id, 0) > 0 or t.id in claimed_ids:
+            continue
+        if not counts_as_spend(t, exclude_pending):
+            continue
+        posted = int(t.amount_cents)
+        if posted <= 0:
+            continue
+        if cre is not None and cre.search(_bill_match_blob(t)):
+            continue
+        if not is_opaque_mastermoney(name=t.name or "", merchant_name=t.merchant_name):
+            continue
+        d = parse_ymd(t.date)
+        if not (_bill_cycle_start(due_d, fuzzy_day_slop) <= d <= w1):
+            continue
+        if not amount_matches_bill(posted, pull, under, over, tax_pct=tax):
+            continue
+        credits[t.id] = posted
 
     dated: list[tuple[date, str]] = []
     for t in txns:
@@ -669,7 +707,9 @@ def bill_occurrence_cleared(
         if int(t.amount_cents) <= 0:
             continue
         d = parse_ymd(t.date)
-        if not (w0 <= d <= w1):
+        # Tight window only. Early-month MasterMoney is in the pool above;
+        # a same-dollar purchase on the 15th must not fuzzy-clear an EOM due.
+        if not (_tight <= d <= w1):
             continue
         if amount_matches_bill(
             int(t.amount_cents),

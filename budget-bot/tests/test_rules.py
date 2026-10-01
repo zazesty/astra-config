@@ -621,6 +621,173 @@ class TestBudget(unittest.TestCase):
         )
         self.assertEqual(after, 2575)
 
+    def test_eff_eom_prior_and_early_sept_clear_both(self):
+        """July 31 EOM debit is August; Sept 4 opaque is September, not delayed Aug."""
+        from budget_bot.rules import bill_occurrence_cleared, build_bill_payment_credits
+
+        bill = {
+            "name": "EFF",
+            "amount_cents": 2575,
+            "day_of_month": 31,
+            "match": r"(?i)electronic frontier|www\.eff\.org",
+            "active_from": "2026-08-01",
+        }
+        tx = [
+            Transaction(
+                id="eff-jul-eom",
+                date="2026-07-31",
+                amount_cents=2500,
+                name="Recurring Withdrawal Debit Card MasterMoney Card - WWW.EFF.ORG",
+                merchant_name="WWW.EFF.ORG",
+            ),
+            Transaction(
+                id="eff-sep-4",
+                date="2026-09-04",
+                amount_cents=2575,
+                name="Recurring Withdrawal Debit Card MasterMoney Card",
+                merchant_name="Recurring Withdrawal Debit Card MasterMoney Card",
+            ),
+        ]
+        credits = build_bill_payment_credits(bill, tx)
+        claimed: set[str] = set()
+        self.assertTrue(
+            bill_occurrence_cleared(
+                bill, date(2026, 8, 31), tx, claimed_ids=claimed, payment_credits=credits
+            )
+        )
+        self.assertIn("eff-jul-eom", claimed)
+        self.assertNotIn("eff-sep-4", claimed)
+        self.assertTrue(
+            bill_occurrence_cleared(
+                bill, date(2026, 9, 30), tx, claimed_ids=claimed, payment_credits=credits
+            )
+        )
+        self.assertIn("eff-sep-4", claimed)
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                [bill],
+                tx,
+                date(2026, 10, 1),
+                horizon_days=3,
+                include_arrears=True,
+                payment_grace_days=40,
+            ),
+            0,
+        )
+
+    def test_opaque_month_start_pays_before_later_named(self):
+        """Unnamed Sept 1 $30 is September; named Sept 30 $30 is October."""
+        from budget_bot.rules import bill_occurrence_cleared, build_bill_payment_credits
+
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 3000,
+            "day_of_month": 1,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+        }
+        tx = [
+            Transaction(
+                id="grok-sep",
+                date="2026-09-01",
+                amount_cents=3000,
+                name="Recurring Withdrawal Debit Card MasterMoney Card",
+                merchant_name="Recurring Withdrawal Debit Card MasterMoney Card",
+            ),
+            Transaction(
+                id="grok-oct",
+                date="2026-09-30",
+                amount_cents=3000,
+                name="Withdrawal Grok Xai",
+                merchant_name="Xai",
+            ),
+        ]
+        credits = build_bill_payment_credits(grok, tx)
+        claimed: set[str] = set()
+        self.assertTrue(
+            bill_occurrence_cleared(
+                grok, date(2026, 9, 1), tx, claimed_ids=claimed, payment_credits=credits
+            )
+        )
+        self.assertIn("grok-sep", claimed)
+        self.assertNotIn("grok-oct", claimed)
+        self.assertTrue(
+            bill_occurrence_cleared(
+                grok, date(2026, 10, 1), tx, claimed_ids=claimed, payment_credits=credits
+            )
+        )
+        self.assertIn("grok-oct", claimed)
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                [grok],
+                tx,
+                date(2026, 10, 1),
+                horizon_days=3,
+                include_arrears=True,
+                payment_grace_days=40,
+            ),
+            0,
+        )
+
+    def test_us_mobile_three_days_early_in_month_clears(self):
+        """Opaque $27 on the 2nd pays a due on the 5th."""
+        bill = {
+            "name": "US Mobile",
+            "amount_cents": 2700,
+            "day_of_month": 5,
+            "match": r"US MOBILE",
+        }
+        tx = [
+            Transaction(
+                id="um",
+                date="2026-09-02",
+                amount_cents=2700,
+                name="Recurring Withdrawal Debit Card MasterMoney Card",
+                merchant_name="Recurring Withdrawal Debit Card MasterMoney Card",
+            )
+        ]
+        # Oct 1 horizon: August's due is outside the 40-day arrears cap, September is in.
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                [bill],
+                tx,
+                date(2026, 10, 1),
+                horizon_days=3,
+                include_arrears=True,
+                payment_grace_days=40,
+            ),
+            0,
+        )
+
+    def test_named_purchase_early_in_month_does_not_clear(self):
+        """A real merchant on the 2nd is not an EOM bill just because the dollars match."""
+        bill = {
+            "name": "Something",
+            "amount_cents": 3000,
+            "day_of_month": 20,
+            "match": r"SOMETHING",
+        }
+        tx = [
+            Transaction(
+                id="cafe",
+                date="2026-09-02",
+                amount_cents=3000,
+                name="BLUE BOTTLE COFFEE",
+                merchant_name="BLUE BOTTLE COFFEE",
+            )
+        ]
+        self.assertEqual(
+            effective_bills_reserve_cents(
+                [bill],
+                tx,
+                as_of=date(2026, 9, 20),
+                period_kind="calendar",
+                arrears_lookback_months=1,
+                fuzzy_day_slop=2,
+            ),
+            3000,
+        )
+
     def test_arrears_stack_unpaid_months(self):
         from budget_bot.rules import effective_bills_reserve_cents
 
