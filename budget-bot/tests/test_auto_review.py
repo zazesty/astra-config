@@ -404,5 +404,46 @@ class TestRules(unittest.TestCase):
         self.assertEqual(r.review_status, "auto_accepted")
 
 
+class TestSeptember2026Labels(unittest.TestCase):
+    def test_cnc_textbook_and_theatre_donation(self):
+        book = Transaction(
+            id="book",
+            date="2026-09-01",
+            amount_cents=7500,
+            name="Withdrawal Debit Card MasterMoney Card - WWW.CAMINSTRUCTOR.COM",
+            merchant_name="WWW.CAMINSTRUCTOR.COM",
+        )
+        gift = Transaction(
+            id="gift",
+            date="2026-09-09",
+            amount_cents=2573,
+            name="Withdrawal Debit Card MasterMoney Card - EB *CONTRA COSTA COLLE",
+            merchant_name="EB *CONTRA COSTA COLLE",
+        )
+        self.assertEqual(rule_review(book).category, "Shopping")
+        self.assertEqual(rule_review(gift).category, "Charity / Donations")
+
+    def test_le_donation_once_then_ask(self):
+        once = Transaction(
+            id="le",
+            date="2026-09-21",
+            amount_cents=2091,
+            name="Law Enforcement",
+            merchant_name="Law Enforcement",
+        )
+        again = Transaction(
+            id="le2",
+            date="2026-11-02",
+            amount_cents=2000,
+            name="Law Enforcement Against Drugs",
+            merchant_name="Law Enforcement",
+        )
+        first = rule_review(once)
+        second = rule_review(again)
+        self.assertEqual(first.category, "Charity / Donations")
+        self.assertEqual(first.review_status, "auto_accepted")
+        self.assertEqual(second.review_status, "needs_review")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -307,10 +307,12 @@ def budget_status_text(
     cash_cents: int | None = None,
     upcoming_bills_cents: int = 0,
     cash_piles: list[tuple[str | None, int, int]] | None = None,
+    amount_asks: list[dict[str, Any]] | None = None,
 ) -> str:
     """One rolling pace sentence. Photon and Pushover both use this count.
 
     Optional cash-vs-bills lines follow when unpaid dues are in the canned horizon.
+    A subscription that jumped more than 10% adds one ask line. No push.
     """
     del calendar_snap
     lines = [pace_action(rolling_snap).rstrip(".")]
@@ -322,6 +324,15 @@ def budget_status_text(
         row = cash_vs_bills_line(cash, due, label=lab or None)
         if row:
             lines.append(row)
+    for ask in amount_asks or []:
+        name = str(ask.get("name") or "A bill").strip()
+        posted = int(ask.get("posted_cents") or 0)
+        old = int(ask.get("old_cents") or 0)
+        when = str(ask.get("date") or "").strip()
+        when_bit = f" on {when}" if when else ""
+        lines.append(
+            f"{name} posted {money(posted)}{when_bit}, up from {money(old)}. Move the reserve?"
+        )
     return "\n".join(lines)
 
 

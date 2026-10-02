@@ -1392,6 +1392,125 @@ class TestBudget(unittest.TestCase):
             [],
         )
 
+    def test_named_subscription_follows_similar_price(self):
+        """CSAA $68.92 → $70.09. A jump asks. A sibling lump and an opaque twin do not."""
+        from budget_bot.rules import proposed_subscription_reserve_updates
+
+        csaa = {
+            "name": "CSAA Insurance",
+            "amount_cents": 6892,
+            "day_of_month": 5,
+            "match": "CSAA",
+        }
+        renters = {
+            "name": "CSAA Renters",
+            "annual_cents": 11573,
+            "cadence": "annual",
+            "day_of_month": 12,
+            "month": 2,
+            "match": "CSAA",
+        }
+        usm = {
+            "name": "US Mobile",
+            "amount_cents": 2700,
+            "day_of_month": 5,
+            "match": "US MOBILE",
+        }
+        insurance = {
+            "name": "US Mobile insurance",
+            "annual_cents": 7500,
+            "cadence": "annual",
+            "day_of_month": 13,
+            "month": 8,
+            "match": "US MOBILE",
+        }
+        posted = Transaction(
+            id="csaa-sep",
+            date="2026-09-08",
+            amount_cents=7009,
+            name="Withdrawal CSAA INSURANCE - CO: CSAA INSURANCE",
+            merchant_name="CSAA",
+        )
+        result = proposed_subscription_reserve_updates(
+            [csaa, renters],
+            [posted],
+            as_of=date(2026, 10, 1),
+        )
+        self.assertEqual(result["asks"], [])
+        self.assertEqual(len(result["updates"]), 1)
+        self.assertEqual(result["updates"][0]["new_cents"], 7009)
+        self.assertEqual(result["updates"][0]["old_cents"], 6892)
+
+        jump = Transaction(
+            id="csaa-jump",
+            date="2026-09-08",
+            amount_cents=9000,
+            name="Withdrawal CSAA INSURANCE",
+            merchant_name="CSAA",
+        )
+        jumped = proposed_subscription_reserve_updates(
+            [csaa],
+            [jump],
+            as_of=date(2026, 10, 1),
+        )
+        self.assertEqual(jumped["updates"], [])
+        self.assertEqual(len(jumped["asks"]), 1)
+        self.assertEqual(jumped["asks"][0]["posted_cents"], 9000)
+
+        opaque = Transaction(
+            id="opaque-70",
+            date="2026-09-08",
+            amount_cents=7009,
+            name="Recurring Withdrawal Debit Card MasterMoney Card",
+        )
+        self.assertEqual(
+            proposed_subscription_reserve_updates(
+                [csaa], [opaque], as_of=date(2026, 10, 1)
+            ),
+            {"updates": [], "asks": []},
+        )
+
+        # $75 device insurance is the annual sibling, not a new $27 price.
+        lump = Transaction(
+            id="usm-ins",
+            date="2026-09-13",
+            amount_cents=7500,
+            name="US MOBILE",
+            merchant_name="US Mobile",
+        )
+        self.assertEqual(
+            proposed_subscription_reserve_updates(
+                [usm, insurance],
+                [lump],
+                as_of=date(2026, 10, 1),
+            ),
+            {"updates": [], "asks": []},
+        )
+
+        # Split catch-up is not a new premium and not an ask.
+        partials = [
+            Transaction(
+                id="csaa-a",
+                date="2026-09-06",
+                amount_cents=5000,
+                name="CSAA INSURANCE",
+                merchant_name="CSAA",
+            ),
+            Transaction(
+                id="csaa-b",
+                date="2026-09-08",
+                amount_cents=11186,
+                name="CSAA INSURANCE",
+                merchant_name="CSAA",
+            ),
+        ]
+        self.assertEqual(
+            proposed_subscription_reserve_updates(
+                [csaa], partials, as_of=date(2026, 10, 1)
+            ),
+            {"updates": [], "asks": []},
+        )
+
     def test_days_off_pace(self):
         from budget_bot.rules import days_off_pace
 

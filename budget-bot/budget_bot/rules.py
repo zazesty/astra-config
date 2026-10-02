@@ -903,6 +903,181 @@ def _txn_matches_any_bill_name(
     return any(_txn_matches_bill_name(b, t) for b in bills or [])
 
 
+def subscription_amount_slack_cents(monthly_cents: int) -> int:
+    """Same-subscription band: at least $1, otherwise 10%.
+
+    Named posts only. Opaque matching stays on the SaaS tax band so a
+    $25.75 EFF charge cannot clear a $27 US Mobile due.
+    """
+    monthly = max(0, int(monthly_cents))
+    return max(100, int(round(monthly * DEFAULT_SAAS_TAX_VARIANCE_PCT)))
+
+
+def subscription_amount_similar(posted_cents: int, monthly_cents: int) -> bool:
+    if posted_cents <= 0 or monthly_cents <= 0:
+        return False
+    slack = subscription_amount_slack_cents(monthly_cents)
+    return abs(int(posted_cents) - int(monthly_cents)) <= slack
+
+
+def subscription_amount_jumped(posted_cents: int, monthly_cents: int) -> bool:
+    """True when a named post is above the same-subscription band."""
+    if posted_cents <= 0 or monthly_cents <= 0:
+        return False
+    slack = subscription_amount_slack_cents(monthly_cents)
+    return int(posted_cents) > int(monthly_cents) + slack
+
+
+def _post_is_sibling_bill(
+    bill: dict[str, Any],
+    txn: Transaction,
+    bills: list[dict[str, Any]] | None,
+) -> bool:
+    """True when this charge is another bill's cash pull (USM $75 insurance)."""
+    posted = int(txn.amount_cents)
+    name = str(bill.get("name") or "")
+    for other in bills or []:
+        if other is bill or str(other.get("name") or "") == name:
+            continue
+        if not _txn_matches_bill_name(other, txn):
+            continue
+        pull = bill_cash_pull_cents(other)
+        if pull > 0 and abs(posted - pull) <= 100:
+            return True
+    return False
+
+
+def _named_subscription_posts(
+    bill: dict[str, Any],
+    due_d: date,
+    txns: list[Transaction],
+    bills: list[dict[str, Any]] | None,
+    *,
+    exclude_pending: bool = True,
+    fuzzy_day_slop: int = 2,
+    payment_grace_days: int = 40,
+) -> list[Transaction]:
+    """Named spends in this due's window that could be the subscription price.
+
+    Drops fee-sized crumbs, ~10× annual prepays, and a sibling bill's lump.
+    """
+    monthly = bill_monthly_reserve_cents(bill)
+    if monthly <= 0:
+        return []
+    min_credit = min(monthly // 2 + 1, 3000)
+    w0, w1 = _bill_window(
+        bill,
+        due_d,
+        fuzzy_day_slop=fuzzy_day_slop,
+        payment_grace_days=payment_grace_days,
+    )
+    hits: list[Transaction] = []
+    for txn in txns:
+        if not counts_as_spend(txn, exclude_pending):
+            continue
+        posted = int(txn.amount_cents)
+        if posted < min_credit:
+            continue
+        if not (w0 <= parse_ymd(txn.date) <= w1):
+            continue
+        if not _txn_matches_bill_name(bill, txn):
+            continue
+        if amount_looks_like_annual_prepay(posted, monthly):
+            continue
+        if _post_is_sibling_bill(bill, txn, bills):
+            continue
+        hits.append(txn)
+    return hits
+
+
+def proposed_subscription_reserve_updates(
+    bills: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    *,
+    as_of: date,
+    exclude_pending: bool = True,
+    fuzzy_amount_tol_cents: int = 100,
+    fuzzy_day_slop: int = 2,
+    payment_grace_days: int = 40,
+    lookback_days: int = 62,
+) -> dict[str, list[dict[str, Any]]]:
+    """Named due-window posts follow the reserve when the price is similar.
+
+    Within max($1, 10%): rewrite `amount_cents` when the post is more than $1
+    off the reserve. Above that band on the way up: do not rewrite; return an
+    ask. A split catch-up (two posts) is neither a new price nor an ask.
+    Newest due with a named post wins, so an older lump cannot move today's reserve.
+    """
+    updates: list[dict[str, Any]] = []
+    asks: list[dict[str, Any]] = []
+    tol = max(0, int(fuzzy_amount_tol_cents))
+    start = as_of - timedelta(days=max(1, int(lookback_days)))
+    bill_list = list(bills or [])
+    rows = txns or []
+    for bill in bill_list:
+        if bill.get("follow_amount") is False:
+            continue
+        if bill_is_annual(bill) or bill.get("annual_cents") is not None:
+            continue
+        monthly = bill_monthly_reserve_cents(bill)
+        if monthly <= 0:
+            continue
+        dues = sorted(bill_due_dates_in_range(bill, start, as_of), reverse=True)
+        for due_d in dues:
+            posts = _named_subscription_posts(
+                bill,
+                due_d,
+                rows,
+                bill_list,
+                exclude_pending=exclude_pending,
+                fuzzy_day_slop=fuzzy_day_slop,
+                payment_grace_days=payment_grace_days,
+            )
+            if not posts:
+                continue
+            similar = [
+                txn
+                for txn in posts
+                if subscription_amount_similar(int(txn.amount_cents), monthly)
+            ]
+            if similar:
+                similar.sort(
+                    key=lambda txn: (
+                        abs((parse_ymd(txn.date) - due_d).days),
+                        txn.date,
+                        txn.id,
+                    )
+                )
+                txn = similar[0]
+                posted = int(txn.amount_cents)
+                if abs(posted - monthly) > tol:
+                    updates.append(
+                        {
+                            "name": bill.get("name") or "",
+                            "old_cents": monthly,
+                            "new_cents": posted,
+                            "txn_id": txn.id,
+                            "date": txn.date[:10],
+                        }
+                    )
+                break
+            if len(posts) == 1 and subscription_amount_jumped(
+                int(posts[0].amount_cents), monthly
+            ):
+                txn = posts[0]
+                asks.append(
+                    {
+                        "name": bill.get("name") or "",
+                        "old_cents": monthly,
+                        "posted_cents": int(txn.amount_cents),
+                        "txn_id": txn.id,
+                        "date": txn.date[:10],
+                    }
+                )
+            break
+    return {"updates": updates, "asks": asks}
+
+
 def proposed_auto_annual_conversions(
     bills: list[dict[str, Any]] | None,
     txns: list[Transaction] | None,

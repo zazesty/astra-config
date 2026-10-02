@@ -163,6 +163,71 @@ def save_config(cfg: dict[str, Any]) -> None:
         pass
 
 
+def bill_amount_asks_path() -> Path:
+    return state_dir() / "bill-amount-asks.json"
+
+
+def load_bill_amount_asks() -> list[dict[str, Any]]:
+    path = bill_amount_asks_path()
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = data.get("asks") if isinstance(data, dict) else None
+    return [row for row in rows or [] if isinstance(row, dict)]
+
+
+def save_bill_amount_asks(asks: list[dict[str, Any]]) -> None:
+    path = bill_amount_asks_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"asks": asks}
+    current = path.read_text() if path.is_file() else ""
+    text = json.dumps(payload, indent=2) + "\n"
+    if current == text:
+        return
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(text)
+    try:
+        tmp.chmod(0o600)
+    except OSError:
+        pass
+    tmp.replace(path)
+
+
+def persist_subscription_bill_reserves(
+    cfg: dict[str, Any],
+    txns: list[Any],
+    as_of: Any,
+) -> list[dict[str, Any]]:
+    """Follow a named due-window post within 10%. Jumps become an ask, not a rewrite."""
+    from datetime import date as date_cls
+
+    from .rules import (
+        apply_saas_reserve_updates_to_bills,
+        proposed_subscription_reserve_updates,
+    )
+
+    if not isinstance(as_of, date_cls):
+        as_of = date_cls.fromisoformat(str(as_of)[:10])
+    result = proposed_subscription_reserve_updates(
+        cfg.get("bills"),
+        txns,
+        as_of=as_of,
+        exclude_pending=bool(cfg.get("exclude_pending", True)),
+        fuzzy_amount_tol_cents=int(cfg.get("bill_fuzzy_amount_tol_cents", 100)),
+        fuzzy_day_slop=int(cfg.get("bill_fuzzy_day_slop", 2)),
+        payment_grace_days=int(cfg.get("bill_payment_grace_days", 40)),
+    )
+    updates = result.get("updates") or []
+    changed = apply_saas_reserve_updates_to_bills(cfg.get("bills"), updates)
+    if changed:
+        save_config(cfg)
+    save_bill_amount_asks(result.get("asks") or [])
+    return updates
+
+
 def persist_saas_bill_reserves(
     cfg: dict[str, Any],
     txns: list[Any],
@@ -234,14 +299,24 @@ def persist_bill_rewrites(
     txns: list[Any],
     as_of: Any,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Annual prepay conversion first, then SaaS tax reserve follow."""
+    """Annual prepay, then named subscription follow, then SaaS tax reserve follow.
+
+    Named follow runs before the SaaS rewrite so an opaque tax-inclusive post
+    can still move a SaaS reserve after a same-window list-price name match.
+    """
     from .buy_queue_sync import reconcile_buy_queue
 
     reconcile_buy_queue(cfg)
     annual = persist_auto_annual_conversions(cfg, txns, as_of)
+    subscription = persist_subscription_bill_reserves(cfg, txns, as_of)
     saas = persist_saas_bill_reserves(cfg, txns, as_of)
     from .buy_queue import persist_buy_queue_pulls
 
     pulled = persist_buy_queue_pulls(cfg, txns)
     reconcile_buy_queue(cfg)
-    return {"auto_annual": annual, "saas": saas, "buy_queue": pulled}
+    return {
+        "auto_annual": annual,
+        "subscription": subscription,
+        "saas": saas,
+        "buy_queue": pulled,
+    }

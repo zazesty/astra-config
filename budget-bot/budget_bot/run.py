@@ -83,6 +83,7 @@ def cmd_status(_args: argparse.Namespace) -> int:
 def cmd_budget_status(args: argparse.Namespace) -> int:
     """Human one-liner: calendar + rolling (Hermes / chat-friendly)."""
     from .balances import checking_cash_by_cu
+    from .config import load_bill_amount_asks
     from .templates import budget_status_text
 
     cfg = load_config()
@@ -109,6 +110,7 @@ def cmd_budget_status(args: argparse.Namespace) -> int:
             both["calendar"],
             both["rolling_30d"],
             cash_piles=piles,
+            amount_asks=load_bill_amount_asks(),
         )
     )
     return 0

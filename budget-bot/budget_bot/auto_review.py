@@ -168,7 +168,7 @@ RULES: list[tuple[str, str, float]] = [
     (r"\bNSF\b|\bINSUFFICIENT\b|\bOVERDRAFT\b", "Irregular Expenses", 0.95),
     (r"\bDEBTOREDU\b|\bDEBTORCC\b|\bDEBTOR\s*EDU", "Irregular Expenses", 0.93),
     (r"\bCORPORATE FILINGS\b", "Irregular Expenses", 0.9),
-    (r"\bSPOTIFY\b|\bNETFLIX\b|\bAPPLE SERVICES\b", "Entertainment & Subs", 0.92),
+    (r"\bSPOTIFY\b|\bNETFLIX\b|\bYOUTUBE\b|\bAPPLE SERVICES\b", "Entertainment & Subs", 0.92),
     # iCloud / Apple.com/bill = SaaS (not Apple Cash P2P)
     (r"\bAPPLE\.COM/BILL\b|\bICLOUD\b", "Software & Tools", 0.94),
     # plain APPLE (not Cash P2P — handled in rule_review; not Pay)
@@ -201,6 +201,10 @@ RULES: list[tuple[str, str, float]] = [
     (r"\bUPS\b|\bUSPS\b|\bFEDEX|\bPOSTAGE\b|\bSHIPPING\b|\bROLLO\b", "Postage & Shipping", 0.93),
     # charity
     (r"\bACTBLUE\b|\bEFF\b|ELECTRONIC FRONTIER|\bDONATION\b|\bCHARITY\b", "Charity / Donations", 0.93),
+    # CNC class textbook (CamInstructor), not a subscription.
+    (r"\bCAMINSTRUCTOR\b", "Shopping", 0.95),
+    # Contra Costa College theatre donation, sold as an Eventbrite event.
+    (r"\bCONTRA COSTA COLLE", "Charity / Donations", 0.93),
     # transport
     (r"\bPARKING\b|\bUBER\b|\bLYFT\b|\bBART\b|\bTRANSIT\b|\bTOLL\b", "Transportation", 0.9),
     (r"\bAUTOZONE\b|\bO[\u2019']?REILLY\b", "Transportation", 0.9),
@@ -371,6 +375,21 @@ def rule_review(t: Transaction) -> ReviewResult:
     # Opaque MasterMoney $87.39 — Zima UV dental case (mostly discretionary)
     if t.date == "2026-09-06" and t.amount_cents == 8739:
         return ReviewResult("Medical & Health", 0.9, "auto_accepted", "owner:zima_uv_case")
+    # Law Enforcement Against Drugs: one donation, do not treat a repeat as planned.
+    if re.search(r"\bLAW ENFORCEMENT\b", blob, re.I):
+        if t.date == "2026-09-21" and t.amount_cents == 2091:
+            return ReviewResult(
+                "Charity / Donations",
+                0.95,
+                "auto_accepted",
+                "owner:le_against_drugs_once",
+            )
+        return ReviewResult(
+            "Charity / Donations",
+            0.35,
+            "needs_review",
+            "owner:no_more_le_donations",
+        )
 
     # Monument 76: gas if ≥$15, else c-store Misc
     if re.search(r"\bMONUMENT\s*76\b", blob, re.I):

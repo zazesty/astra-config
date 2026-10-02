@@ -87,6 +87,43 @@ class TestParseStatementSkipsAtmGlance(unittest.TestCase):
         self.assertEqual(txns[1].date, "2026-07-01")
         self.assertLess(txns[1].amount_cents, 0)  # dividend inflow
 
+    def test_page_break_keeps_ref_merchant(self):
+        text = """
+ 09/16/2026    Withdrawal Debit Card MasterMoney Card                                            -51.89
+\f                                                                                    Account Statement
+                                                                                    Page: 3 of 4
+
+                                                                                    September 01 - September 30, 2026
+                                                                                    Account Number xxxxxxxxx7
+PO Box 509, Martinez, CA 94553-0144
+888-387-8632 l 1stnorcalcu.org
+ Date            Transaction Description                                                                Amount
+                 09/16/2026 REF#: 625906637882 5542 - COSTCO GAS #066 CONCORD
+                 CONCORD CA
+ 09/17/2026      Withdrawal Debit Card MasterMoney Card                                                    -9.34
+                 09/17/2026 REF#: 626006630964 5542 - COSTCO GAS #066 CONCORD
+                 CONCORD CA
+"""
+        txns = parse_statement_text(text)
+        self.assertEqual(len(txns), 2)
+        self.assertEqual(txns[0].amount_cents, 5189)
+        self.assertIn("COSTCO GAS", txns[0].merchant_name or "")
+        self.assertNotIn("Account Statement", txns[0].name)
+        self.assertEqual(txns[1].amount_cents, 934)
+        self.assertIn("COSTCO GAS", txns[1].merchant_name or "")
+
+    def test_blank_line_does_not_merge_next_transaction(self):
+        text = """
+ 09/16/2026    Withdrawal Debit Card MasterMoney Card - IHERB IHERB.COM                              -35.34
+
+ 09/17/2026    Deposit PAYPAL - CO: PAYPAL                                                     100.00
+"""
+        txns = parse_statement_text(text)
+        self.assertEqual(len(txns), 2)
+        self.assertIn("IHERB", txns[0].merchant_name or "")
+        self.assertNotIn("PAYPAL", txns[0].name)
+        self.assertTrue(txns[1].transfer)
+
 
 if __name__ == "__main__":
     unittest.main()

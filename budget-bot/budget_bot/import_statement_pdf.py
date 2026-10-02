@@ -35,6 +35,64 @@ _REAL_TXN_DESC = re.compile(
 )
 _ATM_GLANCE = re.compile(r"(?i)ATM ACTIVITY AT A GLANCE")
 _ACCOUNT_SECTION = re.compile(r"^\s*(SAVINGS|CHECKING|MONEY MARKET)\s*$")
+# Page chrome between a register line and its REF# continuation. pdftotext
+# turns the form-feed into a blank line, which used to end the description
+# and drop the merchant (Sept 2026 Costco gas $51.89).
+_PAGE_CHROME = re.compile(
+    r"(?i)^(account statement\b|page:\s*\d|po box\b|date\s+transaction\b|"
+    r"(?:january|february|march|april|may|june|july|august|september|"
+    r"october|november|december)\s+\d{1,2}\s+-)"
+)
+
+
+def _is_page_chrome(line: str) -> bool:
+    s = line.replace("\f", " ").strip()
+    if not s:
+        return False
+    if _PAGE_CHROME.match(s):
+        return True
+    if "1stnorcalcu.org" in s.lower():
+        return True
+    if re.search(r"(?i)\baccount number\b", s) and not re.search(r"REF#:", s, re.I):
+        return True
+    return False
+
+
+def _auth_ref_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(
+        re.match(r"^\d{2}/\d{2}/\d{4}\b", stripped)
+        and re.search(r"REF#:", stripped, re.I)
+    )
+
+
+def _resume_after_page_break(lines: list[str], j: int) -> int | None:
+    """Index of the description continuation after a page-break gap, if any.
+
+    A blank line or header block ends the description unless the next real
+    line is still this transaction (indented tail or authorized-date REF#).
+    A new register row on the other side of the gap is not a continuation.
+    """
+    k = j
+    saw_chrome = False
+    while k < len(lines):
+        line = lines[k]
+        if not line.strip():
+            k += 1
+            continue
+        if _is_page_chrome(line):
+            saw_chrome = True
+            k += 1
+            continue
+        break
+    if not saw_chrome or k >= len(lines):
+        return None
+    nxt = lines[k]
+    if _LINE_RE.match(nxt):
+        return None
+    if _auth_ref_line(nxt) or _CONT_RE.match(nxt):
+        return k
+    return None
 
 
 def _mdy_to_iso(s: str) -> str:
@@ -125,16 +183,19 @@ def parse_statement_text(text: str, *, institution: str = "1st-norcal") -> list[
         j = i + 1
         while j < len(lines):
             cont = lines[j]
-            if _LINE_RE.match(cont) or not cont.strip():
+            if not cont.strip() or _is_page_chrome(cont):
+                resume = _resume_after_page_break(lines, j)
+                if resume is None:
+                    break
+                j = resume
+                continue
+            if _LINE_RE.match(cont):
                 break
             stripped = cont.strip()
             # Statement often puts authorized date + REF#/MCC on the next line:
             #   07/25/2026 REF#: 6206DJGMJ7RY 5734 - GROK XAI ...
             # Do NOT treat that as a new txn start.
-            auth_ref = bool(
-                re.match(r"^\d{2}/\d{2}/\d{4}\b", stripped)
-                and re.search(r"REF#:", stripped, re.I)
-            )
+            auth_ref = _auth_ref_line(cont)
             if re.match(r"^\s*\d{2}/\d{2}/\d{4}\b", cont) and not auth_ref:
                 break
             if _CONT_RE.match(cont) or (
