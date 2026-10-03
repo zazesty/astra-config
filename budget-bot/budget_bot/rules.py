@@ -126,6 +126,78 @@ def bill_is_annual(bill: dict[str, Any]) -> bool:
     return cad in ("annual", "yearly", "year")
 
 
+def bill_interval_months(bill: dict[str, Any]) -> int:
+    """Months between dues. Annual cadence is 12. Default is every month.
+
+    `interval_months` 2–6 is an iHerb-style delivery: the full `amount_cents`
+    is the cash pull on that cadence (reserve, cash-vs-bills, arrears, clear,
+    amount-follow). It is not a 1/N sinking fund. Values outside 1–6 are ignored.
+    """
+    if bill_is_annual(bill):
+        return 12
+    raw = bill.get("interval_months")
+    if raw is None or raw == "":
+        return 1
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 1
+    if 1 <= n <= 6:
+        return n
+    return 1
+
+
+def bill_anchor_index(bill: dict[str, Any]) -> int | None:
+    """`year * 12 + month - 1` for `anchor` / `anchor_month` (`YYYY-MM`)."""
+    raw = bill.get("anchor")
+    if raw is None:
+        raw = bill.get("anchor_month")
+    text = str(raw or "").strip()
+    if len(text) < 7 or text[4] != "-":
+        return None
+    try:
+        year = int(text[:4])
+        month = int(text[5:7])
+    except ValueError:
+        return None
+    if month < 1 or month > 12:
+        return None
+    return year * 12 + (month - 1)
+
+
+def bill_month_on_cadence(bill: dict[str, Any], year: int, month: int) -> bool:
+    """True when this calendar month has a due."""
+    if bill_is_annual(bill):
+        ann = bill_anniversary_month(bill)
+        return ann is not None and month == ann
+    interval = bill_interval_months(bill)
+    if interval <= 1:
+        return True
+    anchor = bill_anchor_index(bill)
+    if anchor is None:
+        return False
+    # Anchor is the first due, not only the phase. Earlier months are not arrears.
+    idx = year * 12 + (month - 1)
+    if idx < anchor:
+        return False
+    return (idx - anchor) % interval == 0
+
+
+def reserve_follow_start(
+    bill: dict[str, Any],
+    as_of: date,
+    *,
+    lookback_days: int = 62,
+    payment_grace_days: int = 40,
+) -> date:
+    """How far back amount-follow looks. Longer than 62d when dues are N months apart."""
+    days = max(1, int(lookback_days))
+    interval = bill_interval_months(bill)
+    if interval > 1 and not bill_is_annual(bill):
+        days = max(days, interval * 31 + max(0, int(payment_grace_days)))
+    return as_of - timedelta(days=days)
+
+
 def bill_auto_annual_enabled(bill: dict[str, Any]) -> bool:
     """Monthly bills that should flip to annual cadence on a ~10× prepay."""
     if bill_is_annual(bill):
@@ -260,11 +332,10 @@ def bill_due_date_for_month(bill: dict[str, Any], year: int, month: int) -> date
     """Concrete due date in a given month (clamped to month length).
 
     Annual cadence only fires in `month` / `anniversary_month`.
+    `interval_months` 2–6 only fires on months aligned to `anchor`.
     """
-    if bill_is_annual(bill):
-        ann = bill_anniversary_month(bill)
-        if ann is None or month != ann:
-            return None
+    if not bill_month_on_cadence(bill, year, month):
+        return None
     due = bill_due_day(bill)
     if due is None:
         return None
@@ -481,7 +552,10 @@ def _bill_window(
     slop = max(0, int(fuzzy_day_slop))
     grace = max(slop, int(payment_grace_days))
     w0 = due_d - timedelta(days=slop)
-    ny, nm = _add_months(due_d.year, due_d.month, 1)
+    # Annual stays on the 40d grace. An every-N-month bill stays open until
+    # the next real due, same idea as a monthly bill staying open until next month.
+    step = 1 if bill_is_annual(bill) else bill_interval_months(bill)
+    ny, nm = _add_months(due_d.year, due_d.month, step)
     next_due = bill_due_date_for_month(bill, ny, nm)
     if next_due is not None:
         w1 = max(due_d + timedelta(days=grace), next_due - timedelta(days=1))
@@ -830,7 +904,6 @@ def proposed_saas_reserve_updates(
     """
     out: list[dict[str, Any]] = []
     tol = max(0, int(fuzzy_amount_tol_cents))
-    start = as_of - timedelta(days=max(1, int(lookback_days)))
     for bill in bills or []:
         if saas_tax_pct(bill) is None:
             continue
@@ -839,6 +912,12 @@ def proposed_saas_reserve_updates(
         monthly = bill_monthly_reserve_cents(bill)
         if monthly <= 0:
             continue
+        start = reserve_follow_start(
+            bill,
+            as_of,
+            lookback_days=lookback_days,
+            payment_grace_days=payment_grace_days,
+        )
         dues = sorted(
             bill_due_dates_in_range(bill, start, as_of),
             reverse=True,
@@ -1011,7 +1090,6 @@ def proposed_subscription_reserve_updates(
     updates: list[dict[str, Any]] = []
     asks: list[dict[str, Any]] = []
     tol = max(0, int(fuzzy_amount_tol_cents))
-    start = as_of - timedelta(days=max(1, int(lookback_days)))
     bill_list = list(bills or [])
     rows = txns or []
     for bill in bill_list:
@@ -1022,6 +1100,12 @@ def proposed_subscription_reserve_updates(
         monthly = bill_monthly_reserve_cents(bill)
         if monthly <= 0:
             continue
+        start = reserve_follow_start(
+            bill,
+            as_of,
+            lookback_days=lookback_days,
+            payment_grace_days=payment_grace_days,
+        )
         dues = sorted(bill_due_dates_in_range(bill, start, as_of), reverse=True)
         for due_d in dues:
             posts = _named_subscription_posts(

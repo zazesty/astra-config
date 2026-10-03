@@ -135,13 +135,69 @@ def cmd_auto_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def _refresh_interval_candidates(txns, bills, as_of) -> dict:
+    from .recurring import persist_interval_candidates
+
+    return persist_interval_candidates(txns, bills, as_of=as_of)
+
+
 def cmd_recurring(args: argparse.Namespace) -> int:
     from .recurring import run_and_persist
 
     as_of = date.fromisoformat(args.as_of) if args.as_of else None
     summary = run_and_persist(as_of=as_of)
+    cfg = load_config()
+    ref = as_of or _as_of(cfg, None)
+    summary["interval_candidates"] = _refresh_interval_candidates(
+        load_txns(), cfg.get("bills"), ref
+    )
     print(json.dumps(summary, indent=2))
     return 0
+
+
+def cmd_interval_bills(args: argparse.Namespace) -> int:
+    """List, enroll, or dismiss an n-month bill candidate. Enroll is the confirm."""
+    from .recurring import (
+        dismiss_interval_candidate,
+        enroll_interval_candidate,
+        load_interval_candidate_doc,
+        persist_interval_candidates,
+    )
+
+    action = args.action
+    if action == "refresh":
+        cfg = load_config()
+        as_of = _as_of(cfg, args.as_of)
+        summary = persist_interval_candidates(load_txns(), cfg.get("bills"), as_of=as_of)
+        print(json.dumps(summary, indent=2))
+        return 0
+    if action == "list":
+        doc = load_interval_candidate_doc()
+        rows = []
+        for row in doc.get("open") or []:
+            rows.append(
+                {
+                    "id": row.get("id"),
+                    "name": row.get("name"),
+                    "amount_cents": row.get("amount_cents"),
+                    "interval_months": row.get("interval_months"),
+                    "months": row.get("months"),
+                    "anchor": row.get("anchor"),
+                    "day_of_month": row.get("day_of_month"),
+                    "institution": row.get("institution"),
+                }
+            )
+        print(json.dumps({"open": rows, "as_of": doc.get("as_of")}, indent=2))
+        return 0
+    if not args.id:
+        print("usage: interval-bills enroll|dismiss <id>", file=sys.stderr)
+        return 2
+    if action == "enroll":
+        result = enroll_interval_candidate(args.id)
+    else:
+        result = dismiss_interval_candidate(args.id)
+    print(json.dumps(result, indent=2))
+    return 0 if result.get("ok") else 1
 
 
 def _finish_plaid_link(result: dict, update_id: str | None) -> None:
@@ -634,6 +690,12 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     if not args.fixture:
         persist_bill_rewrites(cfg, txns, as_of)
         cfg = load_config()
+        try:
+            interval_summary = _refresh_interval_candidates(txns, cfg.get("bills"), as_of)
+        except Exception as exc:
+            interval_summary = {"error": str(exc)[:200]}
+    else:
+        interval_summary = None
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
     snap = both["rolling_30d"]  # notify SSOT
     anomalies = detect_anomalies(txns, cfg, as_of=as_of)
@@ -657,6 +719,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         "notify_period": "rolling_30d",
         "budget_alerts": [a.to_dict() for a in balerts],
         "anomalies": [a.to_dict() for a in anomalies],
+        "interval_candidates": interval_summary,
     }, indent=2))
     return 0
 
@@ -694,9 +757,16 @@ def cmd_watch(args: argparse.Namespace) -> int:
         new_tx = []
 
     as_of = _as_of(cfg, args.as_of)
+    interval_summary = None
     if not args.fixture:
         persist_bill_rewrites(cfg, all_tx, as_of)
         cfg = load_config()
+        try:
+            interval_summary = _refresh_interval_candidates(
+                all_tx, cfg.get("bills"), as_of
+            )
+        except Exception as exc:
+            interval_summary = {"error": str(exc)[:200]}
     both = evaluate_budget_both(all_tx, cfg, as_of=as_of)
     snap = both["calendar"]
     notify = both["rolling_30d"]
@@ -778,6 +848,8 @@ def cmd_watch(args: argparse.Namespace) -> int:
     }
     if sync_summary is not None:
         out["plaid_sync"] = sync_summary
+    if interval_summary is not None:
+        out["interval_candidates"] = interval_summary
     print(json.dumps(out))
     return 0
 
@@ -840,6 +912,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     s.add_argument("--as-of", default=None, help="YYYY-MM-DD (default today PT-ish)")
     s.set_defaults(func=cmd_recurring)
+
+    s = sub.add_parser(
+        "interval-bills",
+        help="N-month bill candidates (1–6). enroll is the confirm; nothing auto-enrolls",
+    )
+    s.add_argument("action", choices=("list", "refresh", "enroll", "dismiss"))
+    s.add_argument("id", nargs="?", default=None)
+    s.add_argument("--as-of", default=None, help="YYYY-MM-DD for refresh")
+    s.set_defaults(func=cmd_interval_bills)
 
     s = sub.add_parser("plaid-link", help="Start Plaid Link UI (PayPal / any bank)")
     s.add_argument(

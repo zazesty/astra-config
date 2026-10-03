@@ -54,6 +54,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Fields: name, amount_cents (monthly) OR annual_cents (/12),
     # cadence: "annual" → once-yearly due (month + day_of_month); leftover always
     # 1/12; cash-vs-bills uses the cash pull; charge month spend counts 1/12.
+    # interval_months: 2–6 (anchor YYYY-MM) → full amount_cents on that cadence.
+    # Same Spotify path as a monthly bill (reserve, cash-vs-bills, arrears, clear,
+    # amount-follow). Not a 1/N sinking fund. 1 is the default monthly row.
     # renews: false → term ends 12 months after the last in-band post (no next pull).
     # auto_annual: true → ~10× monthly post (named, or opaque in due window)
     # flips the row to annual cadence (Grok / US Mobile).
