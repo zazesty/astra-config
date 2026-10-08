@@ -1,5 +1,6 @@
 [Unit]
-Description=Mon + Thu 08:00 PT — IFX cycle log email
+# Disabled 2026-10-08 — BMs stable. setup.sh keeps this timer off.
+Description=Mon + Thu 08:00 PT — IFX cycle log email (disabled 2026-10-08)
 
 [Timer]
 # Box timezone is America/Los_Angeles

@@ -270,8 +270,14 @@ systemctl enable --now \
   budget-bot-eom-leftover.timer \
   budget-bot-norcal-plaid-nudge.timer \
   budget-bot-norcal-quarantine-recheck.timer \
-  budget-bot-poll.timer \
-  ifx-cycle-nudge.timer
+  budget-bot-poll.timer
+# IFX cycle-log emails off 2026-10-08 (BMs stable). Form + CLI stay.
+# Do not `systemctl disable` this timer: the /etc unit is a symlink into the
+# repo, and disable deletes that symlink. Drop only the wants link, then
+# put the unit file back. Re-arm only if asked (nudge_email true, then enable).
+rm -f /etc/systemd/system/timers.target.wants/ifx-cycle-nudge.timer
+ln -sfnT "$REPO/systemd/ifx-cycle-nudge.timer" /etc/systemd/system/ifx-cycle-nudge.timer
+systemctl daemon-reload
 # Budget Bot code. Canonical live path is /root/budget-bot; old
 # /root/hermes-finance symlink is kept as a compatibility alias.
 if [ -d "$REPO/budget-bot" ]; then

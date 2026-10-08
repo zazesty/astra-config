@@ -9,6 +9,24 @@ HOST="${IFX_PUBLIC_HOST:-zaz-astra.tail5d74e1.ts.net}"
 mkdir -p "$STATE"
 chmod 700 "$STATE" 2>/dev/null || true
 
+# Emails off 2026-10-08 (BMs stable). A stray start must not send.
+if ! python3 - <<PY
+import json
+from pathlib import Path
+p = Path("$STATE") / "config.json"
+data = {}
+if p.is_file():
+    try:
+        data = json.loads(p.read_text())
+    except Exception:
+        data = {}
+raise SystemExit(0 if data.get("nudge_email") is True else 1)
+PY
+then
+  echo "ifx-cycle-nudge skipped (nudge_email is not true)"
+  exit 0
+fi
+
 # Ensure form secret + URL
 FORM_URL="$(python3 - <<PY
 import json
