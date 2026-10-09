@@ -32,3 +32,14 @@ esac
 export PATH="$HOME/.grok/bin:$PATH"
 [[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
 # <<< grok installer <<<
+
+# Grok Build custom model reads GEMINI_API_KEY from the process environment.
+# The value already lives in /etc/grok-mcp.env; export only that one name.
+if [ -z "${GEMINI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
+  GEMINI_API_KEY=$(awk -F= '/^GEMINI_API_KEY=/{print substr($0, index($0,"=")+1); exit}' /etc/grok-mcp.env)
+  GEMINI_API_KEY=${GEMINI_API_KEY#\"}
+  GEMINI_API_KEY=${GEMINI_API_KEY%\"}
+  GEMINI_API_KEY=${GEMINI_API_KEY#\'}
+  GEMINI_API_KEY=${GEMINI_API_KEY%\'}
+  export GEMINI_API_KEY
+fi
