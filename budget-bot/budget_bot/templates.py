@@ -352,6 +352,5 @@ def anomaly_body(
     amt = money_dollars(amount_cents)
     return (
         f"Unusual {merchant} spend. "
-        f"{amt} versus recent baseline (~{ratio:.1f}×). "
-        "Intentional?\n"
+        f"{amt} versus recent baseline (~{ratio:.1f}×).\n"
     )

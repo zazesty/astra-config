@@ -173,9 +173,9 @@ class TestPaceCopy(unittest.TestCase):
         )
         self.assertEqual(
             body,
-            "Unusual Cafe Nero spend. $148 versus recent baseline (~4.2×). "
-            "Intentional?\n",
+            "Unusual Cafe Nero spend. $148 versus recent baseline (~4.2×).\n",
         )
+        self.assertNotIn("Intentional?", body)
         self.assertNotIn("Dining Out", body)
         self.assertNotIn(" · ", body)
 

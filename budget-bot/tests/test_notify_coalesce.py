@@ -41,8 +41,7 @@ class TestCoalesce(unittest.TestCase):
                 "anomaly",
                 "anomaly|2026-08|Cafe",
                 "Budget Bot: unusual Cafe $148",
-                "Unusual Cafe spend. $148 versus recent baseline (~4.2×). "
-                "Intentional?\n",
+                "Unusual Cafe spend. $148 versus recent baseline (~4.2×).\n",
                 pri=0,
             )
         )
@@ -52,6 +51,7 @@ class TestCoalesce(unittest.TestCase):
         self.assertEqual(combined.body.count("4 days ahead of pace"), 1)
         self.assertIn("Unusual Cafe spend", combined.body)
         self.assertIn("$148 versus recent baseline", combined.body)
+        self.assertNotIn("Intentional?", combined.body)
         self.assertNotIn("Pertinent txn", combined.body)
         self.assertNotIn("MasterMoney", combined.body)
         self.assertNotIn("New txn:", combined.body)
