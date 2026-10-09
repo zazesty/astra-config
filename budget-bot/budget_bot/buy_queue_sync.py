@@ -69,15 +69,39 @@ def _split_table_line(line: str) -> list[str]:
     return [part.strip() for part in line.strip().strip("|").split("|")]
 
 
+def _is_queue_header(cells: list[str]) -> bool:
+    """Rank (legacy) or Pri (A/B/C bands). Both are the order-now table."""
+    if not cells:
+        return False
+    head = cells[0].lower()
+    return head in {"rank", "pri"} and any(c.lower().startswith("item") for c in cells)
+
+
+def _find_queue_table(lines: list[str]) -> int | None:
+    for i, line in enumerate(lines):
+        cells = _split_table_line(line) if line.strip().startswith("|") else []
+        if _is_queue_header(cells):
+            return i
+    return None
+
+
+_BAND = {"a": 0, "b": 1, "c": 2}
+
+
+def _table_order_key(pri: str, amount: int, name: str) -> tuple:
+    """A → B → C, then lowest price. Numeric Rank stays in its own order."""
+    label = (pri or "").strip().lower()
+    if label in _BAND:
+        return (0, _BAND[label], amount, name)
+    if label.isdigit():
+        return (1, int(label), amount, name)
+    return (2, 0, amount, name)
+
+
 def parse_queue_table(text: str) -> list[dict[str, Any]] | None:
     """Rows from the Order-now table. None when the table is missing or empty."""
     lines = text.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        cells = _split_table_line(line) if line.strip().startswith("|") else []
-        if cells and cells[0].lower() == "rank" and any(c.lower().startswith("item") for c in cells):
-            start = i
-            break
+    start = _find_queue_table(lines)
     if start is None or start + 2 >= len(lines):
         return None
     rows: list[dict[str, Any]] = []
@@ -88,7 +112,7 @@ def parse_queue_table(text: str) -> list[dict[str, Any]] | None:
         cells = _split_table_line(line)
         if len(cells) < 5:
             continue
-        _rank, name, price, merchant, *rest = cells
+        pri, name, price, merchant, *rest = cells
         if not name or name.lower() == "item":
             continue
         cents = _parse_dollars(price)
@@ -110,6 +134,7 @@ def parse_queue_table(text: str) -> list[dict[str, Any]] | None:
                 "amount_cents": cents,
                 "merchant": merchant,
                 "notes": notes,
+                "pri": pri.strip(),
             }
         )
     return rows or None
@@ -279,8 +304,11 @@ def _seeded_line(rows: list[dict[str, Any]]) -> str:
     ordered = sorted(rows, key=lambda r: (int(r.get("amount_cents") or 0), str(r.get("name") or "")))
     for row in ordered:
         dollars = int(row.get("amount_cents") or 0) // 100
-        merchant = str(row.get("merchant") or "no merchant")
+        merchant = str(row.get("merchant") or "").strip()
         label = str(row.get("name") or row.get("id"))
+        if not merchant:
+            parts.append(f"{label} ${dollars} (list-only)")
+            continue
         suffix = " (ask)" if is_costco_merchant(merchant) or row.get("confirm") else ""
         parts.append(f"{label} ${dollars} @ {merchant}{suffix}")
     body = "; ".join(parts) if parts else "(empty)"
@@ -308,30 +336,31 @@ def _bump_frontmatter(text: str) -> str:
 
 def _render_table(text: str, specs_by_id: dict[str, dict[str, Any]], cfg_rows: list[dict[str, Any]]) -> str | None:
     lines = text.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        cells = _split_table_line(line) if line.strip().startswith("|") else []
-        if cells and cells[0].lower() == "rank" and any(c.lower().startswith("item") for c in cells):
-            start = i
-            break
+    start = _find_queue_table(lines)
     if start is None:
         return None
     end = start + 2
     while end < len(lines) and lines[end].strip().startswith("|"):
         end += 1
-    ordered = sorted(cfg_rows, key=lambda r: (int(r.get("amount_cents") or 0), str(r.get("name") or "").lower()))
-    rendered = []
-    for n, row in enumerate(ordered, start=1):
+    decorated = []
+    for n, row in enumerate(cfg_rows, start=1):
         rid = str(row.get("id") or "")
         spec = specs_by_id.get(rid) or {}
-        name = spec.get("name") or row.get("name") or rid
-        merchant = str(row.get("merchant") or spec.get("merchant") or "")
+        pri = str(spec.get("pri") or row.get("pri") or "").strip() or str(n)
+        amount = int(row.get("amount_cents") or 0)
+        name = str(spec.get("name") or row.get("name") or rid)
+        decorated.append((_table_order_key(pri, amount, name.lower()), pri, row, spec, name))
+    decorated.sort(key=lambda item: item[0])
+    rendered = []
+    for _key, pri, row, spec, name in decorated:
+        rid = str(row.get("id") or "")
+        merchant = str(row.get("merchant") if row.get("merchant") is not None else spec.get("merchant") or "")
         notes = str(spec.get("notes") or f"id:{rid}")
         if not re.search(rf"\bid:{re.escape(rid)}\b", notes, re.I):
             notes = f"id:{rid}. {notes}".strip()
         dollars = int(row.get("amount_cents") or 0) / 100
         price = str(int(dollars)) if dollars == int(dollars) else f"{dollars:.2f}"
-        rendered.append(f"| {n} | {name} | {price} | {merchant} | {notes} |")
+        rendered.append(f"| {pri} | {name} | {price} | {merchant} | {notes} |")
     new_lines = lines[: start + 2] + rendered + lines[end:]
     return "\n".join(new_lines) + ("\n" if text.endswith("\n") else "")
 

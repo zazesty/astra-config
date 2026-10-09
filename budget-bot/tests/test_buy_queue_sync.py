@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -146,6 +147,93 @@ class TestReconcile(unittest.TestCase):
             phones = next(r for r in out["buy_queue"] if r["id"] == "headphones")
             self.assertEqual(phones["match"], "")
             self.assertFalse(phones.get("confirm"))
+
+    def test_pri_bands_survive_a_clear(self):
+        """A clear removes the row and leaves A/B/C on the others.
+
+        Price order must not promote a cheap B row over an expensive A row.
+        """
+        fact = """---
+id: budget-bot-buy-queue
+version: 1
+updated: 2026-10-08T00:00:00.000Z
+---
+### Order now
+
+| Pri | Item | ~$ | Merchant (auto-pull) | Notes |
+|-----|------|----|----------------------|-------|
+| A | US Mobile annual | 280 | US Mobile | id:us-mobile-annual. plan |
+| B | Maro toe socks 6pk | 90 | Maro | id:maro-toe-socks. 3 natural |
+| C | Window tinting | 500 |  | id:window-tint. no windshield |
+
+**Seeded matcher rows (box config, reconciled each pass):** stale.
+"""
+        queue = [
+            {"id": "us-mobile-annual", "name": "US Mobile annual", "amount_cents": 28000, "match": "US MOBILE", "merchant": "US Mobile"},
+            {"id": "maro-toe-socks", "name": "Maro toe socks 6pk", "amount_cents": 9000, "match": "MARO", "merchant": "Maro"},
+            {"id": "window-tint", "name": "Window tinting", "amount_cents": 50000, "match": "", "merchant": ""},
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "queue.md").write_text(fact)
+            (root / "budget.md").write_text(BUDGET)
+            (root / "config.json").write_text(json.dumps({"buy_queue": queue}))
+            cfg = {"buy_queue": [dict(r) for r in queue]}
+            self._run(root, cfg)
+            cfg = json.loads((root / "config.json").read_text())
+            cfg["buy_queue"] = [r for r in cfg["buy_queue"] if r["id"] != "us-mobile-annual"]
+            (root / "config.json").write_text(json.dumps(cfg))
+            out = self._run(root, cfg)
+            text = (root / "queue.md").read_text()
+            self.assertNotIn("us-mobile-annual", text)
+            self.assertIn("| B | Maro toe socks 6pk | 90 | Maro |", text)
+            self.assertIn("| C | Window tinting | 500 |  |", text)
+            self.assertLess(text.index("| B | Maro"), text.index("| C | Window"))
+            self.assertIn("3 natural", text)
+            self.assertIn("no windshield", text)
+            self.assertEqual([r["id"] for r in out["buy_queue"]], ["maro-toe-socks", "window-tint"])
+            tint = next(r for r in out["buy_queue"] if r["id"] == "window-tint")
+            self.assertEqual(tint["match"], "")
+            self.assertFalse(tint.get("confirm"))
+
+    def test_pri_table_add_reaches_config(self):
+        fact = """---
+id: budget-bot-buy-queue
+version: 1
+updated: 2026-10-08T00:00:00.000Z
+---
+### Order now
+
+| Pri | Item | ~$ | Merchant (auto-pull) | Notes |
+|-----|------|----|----------------------|-------|
+| B | Maro toe socks 6pk | 90 | Maro | id:maro-toe-socks. 3 natural |
+
+**Seeded matcher rows (box config, reconciled each pass):** stale.
+"""
+        added = fact.replace(
+            "| B | Maro toe socks 6pk | 90 | Maro | id:maro-toe-socks. 3 natural |\n",
+            "| A | US Mobile annual | 280 | US Mobile | id:us-mobile-annual. plan |\n"
+            "| B | Maro toe socks 6pk | 90 | Maro | id:maro-toe-socks. 3 natural |\n",
+        )
+        queue = [
+            {"id": "maro-toe-socks", "name": "Maro toe socks 6pk", "amount_cents": 9000, "match": "MARO|TOE.?SOCK", "merchant": "Maro"},
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "queue.md").write_text(fact)
+            (root / "budget.md").write_text(BUDGET)
+            (root / "config.json").write_text(json.dumps({"buy_queue": queue}))
+            self._run(root, {"buy_queue": [dict(r) for r in queue]})
+            (root / "queue.md").write_text(added)
+            cfg = json.loads((root / "config.json").read_text())
+            out = self._run(root, cfg)
+            phone = next(r for r in out["buy_queue"] if r["id"] == "us-mobile-annual")
+            maro = next(r for r in out["buy_queue"] if r["id"] == "maro-toe-socks")
+            self.assertEqual(phone["match"], re.escape("US Mobile"))
+            self.assertFalse(phone.get("confirm"))
+            self.assertEqual(maro["match"], "MARO|TOE.?SOCK")
+            text = (root / "queue.md").read_text()
+            self.assertLess(text.index("| A | US Mobile"), text.index("| B | Maro"))
 
 
 if __name__ == "__main__":
