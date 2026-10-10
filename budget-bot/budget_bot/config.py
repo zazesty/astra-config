@@ -92,6 +92,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # PINNED 2026-08-02: no daily digests
     "digest_enabled": False,
     "coaching_anomalies": True,
+    # xAI card posts in the calendar month. One review the first time the
+    # total is over this many cents. A ~$30 plan post on day 28–31 counts
+    # in the next month. Prepaid balance is not a trigger.
+    "xai_month_over_cents": 5000,
     "poll_hint": "webhook + 15m backup",
     "notify_enabled": False,
     "mode": "fixture",  # fixture | live

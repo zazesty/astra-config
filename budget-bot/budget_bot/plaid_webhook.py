@@ -242,10 +242,11 @@ def _process_update_unlocked(
             alerts = list(alerts) + [cash_ev]
     except Exception as e:
         whlog(f"cash_bills_alert error: {e}")
-    if bool(cfg.get("coaching_anomalies", True)):
-        from .rules import detect_anomalies
+    from .rules import detect_anomalies, detect_xai_month
 
+    if bool(cfg.get("coaching_anomalies", True)):
         alerts = list(alerts) + detect_anomalies(txns, cfg, as_of=as_of)
+    alerts = list(alerts) + detect_xai_month(txns, cfg, as_of=as_of)
 
     push_events = [ev for ev in alerts if ev.kind in PUSH_KINDS]
     results = send_alerts(push_events, dry_run=dry_run)

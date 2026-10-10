@@ -340,6 +340,17 @@ def anomaly_subject(merchant: str, amount_cents: int) -> str:
     return f"Budget Bot: unusual {merchant} {money_dollars(amount_cents)}"
 
 
+def xai_month_subject(month_label: str, total_cents: int) -> str:
+    return f"Budget Bot: {month_label} xAI is {money_dollars(total_cents)}"
+
+
+def xai_month_body(month_label: str, total_cents: int, limit_cents: int) -> str:
+    return (
+        f"{month_label} xAI is {money_dollars(total_cents)}, "
+        f"over {money_dollars(limit_cents)}.\n"
+    )
+
+
 def anomaly_body(
     merchant: str,
     amount_cents: int,

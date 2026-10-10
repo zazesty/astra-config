@@ -15,6 +15,7 @@ from .config import load_config, persist_bill_rewrites, save_config, state_dir
 from .rules import (
     budget_alerts,
     detect_anomalies,
+    detect_xai_month,
     eom_leftover_event,
     evaluate_budget,
     evaluate_budget_both,
@@ -699,6 +700,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
     snap = both["rolling_30d"]  # notify SSOT
     anomalies = detect_anomalies(txns, cfg, as_of=as_of)
+    xai_month = detect_xai_month(txns, cfg, as_of=as_of)
     balerts = budget_alerts(snap, cfg, prev_risk=None)
     cash_ev = cash_bills_alert(
         cfg,
@@ -719,6 +721,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         "notify_period": "rolling_30d",
         "budget_alerts": [a.to_dict() for a in balerts],
         "anomalies": [a.to_dict() for a in anomalies],
+        "xai_month": [a.to_dict() for a in xai_month],
         "interval_candidates": interval_summary,
     }, indent=2))
     return 0
@@ -794,10 +797,12 @@ def cmd_watch(args: argparse.Namespace) -> int:
     if cash_ev:
         balerts = list(balerts) + [cash_ev]
     anomalies = detect_anomalies(all_tx, cfg, as_of=as_of)
+    xai_month = detect_xai_month(all_tx, cfg, as_of=as_of)
     coaching_anomalies = bool(cfg.get("coaching_anomalies", True))
     flags = list(balerts)
     if coaching_anomalies:
         flags.extend(anomalies)
+    flags.extend(xai_month)
 
     results = send_alerts(flags, dry_run=dry_run)
     if not args.fixture:

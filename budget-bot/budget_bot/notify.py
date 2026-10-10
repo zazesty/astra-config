@@ -19,6 +19,7 @@ PUSH_KINDS = frozenset(
         "eom_leftover",
         "sync_break",
         "cash_short",
+        "xai_month",
     }
 )
 SMS_KINDS = PUSH_KINDS
@@ -131,7 +132,7 @@ def _priority_for(event: AlertEvent) -> int:
             pass
     if event.kind == "hardcap_breach":
         return 2
-    if event.kind in ("pace_warn", "sync_break", "cash_short"):
+    if event.kind in ("pace_warn", "sync_break", "cash_short", "xai_month"):
         return 1
     return 0
 

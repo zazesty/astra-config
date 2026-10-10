@@ -35,6 +35,7 @@ file_presence /root/.config/journal-trigger/endpoint
 file_presence /root/.config/journal-trigger/secret
 file_presence /root/.git-credentials
 file_presence /root/.new-mcp-url
+presence /root/.local/state/astra/xai-management.env XAI_MANAGEMENT_KEY
 file_presence /root/.local/state/budget-bot/config.json
 file_presence /etc/health-bot.env
 file_presence /root/.local/state/health-bot/last_callback.json

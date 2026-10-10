@@ -80,6 +80,7 @@ AlertKind = Literal[
     "sync_break",
     "cash_short",
     "buy_queue_ask",
+    "xai_month",
 ]
 
 

@@ -20,6 +20,7 @@ from budget_bot.rules import (
     budget_alerts,
     counts_as_spend,
     detect_anomalies,
+    detect_xai_month,
     effective_bills_reserve_cents,
     eom_leftover_event,
     evaluate_budget,
@@ -2254,6 +2255,115 @@ class TestAnnualCadence(unittest.TestCase):
             ),
             [],
         )
+
+
+class TestXaiMonth(unittest.TestCase):
+    def setUp(self):
+        self.cfg = dict(DEFAULT_CONFIG)
+
+    def _tx(self, tid: str, day: str, cents: int, **kw) -> Transaction:
+        return Transaction(
+            id=tid,
+            date=day,
+            amount_cents=cents,
+            name=kw.get("name", "GROK XAI"),
+            merchant_name=kw.get("merchant_name", "GROK XAI"),
+            category="Software & Tools",
+            transfer=kw.get("transfer", False),
+            excluded=kw.get("excluded", False),
+            pending=kw.get("pending", False),
+        )
+
+    def test_september_plan_on_the_30th_counts_in_october(self):
+        tx = [
+            self._tx("sep1", "2026-09-01", 3000),
+            self._tx("sep30", "2026-09-30", 3000),
+            self._tx("o1", "2026-10-03", 1000),
+            self._tx("o2", "2026-10-03", 1000),
+            self._tx("o3", "2026-10-03", 1000),
+            self._tx("o4", "2026-10-03", 1000),
+            self._tx("o5", "2026-10-05", 2000),
+        ]
+        self.assertEqual(
+            detect_xai_month(tx, self.cfg, as_of=date(2026, 9, 30)), []
+        )
+        alerts = detect_xai_month(tx, self.cfg, as_of=date(2026, 10, 9))
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].key, "xai_month|2026-10")
+        self.assertEqual(alerts[0].kind, "xai_month")
+        self.assertEqual(alerts[0].payload["amount_cents"], 9000)
+        self.assertEqual(alerts[0].payload["push_priority"], 1)
+        self.assertIn("October xAI is $90, over $50.", alerts[0].body)
+        self.assertNotIn("GROK", alerts[0].body)
+
+    def test_pack_on_the_30th_stays_in_that_month(self):
+        tx = [
+            self._tx("sep1", "2026-09-01", 3000),
+            self._tx("pack", "2026-09-30", 2000),
+        ]
+        self.assertEqual(
+            detect_xai_month(tx, self.cfg, as_of=date(2026, 9, 30)), []
+        )
+        self.assertEqual(
+            detect_xai_month(tx, self.cfg, as_of=date(2026, 10, 1)), []
+        )
+
+    def test_exactly_50_stays_quiet(self):
+        tx = [
+            self._tx("sub", "2026-10-01", 3000),
+            self._tx("reload", "2026-10-05", 2000),
+        ]
+        self.assertEqual(
+            detect_xai_month(tx, self.cfg, as_of=date(2026, 10, 9)), []
+        )
+
+    def test_one_cent_over_fires(self):
+        tx = [
+            self._tx("sub", "2026-10-01", 3000),
+            self._tx("reload", "2026-10-05", 2001),
+        ]
+        alerts = detect_xai_month(tx, self.cfg, as_of=date(2026, 10, 9))
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].payload["amount_cents"], 5001)
+
+    def test_transfer_flag_still_counts_excluded_twin_does_not(self):
+        tx = [
+            self._tx("live", "2026-10-03", 6000, transfer=True),
+            self._tx("twin", "2026-10-03", 6000, excluded=True),
+            self._tx("hold", "2026-10-04", 6000, pending=True),
+        ]
+        alerts = detect_xai_month(tx, self.cfg, as_of=date(2026, 10, 9))
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].payload["amount_cents"], 6000)
+
+    def test_december_plan_shifts_into_january(self):
+        tx = [self._tx("dec", "2026-12-31", 3000)]
+        self.assertEqual(
+            detect_xai_month(tx, self.cfg, as_of=date(2026, 12, 31)), []
+        )
+        jan = [
+            self._tx("dec", "2026-12-31", 3000),
+            self._tx("extra", "2027-01-02", 2500),
+        ]
+        alerts = detect_xai_month(jan, self.cfg, as_of=date(2027, 1, 3))
+        self.assertEqual(alerts[0].key, "xai_month|2027-01")
+        self.assertEqual(alerts[0].payload["amount_cents"], 5500)
+
+    def test_second_send_is_skipped(self):
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        from budget_bot.notify import send_alerts
+
+        tx = [self._tx("smash", "2026-10-03", 6000)]
+        ev = detect_xai_month(tx, self.cfg, as_of=date(2026, 10, 9))
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict(os.environ, {"BUDGET_BOT_STATE": td}):
+                first = send_alerts(ev, dry_run=True)
+                second = send_alerts(ev, dry_run=True)
+        self.assertEqual(first[0]["status"], "dry_run")
+        self.assertEqual(second[0]["status"], "skipped_dedup")
 
 
 if __name__ == "__main__":

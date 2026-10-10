@@ -16,6 +16,8 @@ from .transfers import is_opaque_mastermoney
 from .templates import (
     anomaly_body,
     anomaly_subject,
+    xai_month_body,
+    xai_month_subject,
     cash_short_body,
     cash_short_subject,
     digest_body,
@@ -2328,6 +2330,85 @@ def detect_anomalies(
             )
         )
     return alerts
+
+
+# SuperGrok plan is $30. ±10% matches the subscription follow band.
+# A pack ($5 / $10 / $20 / $25) stays in the month it posted.
+_XAI_CARD_RE = re.compile(r"\bgrok\b|\bxai\b|\bx\.ai\b", re.I)
+XAI_PLAN_MIN_CENTS = 2700
+XAI_PLAN_MAX_CENTS = 3300
+XAI_PLAN_SHIFT_DAY = 28
+
+
+def xai_card_post(tx: Transaction) -> bool:
+    """Card money to xAI. Excluded twins stay out. A transfer flag does not."""
+    if tx.excluded or tx.amount_cents <= 0:
+        return False
+    blob = f"{tx.merchant_name or ''} {tx.name or ''}"
+    return bool(_XAI_CARD_RE.search(blob))
+
+
+def xai_attributed_period(tx: Transaction) -> str:
+    """Calendar month. A ~$30 plan post on day 28–31 belongs to the next month.
+
+    September 2026 posted the September plan on the 1st and the October plan
+    on the 30th. Shifting that second post keeps September at one plan bill.
+    """
+    d = parse_ymd(tx.date)
+    if (
+        d.day >= XAI_PLAN_SHIFT_DAY
+        and XAI_PLAN_MIN_CENTS <= tx.amount_cents <= XAI_PLAN_MAX_CENTS
+    ):
+        year = d.year + (1 if d.month == 12 else 0)
+        month = 1 if d.month == 12 else d.month + 1
+        return f"{year:04d}-{month:02d}"
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def detect_xai_month(
+    txns: list[Transaction],
+    cfg: dict[str, Any],
+    as_of: date | None = None,
+) -> list[AlertEvent]:
+    """One review when this calendar month's xAI card total is over $50.
+
+    Current month only. Later charges in a month already reviewed do not
+    create a second event key. Send-time dedup is what makes it once.
+    """
+    tz = ZoneInfo(cfg.get("timezone") or "America/Los_Angeles")
+    if as_of is None:
+        as_of = datetime.now(tz).date()
+    limit = int(cfg.get("xai_month_over_cents", 5000))
+    exclude_pending = bool(cfg.get("exclude_pending", True))
+    period = f"{as_of.year:04d}-{as_of.month:02d}"
+    total = 0
+    for tx in txns:
+        if not xai_card_post(tx):
+            continue
+        if exclude_pending and tx.pending:
+            continue
+        if parse_ymd(tx.date) > as_of:
+            continue
+        if xai_attributed_period(tx) != period:
+            continue
+        total += tx.amount_cents
+    if total <= limit:
+        return []
+    label = date(as_of.year, as_of.month, 1).strftime("%B")
+    return [
+        AlertEvent(
+            kind="xai_month",
+            subject=xai_month_subject(label, total),
+            body=xai_month_body(label, total, limit),
+            key=f"xai_month|{period}",
+            payload={
+                "amount_cents": total,
+                "limit_cents": limit,
+                "month": period,
+                "push_priority": 1,
+            },
+        )
+    ]
 
 
 def _pace_lines(
