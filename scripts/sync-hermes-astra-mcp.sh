@@ -4,7 +4,8 @@
 set -euo pipefail
 ENV_FILE="${GROK_ENV:-/etc/grok-mcp.env}"
 PORT="${GROK_MCP_PORT:-3000}"
-CFG="${HERMES_CONFIG:-$HOME/.hermes/config.yaml}"
+# systemd oneshots do not set HOME. Default to /root on this box.
+CFG="${HERMES_CONFIG:-${HOME:-/root}/.hermes/config.yaml}"
 [ -r "$ENV_FILE" ] || { echo "cannot read $ENV_FILE" >&2; exit 1; }
 MCP_PATH="$(grep -E '^MCP_PATH=' "$ENV_FILE" | head -n1 | cut -d= -f2- | cut -d, -f1 | tr -d '"' | tr -d "'")"
 [ -n "$MCP_PATH" ] || { echo "MCP_PATH empty" >&2; exit 1; }

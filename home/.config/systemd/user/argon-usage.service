@@ -1,0 +1,6 @@
+[Unit]
+Description=Snapshot Grok Build Argon use versus this login
+
+[Service]
+Type=oneshot
+ExecStart=/root/astra-config/scripts/argon-usage.py

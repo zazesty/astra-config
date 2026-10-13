@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly Argon-versus-Grok usage snapshot (local log only)
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

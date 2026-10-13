@@ -90,6 +90,8 @@ for u in \
   budget-bot-poll.timer \
   health-bot.service \
   hermes-gateway.service \
+  photon-heal.service \
+  photon-heal.timer \
   ifx-cycle-nudge.service \
   ifx-cycle-nudge.timer \
   ifx-form.service
@@ -129,6 +131,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.service" /root/
 ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.timer"   /root/.config/systemd/user/claude-journal-cleanup.timer
 ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.service" /root/.config/systemd/user/or-timeout-review.service
 ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.timer"   /root/.config/systemd/user/or-timeout-review.timer
+ln -sfnT "$REPO/home/.config/systemd/user/argon-usage.service" /root/.config/systemd/user/argon-usage.service
+ln -sfnT "$REPO/home/.config/systemd/user/argon-usage.timer"   /root/.config/systemd/user/argon-usage.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -232,6 +236,7 @@ systemctl --user enable --now drift-check.timer
 systemctl --user disable --now memory-harvest.timer 2>/dev/null || true
 systemctl --user disable --now journal-oauth-watch.timer 2>/dev/null || true
 systemctl --user enable --now or-timeout-review.timer
+systemctl --user enable --now argon-usage.timer
 systemctl --user enable --now grok-restart-reminder.timer
 systemctl --user enable --now grok-journal-pause-reminder.timer
 systemctl --user enable --now grok-journal-read-reminder.timer
@@ -248,7 +253,8 @@ chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh \
   "$REPO"/scripts/grok-journal-pause-reminder.sh \
   "$REPO"/scripts/claude-journal-cleanup.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
 chmod +x "$REPO"/scripts/box-status.sh "$REPO"/scripts/standing-todos.sh \
-  "$REPO"/scripts/env-presence.sh 2>/dev/null || true
+  "$REPO"/scripts/env-presence.sh "$REPO"/scripts/photon-heal.sh \
+  "$REPO"/scripts/argon-usage.py 2>/dev/null || true
 # Agent UX state (status/todos/env map) — private; not secrets
 install -d -m 700 /root/.local/state/astra
 install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-presence.sh
@@ -267,6 +273,7 @@ systemctl enable --now \
   health-bot.service \
   hermes-gateway.service \
   ifx-form.service \
+  photon-heal.timer \
   budget-bot-eom-leftover.timer \
   budget-bot-norcal-plaid-nudge.timer \
   budget-bot-norcal-quarantine-recheck.timer \

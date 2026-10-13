@@ -86,6 +86,11 @@ fi
 if [ -x "$HERE/sync-grok-build-astra-mcp.sh" ]; then
   bash "$HERE/sync-grok-build-astra-mcp.sh" || echo "rotate-url: WARN sync-grok-build-astra-mcp failed" >&2
 fi
+# Hermes keeps its own copy of the loopback URL. A restart is what reloads it;
+# photon-heal syncs again before it restarts the gateway.
+if [ -x "$HERE/sync-hermes-astra-mcp.sh" ]; then
+  bash "$HERE/sync-hermes-astra-mcp.sh" || echo "rotate-url: WARN sync-hermes-astra-mcp failed" >&2
+fi
 
 BASE="$(tailscale funnel status | grep -oE 'https://[^ ]+' | head -n1)"
 cat <<EOF

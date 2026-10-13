@@ -40,6 +40,14 @@ else
 fi
 echo
 
+if [ -x /root/astra-config/scripts/sync-hermes-astra-mcp.sh ]; then
+  echo "--- Hermes loopback sync (reloads on the next gateway restart) ---"
+  bash /root/astra-config/scripts/sync-hermes-astra-mcp.sh 2>&1 | tail -5 || true
+else
+  echo "(sync-hermes-astra-mcp.sh missing)"
+fi
+echo
+
 cat <<'EOF'
 --- Human re-adds (cannot automate from the box) ---
 Live consumers only:

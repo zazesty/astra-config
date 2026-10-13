@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Photon every 5 minutes and restart a deaf gateway
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=photon-heal.service
+
+[Install]
+WantedBy=timers.target

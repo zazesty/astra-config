@@ -49,7 +49,7 @@ symlinks=(
   "/root/journal-trigger/journal-trigger.sh|home/journal-trigger/journal-trigger.sh"
   "/root/budget-bot|budget-bot"
 )
-for u in astra-commit health-check drift-check or-timeout-review; do
+for u in astra-commit health-check drift-check or-timeout-review argon-usage; do
   for k in service timer; do
     symlinks+=("/root/.config/systemd/user/$u.$k|home/.config/systemd/user/$u.$k")
   done
@@ -68,6 +68,8 @@ for u in \
   budget-bot-poll.timer \
   health-bot.service \
   hermes-gateway.service \
+  photon-heal.service \
+  photon-heal.timer \
   ifx-cycle-nudge.service \
   ifx-cycle-nudge.timer \
   ifx-form.service

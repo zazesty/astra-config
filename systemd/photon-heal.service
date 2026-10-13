@@ -1,0 +1,9 @@
+[Unit]
+Description=Restart hermes-gateway when Photon is deaf or cannot send
+After=hermes-gateway.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=180
+Environment=HOME=/root
+ExecStart=/root/astra-config/scripts/photon-heal.sh
