@@ -39,9 +39,9 @@ class TestCoalesce(unittest.TestCase):
         events.append(
             _ev(
                 "anomaly",
-                "anomaly|2026-08|Cafe",
-                "Budget Bot: unusual Cafe $148",
-                "Unusual Cafe spend. $148 versus recent baseline (~4.2×).\n",
+                "anomaly|2026-08|Dining Out",
+                "Budget Bot: unusual Dining Out $148",
+                "Unusual Dining Out spend. $148 this month, vs $62 last month.\n",
                 pri=0,
             )
         )
@@ -49,8 +49,8 @@ class TestCoalesce(unittest.TestCase):
         self.assertEqual(combined.kind, "pace_warn")
         self.assertEqual(combined.subject, "Budget Bot: 4 days ahead of pace")
         self.assertEqual(combined.body.count("4 days ahead of pace"), 1)
-        self.assertIn("Unusual Cafe spend", combined.body)
-        self.assertIn("$148 versus recent baseline", combined.body)
+        self.assertIn("Unusual Dining Out spend", combined.body)
+        self.assertIn("this month, vs $62 last month", combined.body)
         self.assertNotIn("Intentional?", combined.body)
         self.assertNotIn("Pertinent txn", combined.body)
         self.assertNotIn("MasterMoney", combined.body)

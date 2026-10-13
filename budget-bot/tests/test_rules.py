@@ -1590,31 +1590,52 @@ class TestBudget(unittest.TestCase):
         self.assertEqual(snap.committed_cents, 50_000)
         self.assertGreater(snap.pace_ratio, 0.9)
 
-    def test_anthropic_anomaly(self):
-        # Fixture Anthropic $40 is below 2026-08-05 floors ($100 / 4×) — no longer alerts.
-        soft = detect_anomalies(
-            self.txns, self.cfg, as_of=date(2026, 7, 20), since=date(2026, 7, 19)
-        )
-        self.assertNotIn("Anthropic", [a.payload.get("merchant") for a in soft])
-        # Real spike: $250 software day against cold baseline should still fire.
-        spike = self.txns + [
+    def test_category_month_anomaly(self):
+        # A single expensive day is not the test. The calendar month is.
+        quiet = [
             Transaction(
-                id="spike-llm",
-                date="2026-07-22",
-                amount_cents=25000,
+                id="jun",
+                date="2026-06-15",
+                amount_cents=4_000,
                 name="Anthropic",
-                merchant_name="Anthropic",
+                category="Software & Tools",
+            ),
+            Transaction(
+                id="jul-small",
+                date="2026-07-22",
+                amount_cents=4_000,
+                name="Anthropic",
+                category="Software & Tools",
+            ),
+        ]
+        self.assertEqual(
+            detect_anomalies(
+                quiet, self.cfg, as_of=date(2026, 7, 22), since=date(2026, 7, 22)
+            ),
+            [],
+        )
+        jump = quiet + [
+            Transaction(
+                id="jul-rest",
+                date="2026-07-22",
+                amount_cents=21_000,
+                name="Anthropic",
                 category="Software & Tools",
             )
         ]
         alerts = detect_anomalies(
-            spike, self.cfg, as_of=date(2026, 7, 22), since=date(2026, 7, 21)
+            jump, self.cfg, as_of=date(2026, 7, 22), since=date(2026, 7, 22)
         )
-        merchants = [a.payload.get("merchant") for a in alerts]
-        self.assertIn("Anthropic", merchants)
-        anth = next(a for a in alerts if a.payload.get("merchant") == "Anthropic")
+        self.assertEqual(len(alerts), 1)
+        anth = alerts[0]
         self.assertEqual(anth.kind, "anomaly")
-        self.assertGreaterEqual(anth.payload["amount_cents"], 10000)
+        self.assertEqual(anth.key, "anomaly|2026-07|Software & Tools")
+        self.assertEqual(anth.payload["category"], "Software & Tools")
+        self.assertEqual(anth.payload["amount_cents"], 25_000)
+        self.assertEqual(anth.payload["prior_cents"], 4_000)
+        self.assertEqual(anth.payload["push_priority"], 0)
+        self.assertIn("Software & Tools", anth.body)
+        self.assertNotIn("Anthropic", anth.body)
 
     def test_budget_breach_alert(self):
         # craft overspend
@@ -2254,6 +2275,142 @@ class TestAnnualCadence(unittest.TestCase):
                 [grok, apple], tx, as_of=date(2026, 9, 6)
             ),
             [],
+        )
+
+
+class TestCategoryAnomaly(unittest.TestCase):
+    def setUp(self):
+        self.cfg = dict(DEFAULT_CONFIG)
+
+    def _tx(self, tid: str, day: str, cents: int, cat: str, **kw) -> Transaction:
+        return Transaction(
+            id=tid,
+            date=day,
+            amount_cents=cents,
+            name=kw.get("name", cat),
+            merchant_name=kw.get("merchant_name", cat),
+            category=cat,
+            pending=kw.get("pending", False),
+            transfer=kw.get("transfer", False),
+        )
+
+    def test_boundaries_are_strict(self):
+        # Exactly $50, and exactly 50% more, both stay quiet.
+        exact = [
+            self._tx("p", "2026-09-02", 10_000, "Gas"),
+            self._tx("c", "2026-10-02", 15_000, "Gas"),
+        ]
+        self.assertEqual(
+            detect_anomalies(
+                exact, self.cfg, as_of=date(2026, 10, 2), since=date(2026, 10, 2)
+            ),
+            [],
+        )
+        floor = [
+            self._tx("p", "2026-09-02", 1_000, "Dining Out"),
+            self._tx("c", "2026-10-02", 5_000, "Dining Out"),
+        ]
+        self.assertEqual(
+            detect_anomalies(
+                floor, self.cfg, as_of=date(2026, 10, 2), since=date(2026, 10, 2)
+            ),
+            [],
+        )
+
+    def test_one_cent_over_either_bar_fires(self):
+        over_ratio = [
+            self._tx("p", "2026-09-02", 10_000, "Gas"),
+            self._tx("c", "2026-10-02", 15_001, "Gas"),
+        ]
+        alerts = detect_anomalies(
+            over_ratio, self.cfg, as_of=date(2026, 10, 2), since=date(2026, 10, 2)
+        )
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].payload["amount_cents"], 15_001)
+        over_floor = [
+            self._tx("p", "2026-09-02", 1_000, "Dining Out"),
+            self._tx("c", "2026-10-02", 5_001, "Dining Out"),
+        ]
+        alerts = detect_anomalies(
+            over_floor, self.cfg, as_of=date(2026, 10, 2), since=date(2026, 10, 2)
+        )
+        self.assertEqual(alerts[0].key, "anomaly|2026-10|Dining Out")
+        self.assertIn("vs $10 last month", alerts[0].body)
+
+    def test_small_category_can_triple_and_stay_quiet(self):
+        tx = [
+            self._tx("p", "2026-09-04", 200, "Postage & Shipping"),
+            self._tx("c", "2026-10-04", 4_000, "Postage & Shipping"),
+        ]
+        self.assertEqual(
+            detect_anomalies(
+                tx, self.cfg, as_of=date(2026, 10, 4), since=date(2026, 10, 4)
+            ),
+            [],
+        )
+
+    def test_quiet_prior_month_fires_once_over_fifty(self):
+        tx = [
+            self._tx("refund", "2026-09-12", -1_885, "Misc / Other"),
+            self._tx("now", "2026-10-08", 13_834, "Misc / Other"),
+        ]
+        alerts = detect_anomalies(
+            tx, self.cfg, as_of=date(2026, 10, 8), since=date(2026, 10, 8)
+        )
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].payload["prior_cents"], -1_885)
+        self.assertIn("vs $0 last month", alerts[0].body)
+        # A later poll with no new misc txn does not raise it again.
+        self.assertEqual(
+            detect_anomalies(
+                tx, self.cfg, as_of=date(2026, 10, 13), since=date(2026, 10, 12)
+            ),
+            [],
+        )
+
+    def test_pending_and_transfer_do_not_count(self):
+        tx = [
+            self._tx("p", "2026-09-01", 2_000, "Shopping"),
+            self._tx("hold", "2026-10-03", 8_000, "Shopping", pending=True),
+            self._tx("move", "2026-10-03", 8_000, "Shopping", transfer=True),
+        ]
+        self.assertEqual(
+            detect_anomalies(
+                tx, self.cfg, as_of=date(2026, 10, 3), since=date(2026, 10, 3)
+            ),
+            [],
+        )
+
+    def test_steady_software_stays_quiet_while_xai_ceiling_still_fires(self):
+        tx = [
+            self._tx("sep", "2026-09-01", 7_553, "Software & Tools", name="GROK XAI"),
+            self._tx("o1", "2026-10-03", 4_000, "Software & Tools", name="GROK XAI"),
+            self._tx("o2", "2026-10-05", 2_000, "Software & Tools", name="GROK XAI"),
+            self._tx("o3", "2026-10-13", 3_056, "Software & Tools", name="GROK XAI"),
+        ]
+        self.assertEqual(
+            detect_anomalies(
+                tx, self.cfg, as_of=date(2026, 10, 13), since=date(2026, 10, 13)
+            ),
+            [],
+        )
+        xai = detect_xai_month(tx, self.cfg, as_of=date(2026, 10, 13))
+        self.assertEqual(len(xai), 1)
+        self.assertEqual(xai[0].payload["amount_cents"], 9_056)
+
+    def test_two_categories_alert_independently(self):
+        tx = [
+            self._tx("g0", "2026-09-02", 4_000, "Gas"),
+            self._tx("s0", "2026-09-02", 4_000, "Shopping"),
+            self._tx("g1", "2026-10-09", 8_000, "Gas"),
+            self._tx("s1", "2026-10-09", 7_000, "Shopping"),
+        ]
+        alerts = detect_anomalies(
+            tx, self.cfg, as_of=date(2026, 10, 9), since=date(2026, 10, 9)
+        )
+        self.assertEqual(
+            [a.payload["category"] for a in alerts],
+            ["Gas", "Shopping"],
         )
 
 

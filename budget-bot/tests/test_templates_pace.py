@@ -160,23 +160,16 @@ class TestPaceCopy(unittest.TestCase):
 
     def test_anomaly_plain_english(self):
         self.assertEqual(
-            anomaly_subject("Cafe Nero", 14_845),
-            "Budget Bot: unusual Cafe Nero $148",
+            anomaly_subject("Dining Out", 14_845),
+            "Budget Bot: unusual Dining Out $148",
         )
-        body = anomaly_body(
-            merchant="Cafe Nero",
-            amount_cents=14_845,
-            category="Dining Out",
-            ratio=4.2,
-            which="merchant",
-            day="2026-08-16",
-        )
+        body = anomaly_body("Dining Out", 14_845, 6_200)
         self.assertEqual(
             body,
-            "Unusual Cafe Nero spend. $148 versus recent baseline (~4.2×).\n",
+            "Unusual Dining Out spend. $148 this month, vs $62 last month.\n",
         )
         self.assertNotIn("Intentional?", body)
-        self.assertNotIn("Dining Out", body)
+        self.assertNotIn("×", body)
         self.assertNotIn(" · ", body)
 
     def test_budget_status_is_rolling_pace_only(self):

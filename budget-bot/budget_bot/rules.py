@@ -2168,44 +2168,37 @@ def eom_leftover_event(
     )
 
 
-def category_prior_cents() -> dict[str, int]:
-    """1H 2026 medians from fin-coach-baseline (cents). Used cold-start."""
-    return {
-        "Groceries / Food": 25374,
-        "Misc / Other": 17723,
-        "Shopping": 16231,
-        "Insurance": 11510,
-        "Medical & Health": 8802,
-        "Personal Care": 7963,
-        "Entertainment & Subs": 4596,
-        "Charity / Donations": 4025,
-        "Utilities & Phone": 3500,
-        "Postage & Shipping": 3481,
-        "Gas": 2828,
-        "Dining Out": 2042,
-        "Software & Tools": 1609,
-        "Transportation": 1192,
-        "Health & Fitness": 259,
-        "Housing": 0,
-    }
+def _category_name(tx: Transaction) -> str:
+    return (tx.category or "").strip() or "Uncategorized"
 
 
-def _window_totals(
+def _more_than_mult(cur: int, prior: int, mult: float) -> bool:
+    """True when cur is strictly greater than mult × prior.
+
+    A non-positive prior is not a baseline. The caller’s dollar floor is
+    the whole test (a quiet month, or a month that netted a refund).
+    """
+    if prior <= 0:
+        return True
+    return cur * 1000 > int(round(prior * mult * 1000))
+
+
+def _category_totals(
     txns: list[Transaction],
+    start: date,
     end: date,
-    days: int,
+    *,
     exclude_pending: bool,
-    key_fn,
+    skip_ids: set[str],
 ) -> dict[str, int]:
-    start = end - timedelta(days=days - 1)
     bag: dict[str, int] = defaultdict(int)
     for t in txns:
-        if not counts_as_spend(t, exclude_pending):
+        if t.id in skip_ids or not counts_as_spend(t, exclude_pending):
             continue
         d = parse_ymd(t.date)
         if start <= d <= end:
-            bag[key_fn(t)] += t.amount_cents
-    return dict(bag)
+            bag[_category_name(t)] += t.amount_cents
+    return bag
 
 
 def detect_anomalies(
@@ -2214,58 +2207,25 @@ def detect_anomalies(
     as_of: date | None = None,
     since: date | None = None,
 ) -> list[AlertEvent]:
-    """Flag merchant/category spikes. Rare coaching: high floor + once/merchant/month."""
+    """Flag a category once a month when the month is over $50 and more than
+    50% above that category’s prior calendar month.
+
+    The current figure is month-to-date. The baseline is the full prior
+    month, not a projection and not a week. In-band annual cash pulls stay
+    out. A category is considered only when a counted txn lands on or after
+    `since`, so a quiet poll does not backfill a crossing from earlier in
+    the month.
+    """
     tz = ZoneInfo(cfg.get("timezone") or "America/Los_Angeles")
     if as_of is None:
         as_of = datetime.now(tz).date()
     an = cfg.get("anomaly") or {}
-    # 2026-08-05: ($100 over baseline) OR (4× baseline, min $100 day) — was $40/2×/$15
-    min_abs = int(an.get("min_abs_cents", 10000))  # floor for ratio path
-    over_abs = int(an.get("over_abs_cents", 10000))  # $ over baseline
-    m_mult = float(an.get("merchant_mult_7d", 4.0))
-    c_mult = float(an.get("category_mult_7d", 4.0))
+    min_month = int(an.get("min_month_cents", 5000))
+    mult = float(an.get("prior_month_mult", 1.5))
     exclude_pending = bool(cfg.get("exclude_pending", True))
     period = as_of.strftime("%Y-%m")
-
     if since is None:
         since = as_of - timedelta(days=1)
-
-    recent = [
-        t
-        for t in txns
-        if counts_as_spend(t, exclude_pending)
-        and t.amount_cents > 0
-        and parse_ymd(t.date) >= since
-    ]
-    if not recent:
-        return []
-
-    m7 = _window_totals(txns, as_of, 7, exclude_pending, lambda t: t.display_name())
-    c7 = _window_totals(txns, as_of, 7, exclude_pending, lambda t: t.category)
-
-    prior_end = as_of - timedelta(days=7)
-    m_prior = _window_totals(
-        txns, prior_end, 7, exclude_pending, lambda t: t.display_name()
-    )
-    c_prior = _window_totals(
-        txns, prior_end, 7, exclude_pending, lambda t: t.category
-    )
-
-    priors = category_prior_cents()
-
-    def cat_baseline(cat: str) -> int:
-        if cat in c_prior and c_prior[cat] > 0:
-            return c_prior[cat]
-        monthly = priors.get(cat, priors.get("Misc / Other", 5000))
-        return max(int(monthly * 7 / 30), 100)
-
-    def merch_baseline(name: str, cat: str) -> int:
-        if name in m_prior and m_prior[name] > 0:
-            return m_prior[name]
-        return max(cat_baseline(cat) // 2, 100)
-
-    alerts: list[AlertEvent] = []
-    seen: set[str] = set()
 
     annual_ids = annual_in_band_txn_ids(
         cfg.get("bills"),
@@ -2273,58 +2233,54 @@ def detect_anomalies(
         exclude_pending=exclude_pending,
         fuzzy_amount_tol_cents=int(cfg.get("bill_fuzzy_amount_tol_cents", 100)),
     )
+    cur_start = date(as_of.year, as_of.month, 1)
+    prior_end = prior_month_end(as_of)
+    prior_start = date(prior_end.year, prior_end.month, 1)
+    current = _category_totals(
+        txns,
+        cur_start,
+        as_of,
+        exclude_pending=exclude_pending,
+        skip_ids=annual_ids,
+    )
+    prior = _category_totals(
+        txns,
+        prior_start,
+        prior_end,
+        exclude_pending=exclude_pending,
+        skip_ids=annual_ids,
+    )
 
-    by_key: dict[tuple[str, str], list[Transaction]] = defaultdict(list)
-    for t in recent:
-        by_key[(t.display_name(), t.date)].append(t)
+    touched: set[str] = set()
+    for t in txns:
+        if t.id in annual_ids or not counts_as_spend(t, exclude_pending):
+            continue
+        d = parse_ymd(t.date)
+        if since <= d <= as_of:
+            touched.add(_category_name(t))
+    if not touched:
+        return []
 
-    for (merchant, day), group in by_key.items():
-        day_total = sum(t.amount_cents for t in group)
-        if day_total <= 0:
+    alerts: list[AlertEvent] = []
+    for cat in sorted(touched):
+        cur = current.get(cat, 0)
+        prev = prior.get(cat, 0)
+        if cur <= min_month or not _more_than_mult(cur, prev, mult):
             continue
-        if group and all(t.id in annual_ids for t in group):
-            continue
-        cat = group[0].category
-        m_base = merch_baseline(merchant, cat)
-        c_base = cat_baseline(cat)
-        m_now = m7.get(merchant, day_total)
-        c_now = c7.get(cat, day_total)
-        m_ratio = m_now / m_base if m_base else 99.0
-        c_ratio = c_now / c_base if c_base else 99.0
-        # OR logic: $N over baseline OR M× (with day-total floor)
-        abs_over_m = day_total - m_base
-        trip = (abs_over_m >= over_abs) or (
-            day_total >= min_abs and (m_ratio >= m_mult or c_ratio >= c_mult)
-        )
-        if not trip:
-            continue
-        # Once per merchant per calendar month (rare coaching)
-        key = f"anomaly|{period}|{merchant}"
-        if key in seen:
-            continue
-        seen.add(key)
-        ratio = max(m_ratio, c_ratio)
-        which = "merchant" if m_ratio >= c_ratio else "category"
+        shown_prior = prev if prev > 0 else 0
+        ratio = round(cur / prev, 2) if prev > 0 else None
         alerts.append(
             AlertEvent(
                 kind="anomaly",
-                subject=anomaly_subject(merchant, day_total),
-                body=anomaly_body(
-                    merchant=merchant,
-                    amount_cents=day_total,
-                    category=cat,
-                    ratio=ratio,
-                    which=which,
-                    day=day,
-                ),
-                key=key,
+                subject=anomaly_subject(cat, cur),
+                body=anomaly_body(cat, cur, shown_prior),
+                key=f"anomaly|{period}|{cat}",
                 payload={
-                    "merchant": merchant,
-                    "amount_cents": day_total,
                     "category": cat,
-                    "ratio": round(ratio, 2),
-                    "which": which,
-                    "date": day,
+                    "amount_cents": cur,
+                    "prior_cents": prev,
+                    "ratio": ratio,
+                    "month": period,
                     "push_priority": 0,  # soft: respects quiet hours
                 },
             )

@@ -336,8 +336,8 @@ def budget_status_text(
     return "\n".join(lines)
 
 
-def anomaly_subject(merchant: str, amount_cents: int) -> str:
-    return f"Budget Bot: unusual {merchant} {money_dollars(amount_cents)}"
+def anomaly_subject(category: str, amount_cents: int) -> str:
+    return f"Budget Bot: unusual {category} {money_dollars(amount_cents)}"
 
 
 def xai_month_subject(month_label: str, total_cents: int) -> str:
@@ -351,17 +351,9 @@ def xai_month_body(month_label: str, total_cents: int, limit_cents: int) -> str:
     )
 
 
-def anomaly_body(
-    merchant: str,
-    amount_cents: int,
-    category: str,
-    ratio: float,
-    which: str,
-    day: str,
-) -> str:
-    del category, which, day  # kept on the event payload; not in push copy
-    amt = money_dollars(amount_cents)
+def anomaly_body(category: str, amount_cents: int, prior_cents: int) -> str:
     return (
-        f"Unusual {merchant} spend. "
-        f"{amt} versus recent baseline (~{ratio:.1f}×).\n"
+        f"Unusual {category} spend. "
+        f"{money_dollars(amount_cents)} this month, "
+        f"vs {money_dollars(prior_cents)} last month.\n"
     )

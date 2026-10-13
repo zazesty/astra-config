@@ -69,12 +69,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # confirm (or merchant Costco): ask, do not auto-clear. Blank match: list only.
     "buy_queue": [],
     "anomaly": {
-        # Loosened 2026-08-05: normal restocks (e.g. iHerb ~$100) were 2× noise.
-        "merchant_mult_7d": 4.0,
-        "category_mult_7d": 4.0,
-        "min_abs_cents": 10000,  # floor for ratio path ($100 day)
-        "over_abs_cents": 10000,  # $100 over baseline
-        "min_baseline_samples": 3,
+        # Category calendar month vs that category's prior calendar month.
+        # More than $50, and more than 50% above the prior month.
+        "min_month_cents": 5000,
+        "prior_month_mult": 1.5,
     },
     # Absolute soft floor: also soft-warn at this % of full hardcap (any day)
     "hardcap_warn_pct": 0.90,
