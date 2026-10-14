@@ -9,7 +9,7 @@
 set -euo pipefail
 export TODOS_PATH="${TODOS_PATH:-$HOME/.local/state/astra/standing-todos.json}"
 exec python3 - "$TODOS_PATH" "$@" <<'PY'
-import json, sys, re, uuid
+import json, os, sys, re, uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,8 +27,22 @@ def load():
 
 def save(doc):
     doc["updated"] = now()
+    payload = (json.dumps(doc, indent=2) + "\n").encode()
+    # grok-mcp can write the board file but not its directory (ProtectHome).
+    # In that mode, overwrite in place. Everyone else keeps the atomic rename.
+    if os.environ.get("STANDING_TODOS_INPLACE") == "1":
+        fd = os.open(path, os.O_WRONLY | os.O_TRUNC)
+        try:
+            view = memoryview(payload)
+            while view:
+                n = os.write(fd, view)
+                view = view[n:]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        return
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(doc, indent=2) + "\n")
+    tmp.write_text(payload.decode())
     tmp.replace(path)
 
 def slug(s):

@@ -8,6 +8,9 @@ Type=simple
 WorkingDirectory=/root/grok-mcp
 EnvironmentFile=/etc/grok-mcp.env
 Environment=PORT=3000
+# standing_todo_add overwrites the board file. The directory stays read-only
+# (secrets live beside it), so the script must not create a sibling temp.
+Environment=STANDING_TODOS_INPLACE=1
 ExecStart=/root/.nvm/versions/node/v22.22.3/bin/node /root/grok-mcp/build/index.js
 # Stamp a restart marker (epoch) for the debounced restart reminder. Leading '-'
 # so a failure here never blocks the service from starting. Writes into the
@@ -19,7 +22,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadOnlyPaths=/root/grok-mcp
-ReadWritePaths=/root/memory
+ReadWritePaths=/root/memory /root/.local/state/astra/standing-todos.json
 # Writable persistent state for get_news_digest (the floor+extend window's
 # last-run timestamp). ProtectSystem=strict makes everything else read-only;
 # StateDirectory carves out a writable /var/lib/grok-mcp and exports
