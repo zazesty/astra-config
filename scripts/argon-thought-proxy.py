@@ -427,12 +427,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 extractor = SseExtractor()
                 decoder_buf = b""
+                client_gone = False
                 while True:
                     chunk = upstream.read(8192)
                     if not chunk:
                         break
-                    self.wfile.write(chunk)
-                    self.wfile.flush()
+                    if not client_gone:
+                        try:
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            client_gone = True
                     decoder_buf += chunk
                     text, decoder_buf = _decode_prefix(decoder_buf)
                     if text:
@@ -447,14 +452,17 @@ class Handler(BaseHTTPRequestHandler):
                         signed, unsigned = extract_json(json.loads(payload))
                     except json.JSONDecodeError:
                         pass
-                self.send_response(status)
-                for key, value in upstream.headers.items():
-                    if key.lower() in HOP:
-                        continue
-                    self.send_header(key, value)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+                try:
+                    self.send_response(status)
+                    for key, value in upstream.headers.items():
+                        if key.lower() in HOP:
+                            continue
+                        self.send_header(key, value)
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
         finally:
             upstream.close()
         elapsed_ms = int((time.time() - started) * 1000)
