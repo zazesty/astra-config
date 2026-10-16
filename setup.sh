@@ -94,7 +94,8 @@ for u in \
   photon-heal.timer \
   ifx-cycle-nudge.service \
   ifx-cycle-nudge.timer \
-  ifx-form.service
+  ifx-form.service \
+  grok-argon-proxy.service
 do
   ln -sfnT "$REPO/systemd/$u" "/etc/systemd/system/$u"
 done
@@ -254,7 +255,8 @@ chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh \
   "$REPO"/scripts/claude-journal-cleanup.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
 chmod +x "$REPO"/scripts/box-status.sh "$REPO"/scripts/standing-todos.sh \
   "$REPO"/scripts/env-presence.sh "$REPO"/scripts/photon-heal.sh \
-  "$REPO"/scripts/argon-usage.py 2>/dev/null || true
+  "$REPO"/scripts/argon-usage.py \
+  "$REPO"/scripts/argon-thought-proxy.py 2>/dev/null || true
 # Agent UX state (status/todos/env map) — private; not secrets
 install -d -m 700 /root/.local/state/astra
 install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-presence.sh
@@ -266,6 +268,12 @@ fi
 mkdir -p /root/.hermes/skills/productivity
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot" /root/.hermes/skills/productivity/budget-bot
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot-ops" /root/.hermes/skills/productivity/budget-bot-ops
+systemctl enable --now grok-argon-proxy.service
+# Point Grok Build's Argon seat at the local thought-signature proxy.
+# Touches only [model.argon] and the two subagent pins. Leaves MCP URLs alone.
+if [ -f /root/.grok/config.toml ]; then
+  python3 "$REPO/scripts/argon-thought-proxy.py" --point-config /root/.grok/config.toml
+fi
 systemctl enable --now \
   budget-bot-buy-queue-ask.service \
   budget-bot-plaid-link.service \

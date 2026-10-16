@@ -1,0 +1,18 @@
+[Unit]
+Description=Argon thought-signature proxy (127.0.0.1 Gemini OpenAI compat)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root
+Environment=HOME=/root
+Environment=ARGON_PROXY_HOST=127.0.0.1
+Environment=ARGON_PROXY_PORT=8791
+Environment=ARGON_PROXY_UPSTREAM=https://generativelanguage.googleapis.com
+ExecStart=/usr/bin/python3 /root/astra-config/scripts/argon-thought-proxy.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

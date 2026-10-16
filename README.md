@@ -153,6 +153,11 @@ not "ignore it when debugging a live box or a manual redeploy."
   rebuild — but NOT on a manual `tsc` redeploy, where you must do it yourself.)*
 - **Gemini key must be RESTRICTED to the Generative Language API** or every
   Gemini call (now via `ask_panel`) 403s. *(setup.sh prompts for this; it can't set it for you.)*
+- **Argon tool calls need the thought-signature proxy.** Grok 1.0.60 drops
+  Gemini's `thought_signature`, so a direct AI Studio base URL 400s on the
+  tool round-trip. `grok-argon-proxy.service` listens on `127.0.0.1:8791` and
+  `[model.argon] base_url` points at it. *(included in setup.sh. The proxy
+  stores nothing on disk and does not log prompts or keys.)*
 - **Tailscale cert 500 after toggling HTTPS/DNS in the admin console:** run
   `sudo systemctl restart tailscaled` to force a netmap refresh, then retry.
   *(included in setup.sh on rebuild; recurs at runtime whenever you toggle the
