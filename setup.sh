@@ -257,8 +257,24 @@ chmod +x "$REPO"/scripts/box-status.sh "$REPO"/scripts/standing-todos.sh \
   "$REPO"/scripts/env-presence.sh "$REPO"/scripts/photon-heal.sh \
   "$REPO"/scripts/argon-usage.py \
   "$REPO"/scripts/argon-thought-proxy.py 2>/dev/null || true
-# Agent UX state (status/todos/env map) — private; not secrets
+# Agent UX state (status/todos/env map) — private; not secrets.
+# The board directory is the only writable path under here (grok-mcp
+# ProtectHome=read-only). The public standing-todos.json path is a symlink
+# into it. A missing directory at service start is not whitelisted later.
 install -d -m 700 /root/.local/state/astra
+install -d -m 700 /root/.local/state/astra/standing-todos
+board_link=/root/.local/state/astra/standing-todos.json
+board_real=/root/.local/state/astra/standing-todos/standing-todos.json
+if [ -f "$board_link" ] && [ ! -L "$board_link" ] && [ ! -e "$board_real" ]; then
+  mv "$board_link" "$board_real"
+fi
+if [ ! -e "$board_real" ]; then
+  printf '%s\n' '{"schema":"standing-todos/v1","updated":null,"items":[]}' > "$board_real"
+  chmod 644 "$board_real"
+fi
+if [ ! -e "$board_link" ]; then
+  ln -s standing-todos/standing-todos.json "$board_link"
+fi
 install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-presence.sh
 # OPERATOR rails: live copy at /root (memory detail stays in /root/memory)
 if [ -f "$REPO/docs/OPERATOR.md" ]; then

@@ -28,10 +28,17 @@ def load():
 def save(doc):
     doc["updated"] = now()
     payload = (json.dumps(doc, indent=2) + "\n").encode()
-    # grok-mcp can write the board file but not its directory (ProtectHome).
-    # In that mode, overwrite in place. Everyone else keeps the atomic rename.
+    # The public path may be a symlink into the one writable directory.
+    # Resolve first so replace() updates the file and leaves the link in place.
+    target = path.resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # grok-mcp sets STANDING_TODOS_INPLACE=1. ProtectHome leaves the parent
+    # read-only, so that mode must not create a sibling temp.
     if os.environ.get("STANDING_TODOS_INPLACE") == "1":
-        fd = os.open(path, os.O_WRONLY | os.O_TRUNC)
+        flags = os.O_WRONLY | os.O_TRUNC
+        if not target.exists():
+            flags |= os.O_CREAT
+        fd = os.open(target, flags, 0o644)
         try:
             view = memoryview(payload)
             while view:
@@ -41,9 +48,9 @@ def save(doc):
         finally:
             os.close(fd)
         return
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(payload.decode())
-    tmp.replace(path)
+    tmp = target.with_suffix(".tmp")
+    tmp.write_bytes(payload)
+    tmp.replace(target)
 
 def slug(s):
     s = re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")

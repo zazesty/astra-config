@@ -8,8 +8,11 @@ Type=simple
 WorkingDirectory=/root/grok-mcp
 EnvironmentFile=/etc/grok-mcp.env
 Environment=PORT=3000
-# standing_todo_add overwrites the board file. The directory stays read-only
-# (secrets live beside it), so the script must not create a sibling temp.
+# standing_todo_add writes the board. Secrets sit next to the public path, so
+# that parent stays read-only and the script must not create a sibling temp.
+# Whitelist the directory, not the json file. systemd drops a ReadWritePaths
+# entry that is missing when the process starts, and the file is created on
+# first use. setup.sh creates this directory; it holds only the board.
 Environment=STANDING_TODOS_INPLACE=1
 ExecStart=/root/.nvm/versions/node/v22.22.3/bin/node /root/grok-mcp/build/index.js
 # Stamp a restart marker (epoch) for the debounced restart reminder. Leading '-'
@@ -22,7 +25,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadOnlyPaths=/root/grok-mcp
-ReadWritePaths=/root/memory /root/.local/state/astra/standing-todos.json
+ReadWritePaths=/root/memory /root/.local/state/astra/standing-todos
 # Writable persistent state for get_news_digest (the floor+extend window's
 # last-run timestamp). ProtectSystem=strict makes everything else read-only;
 # StateDirectory carves out a writable /var/lib/grok-mcp and exports
