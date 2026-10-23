@@ -69,7 +69,7 @@ def is_costco_merchant(merchant: str) -> bool:
 
 
 def needs_confirm(row: dict[str, Any]) -> bool:
-    """Costco is too broad to auto-clear. Other named merchants clear themselves."""
+    """Costco, or a row flagged confirm, asks. Other named merchants clear themselves."""
     if bool(row.get("confirm")):
         return True
     return is_costco_merchant(str(row.get("merchant") or ""))

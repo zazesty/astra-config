@@ -235,6 +235,54 @@ updated: 2026-10-08T00:00:00.000Z
             text = (root / "queue.md").read_text()
             self.assertLess(text.index("| A | US Mobile"), text.index("| B | Maro"))
 
+    def test_ask_note_confirms_and_keeps_floor(self):
+        """The Notes word ask makes that row confirm. A price edit keeps it."""
+        fact = """---
+id: budget-bot-buy-queue
+version: 1
+updated: 2026-10-08T00:00:00.000Z
+---
+### Order now
+
+| Pri | Item | ~$ | Merchant (auto-pull) | Notes |
+|-----|------|----|----------------------|-------|
+| A | Welding helmet | 60 | Amazon | id:welding-helmet. Ask before clear. |
+
+**Seeded matcher rows (box config, reconciled each pass):** stale.
+"""
+        priced = fact.replace("| 60 |", "| 65 |")
+        queue = [
+            {
+                "id": "welding-helmet",
+                "name": "Welding helmet",
+                "amount_cents": 6000,
+                "merchant": "Amazon",
+                "match": "Amazon",
+                "confirm": False,
+                "not_before": "2026-10-16",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "queue.md").write_text(fact)
+            (root / "budget.md").write_text(BUDGET)
+            (root / "config.json").write_text(json.dumps({"buy_queue": queue}))
+            out = self._run(root, {"buy_queue": [dict(r) for r in queue]})
+            helmet = next(r for r in out["buy_queue"] if r["id"] == "welding-helmet")
+            self.assertTrue(helmet["confirm"])
+            self.assertEqual(helmet["match"], "Amazon")
+            self.assertEqual(helmet["not_before"], "2026-10-16")
+            (root / "queue.md").write_text(priced)
+            cfg = json.loads((root / "config.json").read_text())
+            out = self._run(root, cfg)
+            helmet = next(r for r in out["buy_queue"] if r["id"] == "welding-helmet")
+            self.assertEqual(helmet["amount_cents"], 6500)
+            self.assertTrue(helmet["confirm"])
+            self.assertEqual(helmet["not_before"], "2026-10-16")
+            text = (root / "queue.md").read_text()
+            self.assertIn("Ask before clear", text)
+            self.assertIn("Amazon (ask)", text)
+
 
 if __name__ == "__main__":
     unittest.main()

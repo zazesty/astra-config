@@ -4,7 +4,8 @@ The table in /root/memory/budget-bot-buy-queue.md is the list a chat edit
 touches. config.buy_queue is what the matcher runs. Each Budget Bot pass
 copies whichever side changed onto the other. A pulled row leaves the table.
 An added or repriced table row lands in config. Blank merchant stays on the
-list and does not match. Costco asks instead of auto-clearing.
+list and does not match. Costco asks instead of auto-clearing. A Notes word
+`ask` does the same for that row.
 """
 
 from __future__ import annotations
@@ -119,6 +120,7 @@ def parse_queue_table(text: str) -> list[dict[str, Any]] | None:
         if cents is None:
             continue
         notes = " | ".join(rest).strip()
+        ask = bool(re.search(r"\bask\b", notes, re.I))
         id_match = re.search(r"\bid:([a-z0-9-]+)", notes, re.I)
         if id_match:
             rid = id_match.group(1).lower()
@@ -135,6 +137,7 @@ def parse_queue_table(text: str) -> list[dict[str, Any]] | None:
                 "merchant": merchant,
                 "notes": notes,
                 "pri": pri.strip(),
+                "ask": ask,
             }
         )
     return rows or None
@@ -148,6 +151,7 @@ def _table_fp(rows: list[dict[str, Any]]) -> str:
                 "name": r["name"],
                 "amount_cents": r["amount_cents"],
                 "merchant": _norm_merchant(r.get("merchant") or ""),
+                "ask": bool(r.get("ask")),
             }
             for r in sorted(rows, key=lambda r: r["id"])
         ]
@@ -176,6 +180,13 @@ def _today_pt() -> str:
     return datetime.now(PT).date().isoformat()
 
 
+def _spec_asks(spec: dict[str, Any]) -> bool:
+    """The Notes word ``ask`` opts that named row into the Yes/No page."""
+    if spec.get("ask") is True:
+        return True
+    return bool(re.search(r"\bask\b", str(spec.get("notes") or ""), re.I))
+
+
 def _match_for_merchant(merchant: str) -> str:
     parts = [p.strip() for p in re.split(r"\s*/\s*|\s+or\s+", merchant) if p.strip()]
     if not parts:
@@ -199,10 +210,11 @@ def _row_from_spec(spec: dict[str, Any], prev: dict[str, Any] | None) -> dict[st
         if not merchant:
             row["match"] = ""
             row["confirm"] = False
-        elif costco:
+        elif costco or _spec_asks(spec):
             row["confirm"] = True
-            row["match"] = prev.get("match") or COSTCO_MATCH
-            row.setdefault("not_before", _today_pt())
+            if costco:
+                row["match"] = prev.get("match") or COSTCO_MATCH
+                row.setdefault("not_before", _today_pt())
         else:
             row["confirm"] = False
         return row
@@ -213,8 +225,9 @@ def _row_from_spec(spec: dict[str, Any], prev: dict[str, Any] | None) -> dict[st
         "merchant": merchant,
         "name": spec["name"],
     }
-    if costco:
+    if costco or (merchant and _spec_asks(spec)):
         row["confirm"] = True
+    if costco:
         row["not_before"] = str((prev or {}).get("not_before") or _today_pt())
     elif prev and prev.get("not_before") and same_merchant:
         row["not_before"] = prev["not_before"]
@@ -256,10 +269,11 @@ def _stamp_from_table(
         nxt = dict(row)
         merchant = str(spec.get("merchant") or "").strip()
         nxt["merchant"] = merchant
-        if is_costco_merchant(merchant):
+        if is_costco_merchant(merchant) or (merchant and _spec_asks(spec)):
             nxt["confirm"] = True
-            nxt["match"] = nxt.get("match") or COSTCO_MATCH
-            nxt.setdefault("not_before", _today_pt())
+            if is_costco_merchant(merchant):
+                nxt["match"] = nxt.get("match") or COSTCO_MATCH
+                nxt.setdefault("not_before", _today_pt())
         elif not merchant:
             nxt["match"] = ""
             nxt["confirm"] = False
