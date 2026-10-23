@@ -66,6 +66,21 @@ class TestRules(unittest.TestCase):
         r = rule_review(t)
         self.assertEqual(r.category, "Dining Out")
 
+    def test_forklift_academy_cert(self):
+        t = Transaction(
+            id="fork",
+            date="2026-10-22",
+            amount_cents=35000,
+            name=(
+                "Withdrawal 10/22 Forklift Academy Haywar Ca "
+                "24765016295940552562235 8299 %% Card 17 #6573"
+            ),
+            merchant_name="Forklift Academy",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.category, "Irregular Expenses")
+        self.assertEqual(r.review_status, "auto_accepted")
+
     def test_debtoredu_irregular(self):
         t = Transaction(
             id="1",

@@ -230,6 +230,9 @@ RULES: list[tuple[str, str, float]] = [
     (r"\bSPEEDWAY\b|\b68188\b", "Gas", 0.9),
     # school / admin → Irregular (no separate "College" category)
     (r"\bPARCHMENT\b|\bCOLLEGE TRANSCRIPT\b|\bTHE PERMIT STORE\b|\bCAL ST UNI\b|\bPARKING PERMIT\b|\bUNIVERSITY\b", "Irregular Expenses", 0.9),
+    # Forklift cert (job training). Alliant posts "Forklift Academy" and MCC 8299
+    # before "%% Card", which the NorCal REF# parser does not see.
+    (r"\bFORKLIFT\s+ACADEMY\b", "Irregular Expenses", 0.95),
     # software / hosting / subs
     (r"\bTASKADE\b|\bSLACK\b|\bHETZNER\b", "Software & Tools", 0.92),
     (r"\bPRIME VIDEO\b", "Entertainment & Subs", 0.93),
