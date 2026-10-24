@@ -26,7 +26,7 @@
 | Bills | **Annual cadence:** NSSI personal property **$102** (Feb 12, `renews: false` — ends 12 months after the last in-band post, 2026-02-12 → 2027-02-12; 1/12 through Jan 2027, no Feb 2027 pull), CSAA Renters **$115.73** (Feb 12 endorsement), US Mobile device insurance **$75** (Aug 13). Cash-vs-bills sums the annual lump with monthly dues in the same 3d window. Leftover 1/12 every month; cash-vs-bills uses the cash pull in the 3d window; charge month spend counts 1/12. **Monthly:** CSAA auto **$70.09** (followed the Sept 8 2026 post; was $68.92), Spotify, SuperGrok $30, US Mobile $27, T-Mobile, Apple $0.99, EFF **$25.75 debit card EOM** (`active_from` 2026-08-01), Hetzner ~$15 on the **7th** (usage; pinned to invoice post). **Grok + US Mobile `auto_annual`:** a ~10× monthly post (8.5–11.5×; $280/$300) flips the row to annual the same evaluate — named always, opaque MasterMoney in the due window. Spotify/Apple untagged. | 2026-10-01 |
 | Cash vs upcoming bills | Canned + Push: material dues, start **3d** before due, **stay until named post clears** (40d grace cap), cash < **2×**. Narrower, more cautious window than 5d 100%. Floor ≈ $17.50 → CSAA / Grok / US Mobile; hide Apple/T-Mobile/Spotify/Hetzner. | 2026-09-20 |
 | Rolling window | 21 days back, today, 7 days ahead. On-pace line is elapsed × the calendar daily allotment (22 × $35 in a 30-day month). Photon and both pushes use this count. Loud push (pri 2) at 5+ days ahead; firm (pri 1) at 1–4. Calendar dollar-cap bust is retired. | 2026-09-27 |
-| Product goal | Financial coaching + behavioral optimization | 2026-07-26 |
+| Product goal | **Coaching book** for pace and Pushover. **Tax book** is separate: sticky character overlay, year tie-out, quarterly review email. No asset register. | 2026-10-23 |
 | Runtime model | Cron + rules (no always-on Hermes Agent process) | 2026-07-26 |
 | Grok charges | **SuperGrok $30** = monthly bill; $5/$15 usage = discretionary when charged | 2026-08-18 |
 | SaaS tax match | `saas: true` bills allow **~10% over** the pre-tax reserve (plus the usual ±$1) so CA tax-inclusive charges still clear. **Grok / Apple / Spotify** tagged. Not a global ±10% on opaque rows (EFF $25.75 vs US Mobile $27). When an in-band post lands (webhook/poll/evaluate), **`amount_cents` follows the posted amount** so next month reserves $33 not $30. $5/$15 usage is out of band and does not rewrite. | 2026-09-05 |
@@ -43,7 +43,9 @@
 | Institution order | **PayPal v1** → **1st Nor Cal v1.5/2.0** (on Plaid; deferred by choice) | 2026-07-21 |
 | Runtime | No Hermes SaaS sub; box jobs + Grok Build as co-admin builder | 2026-07-21 |
 | Package home | `/root/budget-bot` (Python CLI `budget_bot`) + astra-config agent-job | 2026-09-20 (was `/root/hermes-finance`) |
-| Amount sign | **Positive cents = spend/outflow** toward hardcap. **Refunds net spend** (credit vouchers / merchant returns). True income (sales, payroll, checks) does not. | 2026-08-20 |
+| Amount sign | **Positive cents = spend/outflow** toward hardcap. **Refunds net spend** (credit vouchers / merchant returns). True income (sales, payroll, checks) does not. A tax ruling's `counts_as_spend` overrides this. | 2026-10-23 |
+| Tax overlay | Local `accounting/tax-classifications.json` (never git). One character per locked row. Auto-review does not retag it; Plaid upsert keeps the coach category. Characters: `return_of_capital`, `wages`, `other_taxable_income`, `refund`, `transfer`, `gift` (received), `deductible` (a gift he made, when it is one), `nondeductible_personal`. | 2026-10-23 |
+| Tax review | **Email only.** 1st of Jan/Apr/Jul/Oct, 09:00 PT, first 7 days (same grace as leftover). Prior quarter. Not Pushover. | 2026-10-23 |
 | Pending txns | **Excluded** from hardcap until posted | 2026-07-21 (pinned tonight) |
 | Transfers | **Excluded** (`transfer: true`) | 2026-07-21 (pinned tonight) |
 | Notify default | **Dry-run** until `notify_enabled: true` or `HERMES_LIVE=1` | 2026-07-21 (pinned tonight) |
@@ -65,6 +67,7 @@
 | Token encryption | chmod-only v1 on single-tenant VPS |
 | Category mapping | Plaid categories → baseline labels |
 | ask_panel weekly | Optional; templates first |
+| Asset register | **Deferred.** Bankruptcy schedules are on OneDrive, not on this box. No sync until asked. A schedule value is filing-date value, not cost basis. |
 | ntfy / Telegram | Post-email |
 | hermes status MCP tool | Optional chat surface |
 | Repo remote | Not pushed; local only for now (like early experiments) |

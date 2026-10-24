@@ -108,6 +108,7 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 - **xAI month (2026-10-09):** calendar month of xAI card posts. One pri 1 Pushover the first time the total goes over **$50** (`xai_month|YYYY-MM`). Later xAI charges that same month stay quiet. A ~$30 SuperGrok post on day 28–31 counts in the next month, so the plan bill posted on the 30th is the next month's plan. Pending and excluded rows stay out. A transfer flag does not drop an xAI card post. Prepaid-balance floor is not a trigger. Current month only, no backfill.
 - **Buy queue:** a named merchant auto-clears that row (amount within 15%, at least $10). No merchant means the wish stays on the list and nothing fires. Costco matching is off as of 2026-10-08 (rice cooker purchased; no Costco row). A future row that names Costco still asks instead of auto-clearing: one pri 0 Pushover per in-band warehouse or costco.com charge, once per charge. The push opens a Yes/No page (secret Funnel path, same idea as the IFX log, two buttons only). Yes takes the row off. No leaves it. Not a Photon reply and not a Grok visit. Gas does not count. Other merchants stay auto-clear.
 - **EOM leftover:** 1st ~09:00 PT; leftover = prior-month **calendar STS minus pending spend**; copy `{Month} leftover is $X saved, well done!`; pri 0; skip if ≤ $0; no auto-transfer.
+- **Tax review:** email only, quarterly. First 7 days of Jan/Apr/Jul/Oct, 09:00 PT. Prior quarter. Not Pushover. Pace stays on the coach book.
 - **Near-instant:** Plaid webhooks + 15m poll → sync → auto-review → alerts.
 - **Pace sentences** (2026-09-27): Photon and both pushes use the rolling count. `{N} days ahead of pace.` Under: `{N} days under pace.` Loud push at 5 or more. Cash-vs-bills line only if unpaid **material** dues (≥ half daily allotment) starting **3** days before due **and staying until the named post clears** (40d grace cap) **and** cash < **2×** those dues (3d 200% both, stay-alive 2026-09-20). Annuals in that window count at the **cash pull** (e.g. $280), not 1/12. Cash-vs-bills **Pushover on** (`cash_bills_notify: true`, 2026-09-09): once/day pri 1 when **any CU checking** is under **2×** that CU’s material dues in that window. Bills default to NorCal. Tag `institution: alliant` from the closed port list in the Alliant ACH/card fact (don’t wait for the first Alliant post). New/moved subs: **Alliant debit**, not PayPal-on-Alliant-ACH, unless PayPal is the native rail (Apple $0.99 — PayPal ACH from Alliant only if PayPal is empty). Empty Alliant with no Alliant bills stays silent. Combined cash is not the trigger. Firm and loud pushes use the rolling count (2026-09-27). `names_health` auto-skips the MasterMoney nudge when live Plaid names or Alliant named spend recover; it does **not** flip calendar notify, statement SSOT, or cash source. DD is on Alliant (2026-09-20).
 - **NorCal register SSOT = monthly statements** (PDF/xlsx). Plaid is the live fill-in (PayPal + days after the last statement) and is **superseded** on (date, amount) overlap. Budget numbers are only as complete as the last imported statement for posted CU activity.
@@ -157,6 +158,8 @@ Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, g
 
 **budget-bot-watch** exists as agent-job but **no timer yet** — not in the “important stuff already covered” set until armed.
 
+**budget-bot-tax-quarterly** timer: 1st of Jan/Apr/Jul/Oct, 09:00 PT, email only. Prior quarter. Not Pushover.
+
 ---
 
 ## 7. Budget Bot rails (budget co-pilot)
@@ -164,8 +167,8 @@ Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, g
 **Name:** **Budget Bot.** Package/CLI `budget_bot`; state `/etc/budget-bot.env` + `~/.local/state/budget-bot/`. Old `hermes-finance` paths are aliases.
 
 - Hardcap **$1050 / calendar month** PT (rolling 30d **pinned later**). Daily allotment is hardcap / days_in_period (calendar month length, or 30 on rolling) — not a fixed $35.
-- Goal: **coaching + behavioral optimization**, not accounting export.
-- **Push** near/over hardcap after a purchase, **plus** one EOM leftover congrats (not new-recurring chatter; not daily mail).
+- Goal: **coaching + behavioral optimization**, plus a separate tax book (sticky character, year tie-out, quarterly review email). Pace and Pushover stay on the coach book. No asset register yet.
+- **Push** near/over hardcap after a purchase, **plus** one EOM leftover congrats (not new-recurring chatter; not daily mail). Tax review is email, quarterly, not a push.
 - New recurring proposals: **on-box only** (status/todos), no push.
 - Pace v1: raw hardcap vs spend (**no** remaining-bills in pace); bills reservation in safe-to-spend v1; pace+bills later v2/3.
 - Recurring rule: must appear in **current and previous calendar month** or drop.

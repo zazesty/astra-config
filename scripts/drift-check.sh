@@ -66,6 +66,8 @@ for u in \
   budget-bot-plaid-webhook.service \
   budget-bot-poll.service \
   budget-bot-poll.timer \
+  budget-bot-tax-quarterly.service \
+  budget-bot-tax-quarterly.timer \
   health-bot.service \
   hermes-gateway.service \
   photon-heal.service \

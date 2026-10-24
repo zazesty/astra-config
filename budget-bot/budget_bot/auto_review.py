@@ -17,6 +17,7 @@ from .config import state_dir
 from .import_xlsx import extract_mcc, guess_merchant
 from .models import Transaction
 from .store import load_txns, save_txns
+from .tax import pin_locked, ruling_for
 
 # Fin-coach category set (canonical labels)
 CATEGORIES = [
@@ -490,6 +491,22 @@ def apply_review(
     cat_counts: dict[str, int] = defaultdict(int)
 
     for t in txns:
+        locked = ruling_for(t.id)
+        if locked is not None:
+            pin_locked(t, locked)
+            reviews[t.id] = {
+                "category": t.category,
+                "confidence": 1.0,
+                "review_status": "tax_locked",
+                "reason": "tax_overlay",
+                "merchant": t.display_name(),
+                "amount_cents": t.amount_cents,
+                "date": t.date,
+                "tax_character": locked.character,
+            }
+            stats["tax_locked"] += 1
+            cat_counts[t.category] += 1
+            continue
         r = rule_review(t)
         # Never force-exclude CU debit-card / MasterMoney purchases as transfers
         # (Plaid often labels them TRANSFER_OUT; false excludes hid AI spend).
@@ -620,6 +637,10 @@ def run_and_persist(auto_threshold: float = 0.9) -> dict[str, Any]:
 
 def review_one(t: Transaction, priors: dict[str, str] | None = None) -> ReviewResult:
     """Online path: prior merchant map then rules."""
+    locked = ruling_for(t.id)
+    if locked is not None:
+        pin_locked(t, locked)
+        return ReviewResult(t.category, 1.0, "tax_locked", "tax_overlay")
     if priors:
         m = t.display_name().upper()
         if m in priors:

@@ -656,6 +656,104 @@ def cmd_eom_leftover(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tax_tie_out(args: argparse.Namespace) -> int:
+    """Year (or date range) tie-out. Prints counts. Does not email."""
+    from .tax import tie_out
+
+    cfg = load_config()
+    as_of = _as_of(cfg, None)
+    if args.start and args.end:
+        start = date.fromisoformat(args.start)
+        end = date.fromisoformat(args.end)
+    else:
+        year = int(args.year or as_of.year)
+        start, end = date(year, 1, 1), date(year, 12, 31)
+    report = tie_out(load_txns(), start, end)
+    # Drop per-row notes from the CLI dump. The sample is enough to review.
+    characters = {}
+    for name, bucket in report["characters"].items():
+        characters[name] = {
+            "n": bucket["n"],
+            "in_cents": bucket["in_cents"],
+            "out_cents": bucket["out_cents"],
+            "taxable": bucket["taxable"],
+            "counts_as_spend": bucket["counts_as_spend"],
+            "rows": [
+                {"date": row["date"], "cents": row["cents"], "label": row["label"]}
+                for row in bucket["rows"]
+            ],
+        }
+    inflows = report["inflows"][:12]
+    print(
+        json.dumps(
+            {
+                "start": report["start"],
+                "end": report["end"],
+                "error": report["error"],
+                "characters": characters,
+                "unclassified": report["unclassified"],
+                "excluded_or_transfer_n": report["excluded_or_transfer"]["n"],
+                "pending_unclassified": report["pending_unclassified"],
+                "gaps": [g["note"] for g in report["gaps"]],
+                "year_gaps": [g["note"] for g in report["year_gaps"]],
+                "notes": [n["note"] for n in report["notes"]],
+                "orphan_rulings": report["orphan_rulings"],
+                "inflows": inflows,
+                "inflows_omitted": max(0, len(report["inflows"]) - len(inflows)),
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+def cmd_tax_quarterly(args: argparse.Namespace) -> int:
+    """Email the prior-quarter tax review. First 7 days of Jan/Apr/Jul/Oct.
+
+    Dry-run prints the body and does not mark the dedup key, so a preview
+    cannot burn the quarter's one send.
+    """
+    from .tax import review_event
+
+    cfg = load_config()
+    as_of = _as_of(cfg, args.as_of)
+    force = bool(getattr(args, "force", False))
+    ev = review_event(load_txns(), as_of, force=force)
+    if ev is None:
+        print(json.dumps({"ok": True, "status": "skipped_not_quarter", "as_of": as_of.isoformat()}))
+        return 0
+    live = bool(getattr(args, "live", False)) or bool(cfg.get("notify_enabled"))
+    if bool(getattr(args, "dry_run", False)):
+        live = False
+    if not live:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "status": "dry_run",
+                    "as_of": as_of.isoformat(),
+                    "subject": ev.subject,
+                    "key": ev.key,
+                    "body": ev.body,
+                }
+            )
+        )
+        return 0
+    st = send_alert(ev, dry_run=False, force=force, channel="email")
+    print(
+        json.dumps(
+            {
+                "ok": st.startswith("sent"),
+                "status": st,
+                "as_of": as_of.isoformat(),
+                "subject": ev.subject,
+                "key": ev.key,
+            }
+        )
+    )
+    return 0 if st.startswith("sent") or st == "skipped_dedup" else 1
+
+
 def cmd_buy_queue_drop(args: argparse.Namespace) -> int:
     """Clear one queue row after a yes (Costco ask, or any manual drop)."""
     from .buy_queue import drop_buy_queue_row
@@ -1048,6 +1146,25 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--live", action="store_true", help="Send even if notify_enabled is false")
     s.add_argument("--dry-run", action="store_true", help="Log only, do not push")
     s.set_defaults(func=cmd_eom_leftover)
+
+    s = sub.add_parser(
+        "tax-tie-out",
+        help="Tax-year tie-out (counts only, no email)",
+    )
+    s.add_argument("--year", type=int, default=None)
+    s.add_argument("--start", default=None, help="YYYY-MM-DD")
+    s.add_argument("--end", default=None, help="YYYY-MM-DD")
+    s.set_defaults(func=cmd_tax_tie_out)
+
+    s = sub.add_parser(
+        "tax-quarterly",
+        help="Email prior-quarter tax review (1st week of Jan/Apr/Jul/Oct)",
+    )
+    s.add_argument("--as-of", default=None, help="YYYY-MM-DD (default: today PT)")
+    s.add_argument("--force", action="store_true", help="Review even outside the first week")
+    s.add_argument("--live", action="store_true", help="Send even if notify_enabled is false")
+    s.add_argument("--dry-run", action="store_true", help="Print the body. Does not email or mark sent")
+    s.set_defaults(func=cmd_tax_quarterly)
 
     s = sub.add_parser("watch", help="Full watch cycle (default dry-run notify)")
     s.add_argument("--fixture", default=None)

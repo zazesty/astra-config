@@ -88,6 +88,8 @@ for u in \
   budget-bot-plaid-webhook.service \
   budget-bot-poll.service \
   budget-bot-poll.timer \
+  budget-bot-tax-quarterly.service \
+  budget-bot-tax-quarterly.timer \
   health-bot.service \
   hermes-gateway.service \
   photon-heal.service \
@@ -299,6 +301,7 @@ systemctl enable --now \
   ifx-form.service \
   photon-heal.timer \
   budget-bot-eom-leftover.timer \
+  budget-bot-tax-quarterly.timer \
   budget-bot-norcal-plaid-nudge.timer \
   budget-bot-norcal-quarantine-recheck.timer \
   budget-bot-poll.timer

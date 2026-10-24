@@ -1,0 +1,15 @@
+[Unit]
+Description=1st of Jan/Apr/Jul/Oct 09:00 PT — Budget Bot tax review email
+
+[Timer]
+OnCalendar=*-01-01 09:00:00
+OnCalendar=*-04-01 09:00:00
+OnCalendar=*-07-01 09:00:00
+OnCalendar=*-10-01 09:00:00
+Timezone=America/Los_Angeles
+Persistent=true
+AccuracySec=1min
+Unit=budget-bot-tax-quarterly.service
+
+[Install]
+WantedBy=timers.target

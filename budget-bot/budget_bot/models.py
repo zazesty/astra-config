@@ -81,6 +81,7 @@ AlertKind = Literal[
     "cash_short",
     "buy_queue_ask",
     "xai_month",
+    "tax_review",
 ]
 
 

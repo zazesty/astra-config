@@ -81,7 +81,17 @@ def counts_as_spend(tx: Transaction, exclude_pending: bool = True) -> bool:
     Transfers / excluded / pending (when exclude_pending) never count.
     True income (sales, payroll, check deposits) does not reduce spend.
     Merchant refunds and credit vouchers do — even if auto-review tagged them Income.
+    A tax-book ruling overrides this. ``counts_as_spend`` on the ruling wins.
     """
+    # A tax ruling wins over coach category and over the excluded flag.
+    # A broken tax file yields no ruling, so spend falls back to the coach rules.
+    from .tax import ruling_for
+
+    ruling = ruling_for(tx.id)
+    if ruling is not None:
+        if exclude_pending and tx.pending:
+            return False
+        return ruling.counts_as_spend
     if tx.excluded or tx.transfer:
         return False
     if exclude_pending and tx.pending:

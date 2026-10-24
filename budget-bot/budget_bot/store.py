@@ -84,6 +84,16 @@ def upsert_txns(incoming: list[Transaction]) -> tuple[list[Transaction], list[Tr
                 if prev.transfer:
                     t.transfer = True
                     t.excluded = True
+                # Locked tax rows keep the coach label too. Character lives
+                # in the overlay; auto-review must not retag these.
+                from .tax import is_locked
+
+                if is_locked(t.id):
+                    t.category = prev.category
+                    t.excluded = prev.excluded
+                    t.transfer = prev.transfer
+                    if prev.transfer:
+                        t.excluded = True
             existing[t.id] = t
         all_tx = sorted(existing.values(), key=lambda x: (x.date, x.id))
         _write_json(txns_path(), [t.to_dict() for t in all_tx])
