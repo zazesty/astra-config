@@ -194,7 +194,7 @@ RULES: list[tuple[str, str, float]] = [
     # groceries
     (r"\bSAFEWAY(?!\s*FUEL)\b|\bALBERTSONS?\b|\bGROCERY\b|\bTRADER JOE|\bCOSTCO(?!\s*GAS)\b|\bGRAND MARKET\b|\bRALEY|\bVIKS MARKET\b", "Groceries / Food", 0.92),
     # gas (+ Monument 76 large fills handled in rule_review)
-    (r"\bSAFEWAY FUEL|\bCHEVRON\b|\bSHELL\b|\bCOSTCO GAS\b|\bCENTRAL GAS\b|\bGAS\b|\bFUEL\b", "Gas", 0.93),
+    (r"\bSAFEWAY FUEL|\bCHEVRON\b|\bSHELL\b|\bCOSTCO GAS\b|\bCENTRAL GAS\b|\bGOLDEN GATE PET|\bGAS\b|\bFUEL\b", "Gas", 0.93),
     (r"\bMONUMENT\s*76\b", "Gas", 0.85),  # amount split in rule_review
     # personal care
     (r"\bBARBER\b|\bVAGARO\b|\bSILVER FOX\b|\bHAIR\b|\bSALON\b", "Personal Care", 0.9),

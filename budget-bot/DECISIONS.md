@@ -6,7 +6,7 @@
 
 | Decision | Value | When |
 |----------|--------|------|
-| Hardcap | **$1,050 / calendar month** (`hardcap_cents: 105000`) | 2026-08-29 (was $1,000 from 2026-07-26; $1,111 seed 2026-07-21) |
+| Hardcap | **$1,100 / calendar month** (`hardcap_cents: 110000`) | 2026-10-25 (commute fuel; non-fuel ceiling vetoed. Was $1,050 from 2026-08-29; $1,000 from 2026-07-26; $1,111 seed 2026-07-21) |
 | Rolling 30d hardcap | **Pinned later** (candidate: 15d past + 15d future) | 2026-07-26 |
 | Pace vs bills | **v2 shipped 2026-08-07:** pace uses **committed** = spend + remaining unposted bill reserves (pre-charged); hardcap **breach** uses spend after **annual 1/12 amortization** (known yearly bills only); bills still clear safe-to-spend when posted | 2026-09-05 (amortize) |
 | Pace v2.1 lead window | **Superseded 2026-08-18.** Calendar STS/reserves = **rest of current month** (no 7-day lead; no next-month leak). Rolling 30d still uses the 15d-ahead window. Past-due unpaid always reserve; arrears stack 6 months. | 2026-08-18 |

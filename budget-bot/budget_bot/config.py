@@ -47,7 +47,7 @@ def live_flag() -> bool:
 DEFAULT_STATE_DIR = default_state_dir()
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "hardcap_cents": 105_000,  # $1,050.00 monthly hardcap
+    "hardcap_cents": 110_000,  # $1,100.00 monthly hardcap
     "period": "calendar_month",
     "timezone": "America/Los_Angeles",
     # bills: monthly reserve toward hardcap safe-to-spend.

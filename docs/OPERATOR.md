@@ -102,7 +102,7 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 - **No daily digests.** Coaching = hardcap / firm pace / rare anomalies, plus one EOM leftover congrats.
 - **No weekly AI usage emails** (paused 2026-09-06).
 - **Soft pace: culled** (2026-08-24). Firm pace superseded it.
-- **Firm pace:** rolling count is 1–4 days ahead → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**). Window is 21 back, today, 7 ahead. On-pace line is elapsed × the calendar daily allotment (22 × $35 in a 30-day month). Body is `{N} days ahead of pace.`
+- **Firm pace:** rolling count is 1–4 days ahead → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**). Window is 21 back, today, 7 ahead. On-pace line is elapsed × the calendar daily allotment (22 × about $36.67 in a 30-day month). Body is `{N} days ahead of pace.`
 - **Loud pace:** rolling count ≥5 days ahead → **pri 2** for the first crossing *and* further txns while still there (same dump collapse). Same sentence as firm pace. The calendar dollar-cap bust is retired. **No merchant names** on pace/breach (anomaly names the category). One Pushover per dump — Plaid `DEFAULT_UPDATE`+`SYNC_UPDATES_AVAILABLE` must not double-page.
 - **Anomalies (2026-10-13):** a spend category, once a calendar month, when this month is **over $50** and **more than 50% above that category's prior calendar month**. Month-to-date versus the full prior month, not a projection. In-band annual cash pulls stay out. Pri 0. Key `anomaly|YYYY-MM|category`. Current month only; a quiet poll does not backfill an earlier crossing.
 - **xAI month (2026-10-09):** calendar month of xAI card posts. One pri 1 Pushover the first time the total goes over **$50** (`xai_month|YYYY-MM`). Later xAI charges that same month stay quiet. A ~$30 SuperGrok post on day 28–31 counts in the next month, so the plan bill posted on the 30th is the next month's plan. Pending and excluded rows stay out. A transfer flag does not drop an xAI card post. Prepaid-balance floor is not a trigger. Current month only, no backfill.
@@ -166,7 +166,7 @@ Timers (not a 24/7 LLM): ops-log, health-check, model checks, consumer-health, g
 
 **Name:** **Budget Bot.** Package/CLI `budget_bot`; state `/etc/budget-bot.env` + `~/.local/state/budget-bot/`. Old `hermes-finance` paths are aliases.
 
-- Hardcap **$1050 / calendar month** PT (rolling 30d **pinned later**). Daily allotment is hardcap / days_in_period (calendar month length, or 30 on rolling) — not a fixed $35.
+- Hardcap **$1100 / calendar month** PT (rolling 30d **pinned later**). Raised 2026-10-25 for the Pleasant Hill–Oakland commute. The non-fuel ceiling was vetoed. Daily allotment is hardcap / days_in_period (calendar month length, or 30 on rolling) — not a fixed daily dollar amount.
 - Goal: **coaching + behavioral optimization**, plus a separate tax book (sticky character, year tie-out, quarterly review email). Pace and Pushover stay on the coach book. No asset register yet.
 - **Push** near/over hardcap after a purchase, **plus** one EOM leftover congrats (not new-recurring chatter; not daily mail). Tax review is email, quarterly, not a push.
 - New recurring proposals: **on-box only** (status/todos), no push.

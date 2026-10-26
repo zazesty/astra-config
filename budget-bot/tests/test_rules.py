@@ -103,15 +103,15 @@ class TestBudget(unittest.TestCase):
         self.txns = load_fixture(FIXTURE)
 
     def test_hardcap_seed(self):
-        self.assertEqual(self.cfg["hardcap_cents"], 105_000)
+        self.assertEqual(self.cfg["hardcap_cents"], 110_000)
 
     def test_snapshot_as_of_mid_month(self):
         snap = evaluate_budget(self.txns, self.cfg, as_of=date(2026, 7, 21))
         self.assertEqual(snap.days_in_period, 31)
         self.assertEqual(snap.days_elapsed, 21)
-        self.assertEqual(snap.hardcap_cents, 105_000)
+        self.assertEqual(snap.hardcap_cents, 110_000)
         self.assertGreater(snap.spend_to_date, 0)
-        self.assertLess(snap.spend_to_date, 105_000)  # fixture not over hardcap
+        self.assertLess(snap.spend_to_date, 110_000)  # fixture not over hardcap
         self.assertIn(snap.risk, ("ok", "warn", "breach"))
         self.assertEqual(snap.period_kind, "calendar")
 
@@ -131,7 +131,7 @@ class TestBudget(unittest.TestCase):
         self.assertEqual(roll.days_in_period, 29)
         self.assertEqual(roll.days_elapsed, 22)
         # Rolling cap is calendar-daily × window length, so on-pace is elapsed × daily.
-        self.assertEqual(roll.hardcap_cents, int(round(105_000 * 29 / 31)))
+        self.assertEqual(roll.hardcap_cents, int(round(110_000 * 29 / 31)))
         d = roll.to_dict()
         self.assertEqual(d["period_kind"], "rolling_30d")
         self.assertIn("spend_through", d)

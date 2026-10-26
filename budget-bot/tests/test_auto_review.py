@@ -110,6 +110,19 @@ class TestRules(unittest.TestCase):
         self.assertEqual(rule_review(gas).category, "Gas")
         self.assertEqual(rule_review(small).category, "Misc / Other")
 
+    def test_golden_gate_petro_is_gas(self):
+        t = Transaction(
+            id="gg",
+            date="2026-10-17",
+            amount_cents=1253,
+            name=(
+                "Withdrawal Point Of Sale #629093477369 Golden Gate Pet "
+                "El Sobrante Us %% Card 17 #6573"
+            ),
+            merchant_name="Golden Gate Petro",
+        )
+        self.assertEqual(rule_review(t).category, "Gas")
+
     def test_venmo_under_20(self):
         t = Transaction(
             id="v",

@@ -188,7 +188,7 @@ class TestIntervalReserve(unittest.TestCase):
             arrears_lookback_months=0,
         )
         self.assertEqual(reserved, 699)
-        self.assertEqual(DEFAULT_CONFIG["hardcap_cents"], 105_000)
+        self.assertEqual(DEFAULT_CONFIG["hardcap_cents"], 110_000)
 
 
 class TestIntervalDetect(unittest.TestCase):
