@@ -75,6 +75,50 @@ _TODO_LIST = re.compile(
     re.I,
 )
 
+# Natural reads of the same board: "list Astra todo items",
+# "list outstanding VPS work". Filler words only, and the line still
+# has to name the board (or say open/outstanding work).
+_LIST_FILLER = (
+    r"me|out|my|the|our|all|open|outstanding|astra|vps|"
+    r"todo|todos|to-do|to-dos|standing|items?|work|list|on"
+)
+_TODO_LIST_NATURAL = re.compile(
+    rf"^(?:list|show(?:\s+me)?|what(?:'s|\s+is|\s+are|s))\s+"
+    rf"(?:{_LIST_FILLER})(?:\s+(?:{_LIST_FILLER}))*$",
+    re.I,
+)
+_TODO_LIST_BARE = re.compile(
+    rf"^(?:{_LIST_FILLER})(?:\s+(?:{_LIST_FILLER}))+$",
+    re.I,
+)
+_LIST_BOARD = re.compile(
+    r"\b(?:todos?|to-dos?|standing|vps|astra|list)\b",
+    re.I,
+)
+_LIST_OPEN_WORK = re.compile(
+    r"\b(?:outstanding|open)\b.+\bwork\b|\bwork\b.+\b(?:outstanding|open)\b",
+    re.I,
+)
+
+_BUY_NOUN = r"(?:buy(?:\s+|-)?list|shopping\s+list|buy\s+queue|wish\s*list)"
+_BUY_LIST = re.compile(
+    rf"^(?:"
+    rf"(?:(?:the|my|our)\s+)?{_BUY_NOUN}"
+    rf"|what(?:'s|\s+is|s)\s+on\s+(?:(?:the|my|our)\s+)?{_BUY_NOUN}"
+    rf"|what(?:'s|\s+is|s)\s+(?:(?:the|my|our)\s+)?{_BUY_NOUN}"
+    rf"|show(?:\s+me)?\s+(?:(?:the|my|our)\s+)?{_BUY_NOUN}"
+    rf"|list\s+(?:(?:the|my|our)\s+)?{_BUY_NOUN}"
+    rf"|(?:list\s+)?(?:astra\s+)?to[- ]buy\s+items"
+    rf")$",
+    re.I,
+)
+
+
+def _natural_todo_list(text: str) -> bool:
+    if not (_TODO_LIST_NATURAL.match(text) or _TODO_LIST_BARE.match(text)):
+        return False
+    return bool(_LIST_BOARD.search(text) or _LIST_OPEN_WORK.search(text))
+
 _BUDGET = re.compile(
     r"^(?:"
     r"budget(?:\s+.*)?"
@@ -94,7 +138,7 @@ _BUDGET = re.compile(
 
 @dataclass(frozen=True)
 class Intent:
-    kind: str  # budget | todo_add | todo_list
+    kind: str  # budget | todo_add | todo_list | buy_list
     title: Optional[str] = None
 
 
@@ -129,7 +173,7 @@ def classify(text: str) -> Optional[Intent]:
     if not n or len(n) > 240:
         return None
 
-    if _TODO_LIST.match(n):
+    if _TODO_LIST.match(n) or _natural_todo_list(n):
         return Intent("todo_list")
 
     for pat in _TODO_ADD:
@@ -141,6 +185,9 @@ def classify(text: str) -> Optional[Intent]:
 
     if _is_work(n):
         return None
+
+    if _BUY_LIST.match(n):
+        return Intent("buy_list")
 
     if _BUDGET.match(n):
         return Intent("budget")

@@ -3,7 +3,8 @@
 # State: ~/.local/state/astra/standing-todos.json
 #
 #   standing-todos.sh list
-#   standing-todos.sh add "title" [--owner agent|human|either] [--priority 1-5] [--blocked-on text]
+#   standing-todos.sh add "title" [--owner agent|human|either] [--priority 1-5] [--blocked-on text] [--plain text]
+#   standing-todos.sh plain <id> "text"
 #   standing-todos.sh done <id>
 #   standing-todos.sh note <id> "text"
 set -euo pipefail
@@ -70,6 +71,8 @@ if cmd == "list":
         print(f"  [{i.get('priority',5)}] {i['id']}  owner={i.get('owner','either')}  {i['title']}")
         if i.get("blocked_on"):
             print(f"       blocked_on: {i['blocked_on']}")
+        if i.get("plain"):
+            print(f"       plain: {i['plain']}")
         if i.get("next_action"):
             print(f"       next: {i['next_action']}")
     sys.exit(0)
@@ -77,10 +80,10 @@ if cmd == "list":
 if cmd == "add":
     rest = args[1:]
     if not rest:
-        print("usage: standing-todos.sh add \"title\" [--owner agent|human|either] [--priority N] [--blocked-on x] [--next x]", file=sys.stderr)
+        print("usage: standing-todos.sh add \"title\" [--owner agent|human|either] [--priority N] [--blocked-on x] [--next x] [--plain x]", file=sys.stderr)
         sys.exit(2)
     title = rest[0]
-    owner, priority, blocked, nxt = "either", 3, None, None
+    owner, priority, blocked, nxt, plain = "either", 3, None, None, None
     i = 1
     while i < len(rest):
         if rest[i] == "--owner" and i + 1 < len(rest):
@@ -91,6 +94,8 @@ if cmd == "add":
             blocked = rest[i + 1]; i += 2
         elif rest[i] == "--next" and i + 1 < len(rest):
             nxt = rest[i + 1]; i += 2
+        elif rest[i] == "--plain" and i + 1 < len(rest):
+            plain = rest[i + 1]; i += 2
         else:
             i += 1
     doc = load()
@@ -107,6 +112,8 @@ if cmd == "add":
         "updated": now(),
         "notes": [],
     })
+    if isinstance(plain, str) and plain.strip():
+        doc["items"][-1]["plain"] = plain.strip()
     save(doc)
     print(item_id)
     sys.exit(0)
@@ -130,6 +137,25 @@ if cmd == "done":
         sys.exit(1)
     save(doc)
     sys.exit(0)
+
+if cmd == "plain":
+    if len(args) < 3:
+        print("usage: standing-todos.sh plain <id> \"text\"", file=sys.stderr)
+        sys.exit(2)
+    iid, text = args[1], args[2].strip()
+    doc = load()
+    for it in doc["items"]:
+        if it["id"] == iid or it["id"].startswith(iid):
+            if text:
+                it["plain"] = text
+            else:
+                it.pop("plain", None)
+            it["updated"] = now()
+            save(doc)
+            print(it["id"])
+            sys.exit(0)
+    print(f"not found: {iid}", file=sys.stderr)
+    sys.exit(1)
 
 if cmd == "note":
     if len(args) < 3:

@@ -31,6 +31,24 @@ class TestHook(unittest.TestCase):
         self.assertEqual(out["action"], "skip")
         self.assertEqual(out["reason"], "canned-todo_add")
 
+    def test_natural_todo_list_skips(self):
+        gw = SimpleNamespace(adapters={})
+        with patch.object(plugin, "handle", return_value="open=1"):
+            out = plugin.pre_gateway_dispatch(
+                _event("Please list Astra todo items"), gw
+            )
+        self.assertEqual(out["action"], "skip")
+        self.assertEqual(out["reason"], "canned-todo_list")
+
+    def test_buy_list_skips(self):
+        gw = SimpleNamespace(adapters={})
+        with patch.object(plugin, "handle", return_value="A  Item  $10  list only"):
+            out = plugin.pre_gateway_dispatch(
+                _event("what's on my buy list"), gw
+            )
+        self.assertEqual(out["action"], "skip")
+        self.assertEqual(out["reason"], "canned-buy_list")
+
     def test_copy_change_falls_through(self):
         gw = SimpleNamespace(adapters={})
         out = plugin.pre_gateway_dispatch(
