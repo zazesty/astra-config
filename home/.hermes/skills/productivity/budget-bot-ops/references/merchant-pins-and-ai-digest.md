@@ -16,7 +16,7 @@ When Zavdi labels opaque card amounts by lab:
 ## Weekly AI card-spend email — OFF (2026-09-06)
 
 - Hermes cron `d237b9f46e18` **paused**. Do not resume or recreate (OPERATOR §3c).
-- Script still exists for on-demand: `/root/astra-config/agent-jobs/hermes-ai-cost-digest.sh`
+- Digest archived 2026-10-26 (`/root/archive/ai-usage-digest/`); do not run.
 - If ever run: **usage** (Hermes tokens × published rates + OpenRouter billed); card lines as credits bought — never treat a $15 GROK XAI top-up as spend.
 
 ## Cost awareness (habit change)
