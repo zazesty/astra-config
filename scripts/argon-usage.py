@@ -2,10 +2,12 @@
 """Hourly snapshot of Grok Build Argon use versus this login.
 
 Going forward only. The first run stores an epoch; turns that end before it
-are ignored. Work is output tokens plus reasoning tokens. call_ratio and
-work_ratio are Argon divided by Grok. 1.0 means the two sides did the same
-amount, which is about half the measured work on Argon and about double the
-subscription side.
+are ignored. Work is output tokens plus reasoning tokens. work_ratio is Argon
+work divided by Grok work. 1.0 means the two sides produced the same number of
+those tokens, which is about half the measured work on Argon. Argon reasoning
+tokens are reported as 0, so the ratio is a lower bound on Argon's share.
+call_ratio was dropped 2026-10-27. Older jsonl rows still have it. Call counts
+stay on each side and off the status line.
 
 Writes ~/.local/state/astra/argon-usage.json (latest) and .jsonl (history).
 No email, no Pushover. Session text is never read.
@@ -148,7 +150,6 @@ def snapshot(now: datetime, epoch: datetime, sides: dict) -> dict:
         "grok": pack(grok),
         "argon": pack(argon),
         "other": pack(sides["other"]),
-        "call_ratio": ratio(argon["calls"], grok["calls"]),
         "work_ratio": ratio(argon["work"], grok["work"]),
         "goal": "work_ratio 1.0 means Argon did as much work as this login (about half delegated).",
     }
@@ -171,14 +172,12 @@ def write_snapshot(row: dict) -> None:
 
 
 def line(row: dict) -> str:
-    cr = row["call_ratio"]
     wr = row["work_ratio"]
-    cr_s = "n/a" if cr is None else f"{cr:.3f}"
     wr_s = "n/a" if wr is None else f"{wr:.3f}"
     return (
         f"argon-usage: since {row['since']} "
-        f"grok_calls={row['grok']['calls']} argon_calls={row['argon']['calls']} "
-        f"call_ratio={cr_s} work_ratio={wr_s}"
+        f"grok_work={row['grok']['work_tokens']} argon_work={row['argon']['work_tokens']} "
+        f"work_ratio={wr_s}"
     )
 
 
@@ -249,7 +248,7 @@ def self_test() -> int:
         row = snapshot(epoch, epoch, scan(epoch))
         check("pre-epoch grok dropped", row["grok"]["calls"] == 4)
         check("argon calls", row["argon"]["calls"] == 4)
-        check("call ratio 1", row["call_ratio"] == 1.0)
+        check("call ratio archived", "call_ratio" not in row)
         check("work tokens", row["grok"]["work_tokens"] == 50 and row["argon"]["work_tokens"] == 50)
         check("work ratio 1", row["work_ratio"] == 1.0)
         check("argon cost absent", row["argon"]["cost_usd"] is None)
@@ -258,8 +257,10 @@ def self_test() -> int:
         check("old flash counts as the seat", bucket("gemini-flash-latest") == "argon")
         check("grok bucket", bucket("grok-4.7-build") == "grok")
         write_snapshot(row)
-        check("latest written", json.loads(LATEST_PATH.read_text())["call_ratio"] == 1.0)
+        written = json.loads(LATEST_PATH.read_text())
+        check("latest written", written["work_ratio"] == 1.0 and "call_ratio" not in written)
         check("phone not in line", "153" not in line(row))
+        check("status line is work", "call_ratio" not in line(row) and "work_ratio=1.000" in line(row))
 
     print(f"argon-usage self-test: {'pass' if ok else 'fail'}")
     return 0 if ok else 1
