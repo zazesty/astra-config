@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Hourly snapshot of Grok Build Argon use versus this login.
+"""Hourly snapshot of Grok Build studio seats versus this login.
 
 Going forward only. The first run stores an epoch; turns that end before it
 are ignored. Work is output tokens plus reasoning tokens. work_ratio is Argon
-work divided by Grok work. 1.0 means the two sides produced the same number of
-those tokens, which is about half the measured work on Argon. Argon reasoning
-tokens are reported as 0, so the ratio is a lower bound on Argon's share.
-call_ratio was dropped 2026-10-27. Older jsonl rows still have it. Call counts
-stay on each side and off the status line.
+work divided by Grok work. It is a reading, not a target. Flash is the bulk
+grunt seat and is counted on its own. Argon reasoning tokens are reported as
+0, so the ratio is a lower bound on Argon's share. call_ratio was dropped
+2026-10-27. Older jsonl rows still have it. Call counts stay on each side
+and off the status line.
 
 Writes ~/.local/state/astra/argon-usage.json (latest) and .jsonl (history).
 No email, no Pushover. Session text is never read.
@@ -46,6 +46,8 @@ def bucket(model: str) -> str:
     m = (model or "").lower()
     if m.startswith("grok"):
         return "grok"
+    if "flash" in m:
+        return "flash"
     if "argon" in m or "gemini" in m:
         return "argon"
     return "other"
@@ -86,7 +88,7 @@ def blank():
 
 
 def scan(epoch: datetime) -> dict:
-    sides = {"grok": blank(), "argon": blank(), "other": blank()}
+    sides = {"grok": blank(), "argon": blank(), "flash": blank(), "other": blank()}
     for path in SESSIONS.glob("**/usage.json"):
         try:
             data = json.loads(path.read_text())
@@ -149,9 +151,10 @@ def snapshot(now: datetime, epoch: datetime, sides: dict) -> dict:
         "since": epoch.isoformat(),
         "grok": pack(grok),
         "argon": pack(argon),
+        "flash": pack(sides["flash"]),
         "other": pack(sides["other"]),
         "work_ratio": ratio(argon["work"], grok["work"]),
-        "goal": "work_ratio 1.0 means Argon did as much work as this login (about half delegated).",
+        "goal": "work_ratio is Argon work divided by this login. It is a reading, not a target. Flash is the bulk grunt seat.",
     }
 
 
@@ -177,6 +180,7 @@ def line(row: dict) -> str:
     return (
         f"argon-usage: since {row['since']} "
         f"grok_work={row['grok']['work_tokens']} argon_work={row['argon']['work_tokens']} "
+        f"flash_work={row['flash']['work_tokens']} "
         f"work_ratio={wr_s}"
     )
 
@@ -245,22 +249,32 @@ def self_test() -> int:
                 turn("2026-10-13T23:30:00+00:00", "gemini-4-argon", 4, 25, 25),
             ],
         }))
+        flash_dir = sessions / "s-flash"
+        flash_dir.mkdir(parents=True)
+        (flash_dir / "usage.json").write_text(json.dumps({
+            "sessionId": "f1",
+            "turns": [
+                turn("2026-10-13T23:40:00+00:00", "gemini-3.8-flash", 2, 10, 5),
+            ],
+        }))
         row = snapshot(epoch, epoch, scan(epoch))
         check("pre-epoch grok dropped", row["grok"]["calls"] == 4)
         check("argon calls", row["argon"]["calls"] == 4)
         check("call ratio archived", "call_ratio" not in row)
         check("work tokens", row["grok"]["work_tokens"] == 50 and row["argon"]["work_tokens"] == 50)
+        check("flash stays off the argon seat", row["flash"]["calls"] == 2 and row["flash"]["work_tokens"] == 15)
         check("work ratio 1", row["work_ratio"] == 1.0)
         check("argon cost absent", row["argon"]["cost_usd"] is None)
         check("grok cost", row["grok"]["cost_usd"] == 0.5)
         check("zero denominator", ratio(3, 0) is None)
-        check("old flash counts as the seat", bucket("gemini-flash-latest") == "argon")
+        check("flash bucket", bucket("gemini-3.8-flash") == "flash" and bucket("gemini-flash-latest") == "flash")
+        check("argon bucket", bucket("gemini-4-argon") == "argon")
         check("grok bucket", bucket("grok-4.7-build") == "grok")
         write_snapshot(row)
         written = json.loads(LATEST_PATH.read_text())
         check("latest written", written["work_ratio"] == 1.0 and "call_ratio" not in written)
         check("phone not in line", "153" not in line(row))
-        check("status line is work", "call_ratio" not in line(row) and "work_ratio=1.000" in line(row))
+        check("status line is work", "call_ratio" not in line(row) and "work_ratio=1.000" in line(row) and "flash_work=15" in line(row))
 
     print(f"argon-usage self-test: {'pass' if ok else 'fail'}")
     return 0 if ok else 1

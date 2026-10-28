@@ -13,7 +13,8 @@ Binds 127.0.0.1 only. Does not log prompts, keys, or signature values.
   argon-thought-proxy.py --self-test  offline checks
   argon-thought-proxy.py --live-test  one tool round-trip through the proxy
   argon-thought-proxy.py --point-config [path]
-                                      point [model.argon] at this proxy
+                                      point [model.argon] and [model.flash]
+                                      at this proxy; pin general-purpose to flash
 """
 
 from __future__ import annotations
@@ -542,13 +543,17 @@ def point_config(path: str) -> None:
     lines = _set_key(lines, "model.argon", "env_key", "GEMINI_API_KEY")
     lines = _set_key(lines, "model.argon", "api_backend", "chat_completions")
     lines = _set_key(lines, "model.argon", "stream_tool_calls", "false")
+    lines = _set_key(lines, "model.flash", "base_url", PROXY_BASE)
+    lines = _set_key(lines, "model.flash", "model", "gemini-3.8-flash")
+    lines = _set_key(lines, "model.flash", "env_key", "GEMINI_API_KEY")
+    lines = _set_key(lines, "model.flash", "api_backend", "chat_completions")
+    lines = _set_key(lines, "model.flash", "stream_tool_calls", "false")
     lines = _set_key(lines, "subagents.models", "argon", "argon")
-    lines = _set_key(lines, "subagents.models", "general-purpose", "argon")
-    # stream_tool_calls and the pins are not all quoted the same way.
-    # _set_key quotes every value. Fix the two bare tokens.
+    lines = _set_key(lines, "subagents.models", "flash", "flash")
+    lines = _set_key(lines, "subagents.models", "general-purpose", "flash")
+    # _set_key quotes every value. stream_tool_calls is a bare bool.
     text = "".join(lines)
     text = text.replace('stream_tool_calls = "false"', "stream_tool_calls = false")
-    text = text.replace('argon = "argon"', 'argon = "argon"')
     updated = text
     if updated != original:
         with open(path, "w", encoding="utf-8") as handle:
@@ -677,7 +682,8 @@ def _self_test() -> int:
         text = open(path, encoding="utf-8").read()
     check("mcp url preserved", 'url = "http://127.0.0.1:9/mcp/secret-path"' in text)
     check("base_url pointed", f'base_url = "{PROXY_BASE}"' in text)
-    check("pins added", 'argon = "argon"' in text and 'general-purpose = "argon"' in text)
+    check("pins added", 'argon = "argon"' in text and 'flash = "flash"' in text and 'general-purpose = "flash"' in text)
+    check("flash model", 'model = "gemini-3.8-flash"' in text)
     check("other pin kept", 'explore = "grok-4.7"' in text)
     check("stream flag bare", "stream_tool_calls = false" in text)
     print("argon-thought-proxy self-test:", "pass" if ok else "fail")

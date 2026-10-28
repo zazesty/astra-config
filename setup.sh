@@ -287,8 +287,8 @@ mkdir -p /root/.hermes/skills/productivity
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot" /root/.hermes/skills/productivity/budget-bot
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot-ops" /root/.hermes/skills/productivity/budget-bot-ops
 systemctl enable --now grok-argon-proxy.service
-# Point Grok Build's Argon seat at the local thought-signature proxy.
-# Touches only [model.argon] and the two subagent pins. Leaves MCP URLs alone.
+# Point Grok Build's Argon and Flash seats at the local thought-signature proxy.
+# Touches [model.argon], [model.flash], and the subagent pins. Leaves MCP URLs alone.
 if [ -f /root/.grok/config.toml ]; then
   python3 "$REPO/scripts/argon-thought-proxy.py" --point-config /root/.grok/config.toml
 fi
