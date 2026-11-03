@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import state_dir
-from .import_xlsx import extract_mcc, guess_merchant
+from .import_xlsx import correct_known_merchant, extract_mcc, guess_merchant
 from .models import Transaction
 from .store import load_txns, save_txns
 from .tax import pin_locked, ruling_for
@@ -163,6 +163,7 @@ RULES: list[tuple[str, str, float]] = [
     (r"\bOPENROUTER\b", "Software & Tools", 0.95),
     (r"\bBROTHER REFRESH\b|\bBROTHER\b.*PRI", "Shopping", 0.9),  # toner sub (ended)
     (r"\bGOFNDME\b|\bGOFUNDME\b", "Charity / Donations", 0.93),
+    (r"\bYES IN MY BACK YARD\b|\bYESINMYBA", "Charity / Donations", 0.95),
     (r"\bDIVINE\s*DOVE\b", "Charity / Donations", 0.95),
     (r"\bAGLAE\b", "Charity / Donations", 0.95),
     (r"\bALOHI\b", "Software & Tools", 0.93),  # virtual fax SaaS
@@ -210,6 +211,7 @@ RULES: list[tuple[str, str, float]] = [
     (r"\bPARKING\b|\bUBER\b|\bLYFT\b|\bBART\b|\bTRANSIT\b|\bTOLL\b", "Transportation", 0.9),
     (r"\bAUTOZONE\b|\bO[\u2019']?REILLY\b", "Transportation", 0.9),
     (r"\bMOSTLY\s*HONDA\b", "Transportation", 0.93),  # dealer service (oil/tires)
+    (r"\bBAYSIDE\s+SMOG\b", "Transportation", 0.93),
     (r"\bFASTRAK\b|\bFAS ?TRAK\b", "Transportation", 0.95),
     (r"\bGRAND PRIX EXPRESS\b|\bCAR\s*WASH", "Transportation", 0.93),  # car wash(es)
     (r"\bACE HARDWARE\b|\bMARKUS SUPPLY\b|\bAIRGAS\b", "Shopping", 0.92),
@@ -244,6 +246,7 @@ RULES: list[tuple[str, str, float]] = [
     # thrift / small retail (St. Vincent de Paul = clothes, not a donation)
     (r"\bYOUTH HOMES THRIFT\b|\bUNITED BROTHERS\b", "Shopping", 0.9),
     (r"\bST\.?\s*VIN|\bSTVINCENT|\bSOCIETY OF ST\.?\s*VIN", "Shopping", 0.93),
+    (r"\bSAVERS\b", "Shopping", 0.93),  # thrift, same treatment as St. Vincent
     (r"\bOAKLAND MUSEUM\b|\bOMCA\b", "Entertainment & Subs", 0.9),
     # irregular
     (r"\bIRS\b|\bDISCOUNT TIRE\b|\bTAX\b|\bDMV\b", "Irregular Expenses", 0.9),
@@ -278,6 +281,10 @@ def _status(conf: float, floor: float = 0.9) -> str:
 
 def _maybe_refresh_merchant(t: Transaction) -> None:
     """Fix opaque merchant_name (POS #… / REF# without merchant) from full name."""
+    corrected = correct_known_merchant(t.name or "", t.merchant_name)
+    if corrected and corrected != (t.merchant_name or ""):
+        t.merchant_name = corrected
+        return
     m = (t.merchant_name or "").strip()
     if m and not re.match(
         r"^(POS\s*#\d+|MASTERMONEY CARD REF#.*|MASTERMONEY CARD)$", m, re.I
@@ -339,8 +346,10 @@ def rule_review(t: Transaction) -> ReviewResult:
     if t.transfer or t.excluded:
         return ReviewResult("Transfer", 0.99, "excluded", "flagged_transfer_or_excluded")
 
-    # Venmo P2P: under $20 → Misc auto; else needs_review
+    # Venmo from Melinda: every inflow is income. Outflow under $20 → Misc auto.
     if re.search(r"\bVENMO\b", blob, re.I):
+        if t.amount_cents < 0:
+            return ReviewResult("Income", 0.95, "auto_accepted", "venmo_in_melinda")
         if 0 < t.amount_cents <= VENMO_AUTO_MISC_MAX_CENTS:
             return ReviewResult(
                 "Misc / Other", 0.92, "auto_accepted", "venmo_under_20_misc"
@@ -379,6 +388,22 @@ def rule_review(t: Transaction) -> ReviewResult:
     # Opaque MasterMoney $87.39 — Zima UV dental case (mostly discretionary)
     if t.date == "2026-09-06" and t.amount_cents == 8739:
         return ReviewResult("Medical & Health", 0.9, "auto_accepted", "owner:zima_uv_case")
+    # Hetzner FX fee, 2026-10-08. Not a standing rule for every foreign fee.
+    if t.date == "2026-10-08" and t.amount_cents == 14 and re.search(
+        r"VISA INTERNATIONAL TRANSACTION FEE", blob, re.I
+    ):
+        return ReviewResult(
+            "Software & Tools", 0.95, "auto_accepted", "owner:hetzner_fx_fee"
+        )
+    # Posted Grok vouchers are the refund. These pending-credit lines are the echo.
+    if t.amount_cents < 0 and re.search(r"PENDING CREDIT/RETURN", blob, re.I):
+        if (t.date == "2026-10-13" and t.amount_cents == -1801) or (
+            t.date == "2026-10-19" and t.amount_cents == -149
+        ):
+            return ReviewResult(
+                "Transfer", 0.99, "excluded", "owner:xai_pending_echo"
+            )
+
     # Law Enforcement Against Drugs: one donation, do not treat a repeat as planned.
     if re.search(r"\bLAW ENFORCEMENT\b", blob, re.I):
         if t.date == "2026-09-21" and t.amount_cents == 2091:

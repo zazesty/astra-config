@@ -21,6 +21,7 @@ from budget_bot.rules import counts_as_spend
 from budget_bot import store
 from budget_bot.tax import (
     load_book,
+    mapped_character,
     prior_quarter,
     review_event,
     ruling_for,
@@ -232,11 +233,13 @@ class TestTaxBook(unittest.TestCase):
         self.assertEqual(year["characters"]["return_of_capital"]["n"], 1)
         self.assertEqual(year["characters"]["return_of_capital"]["in_cents"], 30000)
         self.assertFalse(year["characters"]["return_of_capital"]["taxable"])
-        self.assertEqual(year["unclassified"]["n"], 1)
-        self.assertEqual(year["unclassified"]["out_cents"], 899)
+        self.assertEqual(year["characters"]["nondeductible_personal"]["n"], 1)
+        self.assertEqual(year["characters"]["nondeductible_personal"]["out_cents"], 899)
+        self.assertEqual(year["unclassified"]["n"], 0)
+        self.assertEqual(year["mapped_n"], 1)
         self.assertEqual(year["excluded_or_transfer"]["n"], 1)
         self.assertEqual(year["pending_unclassified"]["n"], 1)
-        self.assertEqual(q4["unclassified"]["n"], 1)
+        self.assertEqual(q4["unclassified"]["n"], 0)
         self.assertTrue(any("2026-06-25" in g["note"] for g in year["gaps"]))
         self.assertEqual(q4["gaps"], [])
         self.assertTrue(any("Netflix" in n["note"] for n in q4["notes"]))
@@ -263,6 +266,74 @@ class TestTaxBook(unittest.TestCase):
         self.assertEqual(ev.kind, "tax_review")
         self.assertNotIn("tax_review", PUSH_KINDS)
         self.assertIn("Pace and Pushover stay on the coach book", ev.body)
+
+    def test_category_map_leaves_manual_buckets_open(self):
+        txns = [
+            Transaction(
+                id="charity",
+                date="2026-10-04",
+                amount_cents=2575,
+                name="EFF",
+                category="Charity / Donations",
+            ),
+            Transaction(
+                id="medical",
+                date="2026-10-11",
+                amount_cents=6870,
+                name="iHerb",
+                category="Medical & Health",
+            ),
+            Transaction(
+                id="irregular",
+                date="2026-10-02",
+                amount_cents=4000,
+                name="One off",
+                category="Irregular Expenses",
+            ),
+            Transaction(
+                id="pay",
+                date="2026-10-04",
+                amount_cents=-15000,
+                name="Payment from someone",
+                category="Income",
+            ),
+            Transaction(
+                id="voucher",
+                date="2026-10-14",
+                amount_cents=-1801,
+                name="Withdrawal Adjustment Credit Voucher Grok",
+                category="Software & Tools",
+            ),
+            Transaction(
+                id="sale",
+                date="2026-10-20",
+                amount_cents=-30000,
+                name="Deposit sale",
+                category="Income",
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write_book(
+                root,
+                [{"txn_id": "sale", "character": "return_of_capital", "date": "2026-10-20"}],
+            )
+            with patch("budget_bot.config.state_dir", lambda: root):
+                report = tie_out(txns, date(2026, 10, 1), date(2026, 10, 31))
+        self.assertEqual(mapped_character(txns[0]), "deductible")
+        self.assertIsNone(mapped_character(txns[1]))
+        self.assertIsNone(mapped_character(txns[2]))
+        self.assertIsNone(mapped_character(txns[3]))
+        self.assertEqual(mapped_character(txns[4]), "refund")
+        self.assertEqual(report["characters"]["deductible"]["out_cents"], 2575)
+        self.assertEqual(report["characters"]["refund"]["in_cents"], 1801)
+        self.assertEqual(report["characters"]["return_of_capital"]["n"], 1)
+        self.assertEqual(report["unclassified"]["n"], 3)
+        self.assertEqual(report["mapped_n"], 2)
+        self.assertEqual(
+            {row["label"] for row in report["inflows"]},
+            {"Payment from someone"},
+        )
 
     def test_orphan_ruling(self):
         with tempfile.TemporaryDirectory() as td:

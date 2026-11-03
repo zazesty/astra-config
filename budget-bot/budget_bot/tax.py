@@ -21,6 +21,28 @@ from .models import AlertEvent, Transaction
 
 # character -> taxable, deductible, counts_as_spend, counts_as_income
 # "gift" is a gift received. A gift he made is "deductible" when it is one.
+
+# Coach category → tax character, when no row ruling exists.
+# Medical, Irregular, and Income stay manual. A locked ruling wins.
+# Refund-shaped credits are handled before this map.
+PERSONAL_CATEGORIES = frozenset(
+    {
+        "Groceries / Food",
+        "Misc / Other",
+        "Shopping",
+        "Insurance",
+        "Personal Care",
+        "Entertainment & Subs",
+        "Utilities & Phone",
+        "Postage & Shipping",
+        "Gas",
+        "Dining Out",
+        "Software & Tools",
+        "Transportation",
+        "Health & Fitness",
+        "Housing",
+    }
+)
 CHARACTER_DEFAULTS: dict[str, dict[str, bool]] = {
     "return_of_capital": {
         "taxable": False,
@@ -190,6 +212,21 @@ def in_quarterly_window(as_of: date) -> bool:
     return as_of.month in (1, 4, 7, 10) and as_of.day <= 7
 
 
+def mapped_character(txn: Transaction) -> str | None:
+    """Category map. None means the row stays unclassified.
+
+    A credit voucher or merchant return is a refund even when the coach
+    category is a spend bucket. Medical, irregular, and income do not map.
+    """
+    if txn.amount_cents < 0 and txn.looks_like_refund():
+        return "refund"
+    if txn.category == "Charity / Donations":
+        return "deductible"
+    if txn.category in PERSONAL_CATEGORIES:
+        return "nondeductible_personal"
+    return None
+
+
 def tie_out(
     txns: list[Transaction],
     start: date,
@@ -197,8 +234,9 @@ def tie_out(
 ) -> dict[str, Any]:
     """One character per posted dollar in [start, end], or a gap.
 
-    Excluded and transfer rows with no ruling stay out of the book
-    (Plaid twins, internal moves). A ruling on an excluded row still counts.
+    A row ruling wins. Excluded and transfer rows with no ruling stay out
+    of the book (Plaid twins, internal moves). A ruling on an excluded row
+    still counts. Anything left uses the coach-category map.
     """
     book = load_book()
     ids_in_ledger = {t.id for t in txns}
@@ -206,6 +244,7 @@ def tie_out(
     unclassified = {"n": 0, "in_cents": 0, "out_cents": 0}
     parked = {"n": 0, "in_cents": 0, "out_cents": 0}
     pending = {"n": 0}
+    mapped_n = 0
     inflows: list[dict[str, Any]] = []
 
     for txn in txns:
@@ -217,27 +256,35 @@ def tie_out(
             pending["n"] += 1
             continue
         if ruling is not None:
-            bucket = characters.setdefault(
+            _put_character(
+                characters,
                 ruling.character,
-                {
-                    "n": 0,
-                    "in_cents": 0,
-                    "out_cents": 0,
-                    "taxable": ruling.taxable,
-                    "deductible": ruling.deductible,
-                    "counts_as_spend": ruling.counts_as_spend,
-                    "counts_as_income": ruling.counts_as_income,
-                    "rows": [],
-                },
+                txn,
+                ruling.note,
+                ruling.taxable,
+                ruling.deductible,
+                ruling.counts_as_spend,
+                ruling.counts_as_income,
             )
-            bucket["n"] += 1
-            _add_money(bucket, txn.amount_cents)
-            if len(bucket["rows"]) < 8:
-                bucket["rows"].append(_row(txn, ruling.note))
             continue
         if txn.excluded or txn.transfer:
             parked["n"] += 1
             _add_money(parked, txn.amount_cents)
+            continue
+        mapped = mapped_character(txn)
+        if mapped is not None:
+            flags = CHARACTER_DEFAULTS[mapped]
+            _put_character(
+                characters,
+                mapped,
+                txn,
+                "",
+                flags["taxable"],
+                flags["deductible"],
+                flags["counts_as_spend"],
+                flags["counts_as_income"],
+            )
+            mapped_n += 1
             continue
         unclassified["n"] += 1
         _add_money(unclassified, txn.amount_cents)
@@ -268,6 +315,7 @@ def tie_out(
         ),
         "inflows": inflows,
         "orphan_rulings": orphans,
+        "mapped_n": mapped_n,
     }
 
 
@@ -344,6 +392,35 @@ def _parse_ymd(value: str) -> date | None:
         return date.fromisoformat(value[:10])
     except (TypeError, ValueError):
         return None
+
+
+def _put_character(
+    characters: dict[str, dict[str, Any]],
+    character: str,
+    txn: Transaction,
+    note: str,
+    taxable: bool,
+    deductible: bool,
+    counts_as_spend: bool,
+    counts_as_income: bool,
+) -> None:
+    bucket = characters.setdefault(
+        character,
+        {
+            "n": 0,
+            "in_cents": 0,
+            "out_cents": 0,
+            "taxable": taxable,
+            "deductible": deductible,
+            "counts_as_spend": counts_as_spend,
+            "counts_as_income": counts_as_income,
+            "rows": [],
+        },
+    )
+    bucket["n"] += 1
+    _add_money(bucket, txn.amount_cents)
+    if len(bucket["rows"]) < 8:
+        bucket["rows"].append(_row(txn, note))
 
 
 def _add_money(bucket: dict[str, Any], amount_cents: int) -> None:
@@ -439,6 +516,9 @@ def _email_body(label: str, report: dict[str, Any]) -> str:
                     lines.append(
                         f"    {row['date']} {_dollars(row['cents'])} {way}.{extra}"
                     )
+        mapped_n = report.get("mapped_n") or 0
+        if mapped_n:
+            lines.append(f"Category map covered {mapped_n} of those rows.")
         lines.append("")
 
     unclassified = report["unclassified"]
@@ -514,4 +594,5 @@ def _public_report(report: dict[str, Any]) -> dict[str, Any]:
         "gaps": [g["note"] for g in report["gaps"]],
         "year_gaps": [g["note"] for g in report["year_gaps"]],
         "orphan_rulings": report["orphan_rulings"],
+        "mapped_n": report.get("mapped_n", 0),
     }

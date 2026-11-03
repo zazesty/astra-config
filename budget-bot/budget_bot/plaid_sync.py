@@ -209,7 +209,7 @@ def plaid_txn_to_hermes(
     amount_unit: str = "dollars",
 ) -> Transaction | None:
     """Map one Plaid txn → Hermes. Returns None if amount missing (skip, don't crash)."""
-    from .import_xlsx import guess_merchant
+    from .import_xlsx import correct_known_merchant, guess_merchant
     from .transfers import is_debit_card_purchase, looks_like_transfer
 
     # Plaid: positive amount = money out for depository (we use positive = spend)
@@ -243,6 +243,7 @@ def plaid_txn_to_hermes(
             re.I,
         ):
             merchant = guessed
+    merchant = correct_known_merchant(str(name), str(merchant) if merchant else None)
     pending = bool(raw.get("pending"))
     d = (raw.get("date") or raw.get("authorized_date") or date.today().isoformat())[:10]
     cats = raw.get("category") or raw.get("personal_finance_category") or {}

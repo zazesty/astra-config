@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from budget_bot.auto_review import apply_review, rule_review
-from budget_bot.import_xlsx import extract_mcc, guess_merchant
+from budget_bot.import_xlsx import correct_known_merchant, extract_mcc, guess_merchant
 from budget_bot.models import Transaction
 from budget_bot.rules import counts_as_spend
 
@@ -134,6 +134,83 @@ class TestRules(unittest.TestCase):
         r = rule_review(t)
         self.assertEqual(r.category, "Misc / Other")
         self.assertEqual(r.review_status, "auto_accepted")
+
+    def test_venmo_inflow_is_income(self):
+        t = Transaction(
+            id="vin",
+            date="2026-10-05",
+            amount_cents=-7500,
+            name="Venmo",
+            merchant_name="Venmo",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.category, "Income")
+        self.assertEqual(r.review_status, "auto_accepted")
+        self.assertEqual(r.reason, "venmo_in_melinda")
+
+    def test_csaa_merchant_not_usaa(self):
+        self.assertEqual(
+            correct_known_merchant("Withdrawal CSAA INSURANCE", "USAA Insurance"),
+            "CSAA Insurance",
+        )
+        t = Transaction(
+            id="csaa",
+            date="2026-10-05",
+            amount_cents=7009,
+            name="Withdrawal Ach Csaa Insurance Type: Billpay Co: Csaa Insurance",
+            merchant_name="USAA Insurance",
+        )
+        r = rule_review(t)
+        self.assertEqual(t.merchant_name, "CSAA Insurance")
+        self.assertEqual(r.category, "Insurance")
+
+    def test_october_label_fixes(self):
+        smog = Transaction(
+            id="smog",
+            date="2026-10-08",
+            amount_cents=13820,
+            name="Withdrawal 10/08 Bayside Smog Concord Ca # 7538",
+            merchant_name="Bayside Smog",
+        )
+        self.assertEqual(rule_review(smog).category, "Transportation")
+        savers = Transaction(
+            id="savers",
+            date="2026-10-25",
+            amount_cents=323,
+            name="Withdrawal Point Of Sale Savers - 1197 Vacaville Ca",
+            merchant_name="Savers",
+        )
+        self.assertEqual(rule_review(savers).category, "Shopping")
+        yimby = Transaction(
+            id="yimby",
+            date="2026-10-23",
+            amount_cents=3240,
+            name="Withdrawal 10/23 Yes In My Back Yard Www.Yesinmyba Ca # 7299",
+            merchant_name="Yes In My Back Yard",
+        )
+        self.assertEqual(rule_review(yimby).category, "Charity / Donations")
+        fee = Transaction(
+            id="fx",
+            date="2026-10-08",
+            amount_cents=14,
+            name="Withdrawal Card Fee 10/08 Visa International Transaction Fee",
+            merchant_name="Withdrawal Card Fee 10/08 Visa International Transaction Fee",
+        )
+        fee_r = rule_review(fee)
+        self.assertEqual(fee_r.category, "Software & Tools")
+        self.assertEqual(fee_r.reason, "owner:hetzner_fx_fee")
+
+    def test_xai_pending_echo_is_excluded(self):
+        t = Transaction(
+            id="echo",
+            date="2026-10-13",
+            amount_cents=-1801,
+            name="Grok Xai Pending Credit/Return For $18.01 On Card 6573",
+            merchant_name="Xai",
+        )
+        r = rule_review(t)
+        self.assertEqual(r.review_status, "excluded")
+        self.assertEqual(r.reason, "owner:xai_pending_echo")
 
     def test_mcc_gas(self):
         t = Transaction(

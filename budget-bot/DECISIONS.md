@@ -45,6 +45,7 @@
 | Package home | `/root/budget-bot` (Python CLI `budget_bot`) + astra-config agent-job | 2026-09-20 (was `/root/hermes-finance`) |
 | Amount sign | **Positive cents = spend/outflow** toward hardcap. **Refunds net spend** (credit vouchers / merchant returns). True income (sales, payroll, checks) does not. A tax ruling's `counts_as_spend` overrides this. | 2026-10-23 |
 | Tax overlay | Local `accounting/tax-classifications.json` (never git). One character per locked row. Auto-review does not retag it; Plaid upsert keeps the coach category. Characters: `return_of_capital`, `wages`, `other_taxable_income`, `refund`, `transfer`, `gift` (received), `deductible` (a gift he made, when it is one), `nondeductible_personal`. | 2026-10-23 |
+| Tax category map | No row ruling: Charity → deductible; refund-shaped credits → refund; groceries, shopping, gas, dining, entertainment, utilities, software, insurance, postage, personal care, transportation, housing, fitness, misc → nondeductible personal. Medical, irregular, and income stay manual. A locked row wins. The map does not change hardcap spend. | 2026-11-02 |
 | Tax review | **Email only.** 1st of Jan/Apr/Jul/Oct, 09:00 PT, first 7 days (same grace as leftover). Prior quarter. Not Pushover. | 2026-10-23 |
 | Pending txns | **Excluded** from hardcap until posted | 2026-07-21 (pinned tonight) |
 | Transfers | **Excluded** (`transfer: true`) | 2026-07-21 (pinned tonight) |

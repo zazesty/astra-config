@@ -86,6 +86,18 @@ def extract_mcc(desc: str) -> str | None:
     return m.group(1) if m else None
 
 
+def correct_known_merchant(name: str, merchant: str | None) -> str | None:
+    """Plaid's entity match renames CSAA bill pay to USAA Insurance.
+
+    The description is the authority. A real USAA row does not say CSAA.
+    """
+    if re.search(r"\bCSAA\b", name or "", re.I) and (
+        not merchant or re.search(r"\bUSAA\b", merchant, re.I)
+    ):
+        return "CSAA Insurance"
+    return merchant
+
+
 def guess_merchant(desc: str) -> str:
     d = desc.strip()
     # CU debit with optional REF# + optional MCC: "... REF#: ABC 5542 - MERCHANT"
