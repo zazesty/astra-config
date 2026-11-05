@@ -219,7 +219,55 @@ class TestProposedPulls(unittest.TestCase):
         self.assertNotIn("Grok", events[0].body)
         self.assertEqual(events[0].payload["open_url_title"], "Yes or no")
 
-    def test_blank_merchant_does_not_match(self):
+    def test_blank_merchant_asks_and_does_not_clear(self):
+        row = {
+            "id": "window-tint",
+            "name": "Window tinting",
+            "amount_cents": 50000,
+            "merchant": "",
+            "match": "",
+            "confirm": True,
+            "not_before": "2026-11-05",
+        }
+        t = _t(
+            id="tint-shop",
+            date="2026-11-05",
+            name="EAST BAY TINT",
+            merchant_name="EAST BAY TINT",
+            amount_cents=50000,
+        )
+        old = _t(
+            id="old-tint",
+            date="2026-10-01",
+            name="EAST BAY TINT",
+            merchant_name="EAST BAY TINT",
+            amount_cents=50000,
+        )
+        pending = _t(
+            id="pend",
+            date="2026-11-05",
+            name="EAST BAY TINT",
+            merchant_name="EAST BAY TINT",
+            amount_cents=50000,
+            pending=True,
+        )
+        opaque = _t(
+            id="mm",
+            date="2026-11-05",
+            name="Withdrawal Debit Card MasterMoney Card",
+            merchant_name="Withdrawal Debit Card MasterMoney Card",
+            amount_cents=50000,
+        )
+        self.assertEqual(proposed_buy_queue_pulls([row], [t, old, pending, opaque]), [])
+        asks = proposed_buy_queue_asks([row], [t, old, pending, opaque])
+        self.assertEqual([a["txn_id"] for a in asks], ["tint-shop"])
+        events = buy_queue_ask_events([row], [t])
+        self.assertEqual(events[0].key, "buyq-ask:window-tint:tint-shop")
+        self.assertIn("EAST BAY TINT $500", events[0].body)
+        self.assertIn("Listed at $500", events[0].body)
+        self.assertEqual(events[0].payload["push_priority"], 0)
+
+    def test_unarmed_blank_row_does_not_match(self):
         row = {
             "id": "headphones",
             "name": "Headphones",
@@ -230,6 +278,77 @@ class TestProposedPulls(unittest.TestCase):
         t = _t(name="AMAZON", merchant_name="AMAZON", amount_cents=4000)
         self.assertEqual(proposed_buy_queue_pulls([row], [t]), [])
         self.assertEqual(proposed_buy_queue_asks([row], [t]), [])
+
+    def test_named_match_beats_amount_ask(self):
+        laptop = {
+            "id": "x1-carbon-g9",
+            "name": "Lenovo X1 Carbon gen 9",
+            "amount_cents": 50000,
+            "merchant": "eBay",
+            "match": "eBay",
+        }
+        tint = {
+            "id": "window-tint",
+            "name": "Window tinting",
+            "amount_cents": 50000,
+            "merchant": "",
+            "match": "",
+            "confirm": True,
+            "not_before": "2026-11-05",
+        }
+        t = _t(
+            id="ebay",
+            date="2026-11-05",
+            name="EBAY",
+            merchant_name="EBAY",
+            amount_cents=50000,
+        )
+        self.assertEqual(
+            [p["id"] for p in proposed_buy_queue_pulls([laptop, tint], [t])],
+            ["x1-carbon-g9"],
+        )
+        self.assertEqual(proposed_buy_queue_asks([laptop, tint], [t]), [])
+
+    def test_overlapping_amount_asks_closest_wins(self):
+        tax = {
+            "id": "expected-tax",
+            "name": "Expected tax",
+            "amount_cents": 45000,
+            "merchant": "",
+            "match": "",
+            "confirm": True,
+            "not_before": "2026-11-05",
+        }
+        tint = {
+            "id": "window-tint",
+            "name": "Window tinting",
+            "amount_cents": 50000,
+            "merchant": "",
+            "match": "",
+            "confirm": True,
+            "not_before": "2026-11-05",
+        }
+        closer_tax = _t(
+            id="taxish",
+            date="2026-11-05",
+            name="FRANCHISE TAX",
+            merchant_name="FRANCHISE TAX",
+            amount_cents=46000,
+        )
+        closer_tint = _t(
+            id="tintish",
+            date="2026-11-05",
+            name="TINT SHOP",
+            merchant_name="TINT SHOP",
+            amount_cents=51000,
+        )
+        asks = proposed_buy_queue_asks([tax, tint], [closer_tax, closer_tint])
+        self.assertEqual(
+            sorted((a["id"], a["txn_id"]) for a in asks),
+            [("expected-tax", "taxish"), ("window-tint", "tintish")],
+        )
+        one = proposed_buy_queue_asks([tax, tint], [closer_tax])
+        self.assertEqual([a["id"] for a in one], ["expected-tax"])
 
     def test_apply_drops_pulled(self):
         left = apply_buy_queue_pulls(QUEUE, [{"id": "honda-oil"}])

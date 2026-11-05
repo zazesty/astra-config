@@ -1,6 +1,9 @@
 """Drop leftover-funded buy-queue rows on a high-conf named charge.
 
-Never matches opaque MasterMoney / bare POS #. Amount-only is not enough.
+A named merchant auto-clears when the amount is in band. No merchant
+matches on amount only and asks; it never auto-clears. Never matches
+opaque MasterMoney / bare POS, pending, or transfers. One charge claims
+one row. A named match wins over an amount-only ask.
 """
 
 from __future__ import annotations
@@ -69,16 +72,33 @@ def is_costco_merchant(merchant: str) -> bool:
 
 
 def needs_confirm(row: dict[str, Any]) -> bool:
-    """Costco, or a row flagged confirm, asks. Other named merchants clear themselves."""
+    """Costco, a Notes ask, or a blank merchant asks. Other named merchants clear."""
     if bool(row.get("confirm")):
         return True
     return is_costco_merchant(str(row.get("merchant") or ""))
 
 
+def _has_name_pattern(row: dict[str, Any]) -> bool:
+    return bool(str(row.get("match") or "").strip())
+
+
+def _amount_only_row(row: dict[str, Any]) -> bool:
+    """No merchant and no regex. These ask; they never auto-clear."""
+    return not _has_name_pattern(row) and not str(row.get("merchant") or "").strip()
+
+
+def _row_matchable(row: dict[str, Any]) -> bool:
+    if not row.get("id"):
+        return False
+    if _has_name_pattern(row):
+        return True
+    return _amount_only_row(row) and needs_confirm(row)
+
+
 def _name_match(t: Transaction, row: dict[str, Any]) -> bool:
     pat = str(row.get("match") or "").strip()
     if not pat:
-        return False
+        return _amount_only_row(row) and needs_confirm(row)
     try:
         return bool(re.search(pat, _blob(t), re.I))
     except re.error:
@@ -94,29 +114,25 @@ def _dollars(cents: int) -> str:
     return f"{sign}${whole}.{frac:02d}"
 
 
-def _match_rows(
+def _claim_rows(
     queue: list[dict[str, Any]] | None,
     txns: list[Transaction] | None,
-    *,
-    confirm: bool,
 ) -> list[tuple[Transaction, dict[str, Any]]]:
-    """Named+amount hits. One txn claims at most one row (closest $)."""
-    rows = [
-        r
-        for r in (queue or [])
-        if r.get("id") and str(r.get("match") or "").strip() and needs_confirm(r) == confirm
-    ]
+    """One charge, one row. A named pattern beats an amount-only ask, then closest $."""
+    rows = [r for r in (queue or []) if _row_matchable(r)]
     if not rows:
         return []
     claimed_tx: set[str] = set()
     claimed_row: set[str] = set()
     chosen: list[tuple[Transaction, dict[str, Any]]] = []
-    candidates: list[tuple[int, str, str, Transaction, dict[str, Any]]] = []
+    candidates: list[tuple[int, int, str, str, Transaction, dict[str, Any]]] = []
     for t in txns or []:
         if not _is_named_spend(t):
             continue
         for row in rows:
             rid = str(row.get("id") or "")
+            if _amount_only_row(row) and not str(row.get("not_before") or "").strip():
+                continue
             if (
                 not rid
                 or not _on_or_after(t, row)
@@ -125,9 +141,11 @@ def _match_rows(
             ):
                 continue
             gap = abs(int(t.amount_cents) - int(row.get("amount_cents") or 0))
-            candidates.append((gap, t.date or "", t.id, t, row))
-    candidates.sort(key=lambda x: (x[0], x[1], x[2]))
-    for _gap, _d, tid, t, row in candidates:
+            # Named pattern first so a $500 eBay laptop does not also ask about tint.
+            rank = 0 if _has_name_pattern(row) else 1
+            candidates.append((rank, gap, t.date or "", t.id, t, row))
+    candidates.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+    for _rank, _gap, _d, tid, t, row in candidates:
         rid = str(row.get("id") or "")
         if tid in claimed_tx or rid in claimed_row:
             continue
@@ -149,7 +167,8 @@ def proposed_buy_queue_pulls(
             "amount_cents": int(row.get("amount_cents") or 0),
             "txn_id": t.id,
         }
-        for t, row in _match_rows(queue, txns, confirm=False)
+        for t, row in _claim_rows(queue, txns)
+        if not needs_confirm(row)
     ]
 
 
@@ -159,8 +178,12 @@ def proposed_buy_queue_asks(
 ) -> list[dict[str, Any]]:
     """In-band hits on confirm rows. The row stays until a person says yes."""
     asks = []
-    for t, row in _match_rows(queue, txns, confirm=True):
-        merchant = str(row.get("merchant") or "Costco")
+    for t, row in _claim_rows(queue, txns):
+        if not needs_confirm(row):
+            continue
+        merchant = str(row.get("merchant") or "").strip()
+        if not merchant:
+            merchant = (t.merchant_name or t.name or "That charge").strip() or "That charge"
         listed = int(row.get("amount_cents") or 0)
         asks.append(
             {

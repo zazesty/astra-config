@@ -66,7 +66,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "goals": [],  # [{name, amount_cents}]
     # Leftover-funded buy queue. Auto-pulled on high-conf named+amount spend.
     # [{id, name, amount_cents, match, merchant?, confirm?, amount_tol_cents?, not_before?}]
-    # confirm (or merchant Costco): ask, do not auto-clear. Blank match: list only.
+    # confirm (or merchant Costco): ask, do not auto-clear.
+    # Blank merchant: amount-only ask. Never auto-clear on amount alone.
     "buy_queue": [],
     "anomaly": {
         # Category calendar month vs that category's prior calendar month.

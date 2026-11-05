@@ -3,9 +3,9 @@
 The table in /root/memory/budget-bot-buy-queue.md is the list a chat edit
 touches. config.buy_queue is what the matcher runs. Each Budget Bot pass
 copies whichever side changed onto the other. A pulled row leaves the table.
-An added or repriced table row lands in config. Blank merchant stays on the
-list and does not match. Costco asks instead of auto-clearing. A Notes word
-`ask` does the same for that row.
+An added or repriced table row lands in config. A blank merchant matches
+on amount and asks; it does not auto-clear. Costco asks instead of
+auto-clearing. A Notes word `ask` does the same for that named row.
 """
 
 from __future__ import annotations
@@ -180,6 +180,17 @@ def _today_pt() -> str:
     return datetime.now(PT).date().isoformat()
 
 
+def _blank_rows_unarmed(rows: list[dict[str, Any]]) -> bool:
+    """A blank merchant that is not yet an amount-ask still needs a stamp."""
+    for row in rows:
+        if str(row.get("merchant") or "").strip() or not row.get("id"):
+            continue
+        if row.get("confirm") and str(row.get("not_before") or "").strip():
+            continue
+        return True
+    return False
+
+
 def _spec_asks(spec: dict[str, Any]) -> bool:
     """The Notes word ``ask`` opts that named row into the Yes/No page."""
     if spec.get("ask") is True:
@@ -209,7 +220,8 @@ def _row_from_spec(spec: dict[str, Any], prev: dict[str, Any] | None) -> dict[st
         row["merchant"] = merchant
         if not merchant:
             row["match"] = ""
-            row["confirm"] = False
+            row["confirm"] = True
+            row.setdefault("not_before", _today_pt())
         elif costco or _spec_asks(spec):
             row["confirm"] = True
             if costco:
@@ -221,11 +233,14 @@ def _row_from_spec(spec: dict[str, Any], prev: dict[str, Any] | None) -> dict[st
     row = {
         "amount_cents": int(spec["amount_cents"]),
         "id": spec["id"],
-        "match": COSTCO_MATCH if costco else _match_for_merchant(merchant),
+        "match": "" if not merchant else (COSTCO_MATCH if costco else _match_for_merchant(merchant)),
         "merchant": merchant,
         "name": spec["name"],
     }
-    if costco or (merchant and _spec_asks(spec)):
+    if not merchant:
+        row["confirm"] = True
+        row["not_before"] = str((prev or {}).get("not_before") or _today_pt())
+    elif costco or _spec_asks(spec):
         row["confirm"] = True
     if costco:
         row["not_before"] = str((prev or {}).get("not_before") or _today_pt())
@@ -269,14 +284,15 @@ def _stamp_from_table(
         nxt = dict(row)
         merchant = str(spec.get("merchant") or "").strip()
         nxt["merchant"] = merchant
-        if is_costco_merchant(merchant) or (merchant and _spec_asks(spec)):
+        if not merchant:
+            nxt["match"] = ""
+            nxt["confirm"] = True
+            nxt.setdefault("not_before", _today_pt())
+        elif is_costco_merchant(merchant) or _spec_asks(spec):
             nxt["confirm"] = True
             if is_costco_merchant(merchant):
                 nxt["match"] = nxt.get("match") or COSTCO_MATCH
                 nxt.setdefault("not_before", _today_pt())
-        elif not merchant:
-            nxt["match"] = ""
-            nxt["confirm"] = False
         else:
             nxt["confirm"] = False
         stamped.append(nxt)
@@ -321,7 +337,7 @@ def _seeded_line(rows: list[dict[str, Any]]) -> str:
         merchant = str(row.get("merchant") or "").strip()
         label = str(row.get("name") or row.get("id"))
         if not merchant:
-            parts.append(f"{label} ${dollars} (list-only)")
+            parts.append(f"{label} ${dollars} (amount ask)")
             continue
         suffix = " (ask)" if is_costco_merchant(merchant) or row.get("confirm") else ""
         parts.append(f"{label} ${dollars} @ {merchant}{suffix}")
@@ -448,6 +464,21 @@ def reconcile_buy_queue(
         return cfg
 
     if table_fp == prev_table and config_fp == prev_config:
+        if not _blank_rows_unarmed(current):
+            return cfg
+        stamped = _stamp_from_table(specs, current)
+        replace_buy_queue(cfg, stamped)
+        cfg["buy_queue"] = stamped
+        _write_table_from_config(
+            cfg_rows=stamped,
+            specs=specs,
+            queue_path=queue_path,
+            queue_text=text,
+            budget_path=budget_path,
+            regen=regen,
+        )
+        rewritten = parse_queue_table(queue_path.read_text()) or specs
+        _save_state(_table_fp(rewritten), _config_fp(stamped))
         return cfg
 
     if table_fp != prev_table and config_fp == prev_config:

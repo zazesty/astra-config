@@ -127,7 +127,7 @@ class TestReconcile(unittest.TestCase):
             self.assertIn("Maro toe socks", (root / "budget.md").read_text())
             self.assertNotIn("Rice cooker", (root / "budget.md").read_text())
 
-    def test_blank_merchant_row_is_list_only(self):
+    def test_blank_merchant_row_amount_asks(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             extra = FACT.replace(
@@ -146,7 +146,8 @@ class TestReconcile(unittest.TestCase):
             out = self._run(root, cfg)
             phones = next(r for r in out["buy_queue"] if r["id"] == "headphones")
             self.assertEqual(phones["match"], "")
-            self.assertFalse(phones.get("confirm"))
+            self.assertTrue(phones.get("confirm"))
+            self.assertTrue(phones.get("not_before"))
 
     def test_pri_bands_survive_a_clear(self):
         """A clear removes the row and leaves A/B/C on the others.
@@ -191,10 +192,12 @@ updated: 2026-10-08T00:00:00.000Z
             self.assertLess(text.index("| B | Maro"), text.index("| C | Window"))
             self.assertIn("3 natural", text)
             self.assertIn("no windshield", text)
+            self.assertIn("Window tinting $500 (amount ask)", text)
             self.assertEqual([r["id"] for r in out["buy_queue"]], ["maro-toe-socks", "window-tint"])
             tint = next(r for r in out["buy_queue"] if r["id"] == "window-tint")
             self.assertEqual(tint["match"], "")
-            self.assertFalse(tint.get("confirm"))
+            self.assertTrue(tint.get("confirm"))
+            self.assertTrue(tint.get("not_before"))
 
     def test_pri_table_add_reaches_config(self):
         fact = """---
