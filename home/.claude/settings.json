@@ -69,6 +69,7 @@
     ],
     "defaultMode": "auto"
   },
+  "model": "sonnet",
   "hooks": {
     "SessionStart": [
       {
@@ -90,6 +91,5 @@
     ]
   },
   "autoMemoryDirectory": "/root/memory",
-  "theme": "auto",
-  "model": "sonnet"
+  "theme": "auto"
 }
