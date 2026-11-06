@@ -155,7 +155,7 @@ Status and todos are **not** each other. Status is recomputed; todos are curated
 
 ## 6. Heartbeats already owned by the box
 
-Timers (not a 24/7 LLM): ops-log, health-check, capacity-watch (daily noon PT email when disk, inodes, RAM/swap, or load mean cleanup or a bigger VPS; no mail when it clears; not Pushover), model checks, consumer-health, git-access-check, grok-journal, astra-commit/push, etc. (Claude journal oauth-watch + memory-harvest: off / self-destruct schedule.)
+Timers (not a 24/7 LLM): ops-log, health-check, capacity-watch (daily noon PT email when disk, inodes, RAM/swap, or load need attention; a full disk means add a Hetzner Volume and leave the grandfathered server alone; no mail when it clears; not Pushover), model checks, consumer-health, git-access-check, grok-journal, astra-commit/push, etc. (Claude journal oauth-watch + memory-harvest: off / self-destruct schedule.)
 
 **budget-bot-watch** exists as agent-job but **no timer yet** — not in the “important stuff already covered” set until armed.
 

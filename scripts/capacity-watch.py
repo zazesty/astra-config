@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Email when this VPS needs cleanup or a bigger box.
+"""Email when this VPS needs cleanup or more capacity.
 
 Once a day at noon PT. One email when a condition starts, and a reminder
 every 7 days while it holds. A clear day sends nothing. Email only.
@@ -7,6 +7,7 @@ every 7 days while it holds. A clear day sends nothing. Email only.
 One noon sample is enough for every line.
 
   disk    use >= 80% or free < 5 GiB. Drops off under 75% and at least 6 GiB free.
+          A full disk means a Hetzner Volume. Leave the grandfathered server alone.
   inodes  use >= 80%. Drops off under 70%.
   memory  available < 256 MiB and swap used > 512 MiB.
   load    1-minute load above twice the CPU count.
@@ -137,9 +138,15 @@ def _message(kind: str, latched: set[str], now: dict) -> tuple[str, str]:
     subject = f"VPS capacity: {label}"
     if kind == "remind":
         subject += " (still)"
-    body = "This needs cleanup or a bigger VPS.\n"
+    disk_only = latched == {"disk"}
+    # A Volume is separate block storage, so the grandfathered server stays as it is.
+    opener = (
+        "Disk is full. Spin up a Hetzner Volume to expand storage. Leave the grandfathered server alone."
+        if disk_only
+        else "This needs cleanup or a bigger VPS."
+    )
     lines = [
-        body.rstrip(),
+        opener,
         "",
         f"Disk: {now['disk_pct']:.0f}% used, {_fmt_bytes(now['disk_free'])} free.",
         f"Inodes: {now['inode_pct']:.0f}% used.",
@@ -147,9 +154,15 @@ def _message(kind: str, latched: set[str], now: dict) -> tuple[str, str]:
         f"Load: {now['load1']:.2f} on {now['nproc']} CPUs.",
         "",
     ]
+    volume = "A Volume starts at 10 GB and then grows in 1 GB steps, up to 10 TB. It cannot shrink."
     hints = []
     if "disk" in latched:
-        hints.append("Disk is the one that fills the box. Clean up, or grow the volume.")
+        if disk_only:
+            hints.append(volume)
+        else:
+            hints.append(
+                "For disk, spin up a Hetzner Volume. Leave the grandfathered server alone. " + volume
+            )
     if "inodes" in latched:
         hints.append("Inodes are file slots. Free gigabytes do not help once those run out.")
     if "memory" in latched:
@@ -239,6 +252,19 @@ def _self_test() -> int:
     check("one load noon mails", load_run[0] is not None and "CPU load" in load_run[0])
     inode = series([(1, {"inode_pct": 85})])
     check("inode line", inode[0] is not None and "inodes" in inode[0])
+    _, _, disk_body = evaluate({}, {**base, **disk}, 1_000_000.0)
+    check(
+        "disk mail names a Hetzner Volume",
+        disk_body is not None and "Hetzner Volume" in disk_body and "grandfathered" in disk_body,
+    )
+    check("disk-only mail leaves the server alone", disk_body is not None and "bigger VPS" not in disk_body)
+    _, _, mixed_body = evaluate(
+        {}, {**base, **disk, "inode_pct": 85}, 1_000_000.0
+    )
+    check(
+        "mixed disk mail still names the Volume",
+        mixed_body is not None and "Hetzner Volume" in mixed_body and "grandfathered" in mixed_body,
+    )
     print("capacity-watch self-test:", "pass" if not fails else "fail")
     return 1 if fails else 0
 
