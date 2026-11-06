@@ -43,3 +43,15 @@ if [ -z "${GEMINI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
   GEMINI_API_KEY=${GEMINI_API_KEY%\'}
   export GEMINI_API_KEY
 fi
+
+# Logout falls through to this key. A live SuperGrok session token still wins,
+# so exporting it does not move an already-logged-in grok onto API billing.
+# Same single source as the Gemini key. Do not source the rest of the env file.
+if [ -z "${XAI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
+  XAI_API_KEY=$(awk -F= '/^XAI_API_KEY=/{print substr($0, index($0,"=")+1); exit}' /etc/grok-mcp.env)
+  XAI_API_KEY=${XAI_API_KEY#\"}
+  XAI_API_KEY=${XAI_API_KEY%\"}
+  XAI_API_KEY=${XAI_API_KEY#\'}
+  XAI_API_KEY=${XAI_API_KEY%\'}
+  export XAI_API_KEY
+fi

@@ -15,7 +15,7 @@
 #
 # Config (env, optional overrides):
 #   GROK_JOURNAL_REPO   default /root/Grok-Journal
-#   GROK_JOURNAL_MODEL  default grok-4.6
+#   GROK_JOURNAL_MODEL  default grok-4.7
 #   GROK_JOURNAL_EFFORT unset → omit field (xAI default is high)
 #   GROK_JOURNAL_MAX_TOKENS default 4096
 #   GROK_JOURNAL_API_TIMEOUT default 480 (seconds; systemd TimeoutStartSec must exceed this)
@@ -55,12 +55,12 @@ LAST_JSON="$STATE_DIR/last.json"
 SUCCESS_PT="$STATE_DIR/last-success-pt-date"
 NOTIFY="$ASTRA/scripts/notify-email.sh"
 TZPT=America/Los_Angeles
-MODEL="${GROK_JOURNAL_MODEL:-grok-4.6}"
+MODEL="${GROK_JOURNAL_MODEL:-grok-4.7}"
 EFFORT="${GROK_JOURNAL_EFFORT:-}"
 MAX_TOKENS="${GROK_JOURNAL_MAX_TOKENS:-4096}"
 API_TIMEOUT="${GROK_JOURNAL_API_TIMEOUT:-480}"
 API_BASE="${XAI_BASE_URL:-https://api.x.ai/v1}"
-# grok-4.6 → Grok 4.6
+# grok-4.7 → Grok 4.7
 MODEL_TAG="Grok ${MODEL#grok-}"
 
 mkdir -p "$CFG_DIR" "$STATE_DIR"

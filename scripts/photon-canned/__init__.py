@@ -1,4 +1,4 @@
-"""Photon canned path — intercept budget/todo before grok-4.6."""
+"""Photon canned path — intercept budget/todo before the Hermes brain."""
 
 from __future__ import annotations
 
