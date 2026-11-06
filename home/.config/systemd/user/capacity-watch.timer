@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly VPS capacity check (email on disk, inodes, memory, or sustained load)
+
+[Timer]
+OnCalendar=*:20
+Persistent=true
+
+[Install]
+WantedBy=timers.target

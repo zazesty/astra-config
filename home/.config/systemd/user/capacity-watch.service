@@ -1,0 +1,6 @@
+[Unit]
+Description=Email when disk, inodes, memory, or load need cleanup or a bigger VPS
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /root/astra-config/scripts/capacity-watch.py

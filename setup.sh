@@ -116,6 +116,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.service" /root/.config/sy
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.timer"   /root/.config/systemd/user/astra-commit.timer
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.service" /root/.config/systemd/user/health-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.timer"   /root/.config/systemd/user/health-check.timer
+ln -sfnT "$REPO/home/.config/systemd/user/capacity-watch.service" /root/.config/systemd/user/capacity-watch.service
+ln -sfnT "$REPO/home/.config/systemd/user/capacity-watch.timer"   /root/.config/systemd/user/capacity-watch.timer
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.service" /root/.config/systemd/user/drift-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.timer"   /root/.config/systemd/user/drift-check.timer
 ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.service" /root/.config/systemd/user/memory-harvest.service
@@ -234,6 +236,7 @@ systemctl start "user@$(id -u).service" 2>/dev/null || true
 systemctl --user daemon-reload
 systemctl --user enable --now astra-commit.timer
 systemctl --user enable --now health-check.timer
+systemctl --user enable --now capacity-watch.timer
 systemctl --user enable --now drift-check.timer
 # Claude transcript harvest and the OAuth watch are off. Do not re-enable.
 systemctl --user disable --now memory-harvest.timer 2>/dev/null || true
