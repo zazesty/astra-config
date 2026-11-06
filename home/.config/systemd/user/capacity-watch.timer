@@ -1,8 +1,10 @@
 [Unit]
-Description=Hourly VPS capacity check (email on disk, inodes, memory, or sustained load)
+Description=Daily noon PT VPS capacity check (email on disk, inodes, memory, or load)
 
 [Timer]
-OnCalendar=*:20
+OnCalendar=*-*-* 12:00:00
+Timezone=America/Los_Angeles
+AccuracySec=1min
 Persistent=true
 
 [Install]

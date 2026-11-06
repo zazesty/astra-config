@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Email when this VPS needs cleanup or a bigger box.
 
-Hourly. One email when a condition starts, a reminder every 7 days while it
-holds, and one email when the last condition clears. Email only, not Pushover.
+Once a day at noon PT. One email when a condition starts, and a reminder
+every 7 days while it holds. A clear day sends nothing. Email only.
 
-A disk or inode reading is trusted on one sample. Memory and load must stay
-hot across consecutive hours so a build or a short spike does not mail.
+One noon sample is enough for every line.
 
-  disk    use >= 80% or free < 5 GiB. Clears under 75% and at least 6 GiB free.
-  inodes  use >= 80%. Clears under 70%.
-  memory  available < 256 MiB and swap used > 512 MiB, two hours running.
-  load    1-minute load above twice the CPU count, three hours running.
+  disk    use >= 80% or free < 5 GiB. Drops off under 75% and at least 6 GiB free.
+  inodes  use >= 80%. Drops off under 70%.
+  memory  available < 256 MiB and swap used > 512 MiB.
+  load    1-minute load above twice the CPU count.
 """
 
 from __future__ import annotations
@@ -95,8 +94,8 @@ def evaluate(prev: dict, now: dict, ts: float) -> tuple[dict, str | None, str | 
 
     latch("disk", disk_hot, 1, disk_clear)
     latch("inodes", inode_hot, 1, inode_clear)
-    latch("memory", mem_hot, 2)
-    latch("load", load_hot, 3)
+    latch("memory", mem_hot, 1)
+    latch("load", load_hot, 1)
 
     was = set(prev.get("latched") or [])
     last_mail = float(prev.get("last_mail_epoch") or 0)
@@ -106,8 +105,6 @@ def evaluate(prev: dict, now: dict, ts: float) -> tuple[dict, str | None, str | 
         kind = "alert"
     elif latched and was and ts - last_mail >= REMIND_S:
         kind = "remind"
-    elif not latched and was:
-        kind = "clear"
     if kind:
         mailed = True
 
@@ -119,7 +116,7 @@ def evaluate(prev: dict, now: dict, ts: float) -> tuple[dict, str | None, str | 
     }
     if not kind:
         return state, None, None
-    subject, body = _message(kind, latched, was, now)
+    subject, body = _message(kind, latched, now)
     return state, subject, body
 
 
@@ -129,23 +126,18 @@ def _fmt_bytes(n: int) -> str:
     return f"{n / MIB:.0f} MB"
 
 
-def _message(kind: str, latched: set[str], was: set[str], now: dict) -> tuple[str, str]:
+def _message(kind: str, latched: set[str], now: dict) -> tuple[str, str]:
     names = {
         "disk": "disk",
         "inodes": "inodes",
         "memory": "memory",
         "load": "CPU load",
     }
-    if kind == "clear":
-        subject = "VPS capacity: cleared"
-        cleared = ", ".join(names[n] for n in sorted(was))
-        body = f"The box is back under the lines ({cleared}).\n"
-    else:
-        label = ", ".join(names[n] for n in sorted(latched))
-        subject = f"VPS capacity: {label}"
-        if kind == "remind":
-            subject += " (still)"
-        body = "This needs cleanup or a bigger VPS.\n"
+    label = ", ".join(names[n] for n in sorted(latched))
+    subject = f"VPS capacity: {label}"
+    if kind == "remind":
+        subject += " (still)"
+    body = "This needs cleanup or a bigger VPS.\n"
     lines = [
         body.rstrip(),
         "",
@@ -161,13 +153,11 @@ def _message(kind: str, latched: set[str], was: set[str], now: dict) -> tuple[st
     if "inodes" in latched:
         hints.append("Inodes are file slots. Free gigabytes do not help once those run out.")
     if "memory" in latched:
-        hints.append("RAM has been tight for two hours and swap is in use. Add memory, or find what is holding it.")
+        hints.append("RAM is tight and swap is in use. Add memory, or find what is holding it.")
     if "load" in latched:
-        hints.append("Load has stayed above twice the CPU count for three hours.")
+        hints.append("Load is above twice the CPU count.")
     if hints:
         lines.extend(hints)
-    elif kind == "clear":
-        lines.append("No capacity line is latched.")
     return subject, "\n".join(lines).rstrip() + "\n"
 
 
@@ -232,22 +222,21 @@ def _self_test() -> int:
 
     disk = {"disk_pct": 82, "disk_free": 4 * GIB}
     quiet = series([(1, None)])
-    check("quiet hour sends nothing", quiet == [None])
-    hot = series([(1, None), (1, disk), (1, disk), (24 * 8, disk), (1, {"disk_pct": 76, "disk_free": 7 * GIB}), (1, None)])
+    check("quiet day sends nothing", quiet == [None])
+    hot = series([(1, None), (1, disk), (1, disk), (24 * 8, disk), (1, {"disk_pct": 76, "disk_free": 7 * GIB}), (1, None), (1, disk)])
     check("one hot disk mails", hot[1] is not None and hot[1].startswith("VPS capacity: disk"))
     check("same disk stays quiet", hot[2] is None)
     check("week later reminds", hot[3] is not None and "still" in hot[3])
     check("hysteresis holds at 76%", hot[4] is None)
-    check("clear mails once", hot[5] == "VPS capacity: cleared")
+    check("clear day sends nothing", hot[5] is None)
+    check("crossing again mails", hot[6] is not None and hot[6].startswith("VPS capacity: disk"))
     mem = {"mem_avail": 100 * MIB, "swap_used": 800 * MIB}
-    mem_run = series([(1, mem), (1, mem), (1, None)])
-    check("one memory hour is not enough", mem_run[0] is None)
-    check("second memory hour mails", mem_run[1] is not None and "memory" in mem_run[1])
-    check("memory clears", mem_run[2] == "VPS capacity: cleared")
+    mem_run = series([(1, mem), (1, None)])
+    check("one memory noon mails", mem_run[0] is not None and "memory" in mem_run[0])
+    check("memory clear stays quiet", mem_run[1] is None)
     load = {"load1": 9.0}
-    load_run = series([(1, load), (1, load), (1, load)])
-    check("load needs three hours", load_run[0] is None and load_run[1] is None)
-    check("third load hour mails", load_run[2] is not None and "CPU load" in load_run[2])
+    load_run = series([(1, load)])
+    check("one load noon mails", load_run[0] is not None and "CPU load" in load_run[0])
     inode = series([(1, {"inode_pct": 85})])
     check("inode line", inode[0] is not None and "inodes" in inode[0])
     print("capacity-watch self-test:", "pass" if not fails else "fail")
