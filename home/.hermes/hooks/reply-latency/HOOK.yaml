@@ -1,0 +1,6 @@
+name: reply-latency
+description: Record Hermes reply wall time, including tool runs
+events:
+  - agent:start
+  - agent:step
+  - agent:end

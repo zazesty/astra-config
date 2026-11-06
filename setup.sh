@@ -286,6 +286,9 @@ fi
 mkdir -p /root/.hermes/skills/productivity
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot" /root/.hermes/skills/productivity/budget-bot
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot-ops" /root/.hermes/skills/productivity/budget-bot-ops
+# Hermes reply wall-clock log. Gateway loads hooks once per process.
+mkdir -p /root/.hermes/hooks
+ln -sfnT "$REPO/home/.hermes/hooks/reply-latency" /root/.hermes/hooks/reply-latency
 systemctl enable --now grok-argon-proxy.service
 # Point Grok Build's Argon and Flash seats at the local thought-signature proxy.
 # Touches [model.argon], [model.flash], and the subagent pins. Leaves MCP URLs alone.

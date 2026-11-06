@@ -348,6 +348,34 @@ def _log(line: str) -> None:
     sys.stderr.flush()
 
 
+def _latency_log_path() -> str:
+    return os.environ.get(
+        "ARGON_PROXY_LATENCY_LOG",
+        "/root/.local/state/astra/subagent-llm.jsonl",
+    )
+
+
+def append_llm_latency(model: str, status: int, elapsed_ms: int, stream: bool) -> None:
+    """One row per subagent chat completion. No prompt, key, or signature."""
+    rec = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "model": model or "unknown",
+        "elapsed_ms": int(elapsed_ms),
+        "status": int(status),
+        "stream": bool(stream),
+    }
+    try:
+        path = _latency_log_path()
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+        try:
+            os.write(fd, (json.dumps(rec, separators=(",", ":")) + "\n").encode())
+        finally:
+            os.close(fd)
+    except Exception as err:
+        _log(f"argon-proxy latency log failed: {type(err).__name__}")
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -383,12 +411,17 @@ class Handler(BaseHTTPRequestHandler):
         body = raw
         real = sentinel = 0
         route = path.split("?", 1)[0]
-        if self.command == "POST" and route.endswith("/chat/completions") and raw:
+        model = "unknown"
+        stream_req = False
+        llm_call = self.command == "POST" and route.endswith("/chat/completions")
+        if llm_call and raw:
             try:
                 parsed = json.loads(raw)
             except json.JSONDecodeError:
                 parsed = None
             if isinstance(parsed, dict):
+                model = str(parsed.get("model") or "unknown")
+                stream_req = bool(parsed.get("stream"))
                 parsed, real, sentinel = patch_body(parsed)
                 if real or sentinel:
                     body = json.dumps(parsed, ensure_ascii=False).encode()
@@ -412,7 +445,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(msg)))
             self.end_headers()
             self.wfile.write(msg)
-            _log(f"argon-proxy {self.command} {route} 502 {type(err).__name__}")
+            elapsed_ms = int((time.time() - started) * 1000)
+            _log(f"argon-proxy {self.command} {route} 502 {type(err).__name__} {elapsed_ms}ms")
+            if llm_call:
+                append_llm_latency(model, 502, elapsed_ms, stream_req)
             return
         status = getattr(upstream, "status", None) or upstream.getcode()
         ctype = upstream.headers.get("Content-Type", "")
@@ -472,6 +508,8 @@ class Handler(BaseHTTPRequestHandler):
             f"inject={real} sentinel={sentinel} cached={signed} unsigned={unsigned} "
             f"{elapsed_ms}ms"
         )
+        if llm_call:
+            append_llm_latency(model, int(status or 0), elapsed_ms, stream_req or streaming)
 
 
 def _decode_prefix(buf: bytes) -> tuple[str, bytes]:
@@ -686,6 +724,16 @@ def _self_test() -> int:
     check("flash model", 'model = "gemini-3.8-flash"' in text)
     check("other pin kept", 'explore = "grok-4.7"' in text)
     check("stream flag bare", "stream_tool_calls = false" in text)
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = os.path.join(tmp, "latency.jsonl")
+        os.environ["ARGON_PROXY_LATENCY_LOG"] = log_path
+        append_llm_latency("gemini-3.8-flash", 200, 1500, True)
+        line = open(log_path, encoding="utf-8").read()
+        check("latency row", '"model":"gemini-3.8-flash"' in line and '"elapsed_ms":1500' in line)
+        check("latency mode", oct(os.stat(log_path).st_mode & 0o777) == "0o600")
     print("argon-thought-proxy self-test:", "pass" if ok else "fail")
     return 0 if ok else 1
 
