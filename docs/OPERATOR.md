@@ -97,6 +97,8 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 
 **Weekly AI usage digest emails: OFF** (paused 2026-09-06; archived 2026-10-26: scripts + paused Hermes cron `d237b9f46e18`). Do not re-arm or run; historical output was kept.
 
+**Hermes Photon restart texts: OFF** (2026-11-06). `platforms.photon.gateway_restart_notification: false` in `~/.hermes/config.yaml`. A gateway stop or restart must not text the Photon home channel. Do not turn it back on. The flag is read at process start, so a Hermes update that rewrites the platform block needs the line put back before the next restart.
+
 ### Budget Bot (when live)
 
 - **Channel:** **Pushover** (`notify-pushover.sh` + `PUSHOVER_*`) for the interrupt tiers below only. **Live** when `notify_enabled: true`.
@@ -185,6 +187,8 @@ Timers (not a 24/7 LLM): ops-log, health-check, capacity-watch (daily noon PT em
 `npm run build` → `cp src/kalshi-series.json build/` → tests → `systemctl restart grok-mcp` → check connectors → (manual) git push when asked.
 
 Tool-surface change → rotation + reconnect every consumer.
+
+A Hermes restart that picks up a new Astra URL is allowed when the fix needs it. It must stay silent on Photon (§3c).
 
 ---
 
