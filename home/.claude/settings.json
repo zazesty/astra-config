@@ -1,8 +1,5 @@
 {
-  "theme": "auto",
-  "autoMemoryDirectory": "/root/memory",
   "permissions": {
-    "defaultMode": "auto",
     "allow": [
       "Read",
       "Glob",
@@ -69,7 +66,8 @@
       "Read(./.env.*.local)",
       "Read(/root/*.key)",
       "Read(/root/*.crt)"
-    ]
+    ],
+    "defaultMode": "auto"
   },
   "hooks": {
     "SessionStart": [
@@ -90,5 +88,8 @@
         ]
       }
     ]
-  }
+  },
+  "autoMemoryDirectory": "/root/memory",
+  "theme": "auto",
+  "model": "sonnet"
 }
