@@ -312,7 +312,7 @@ def budget_status_text(
     """One rolling pace sentence. Photon and Pushover both use this count.
 
     Optional cash-vs-bills lines follow when unpaid dues are in the canned horizon.
-    A subscription that jumped more than 10% adds one ask line. No push.
+    A subscription that jumped past the larger of $10 or 10% adds one ask line. No push.
     """
     del calendar_snap
     lines = [pace_action(rolling_snap).rstrip(".")]

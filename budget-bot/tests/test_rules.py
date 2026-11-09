@@ -1458,6 +1458,44 @@ class TestBudget(unittest.TestCase):
         self.assertEqual(len(jumped["asks"]), 1)
         self.assertEqual(jumped["asks"][0]["posted_cents"], 9000)
 
+        # $10 floor: EFF $26 → $31 is 19%, outside 10%, and still follows.
+        # $37 is $11 over and asks. Opaque $31 still does not rewrite.
+        eff = {
+            "name": "EFF",
+            "amount_cents": 2600,
+            "day_of_month": 31,
+            "match": "EFF",
+        }
+        eff_post = Transaction(
+            id="eff-nov",
+            date="2026-10-31",
+            amount_cents=3100,
+            name="ELECTRONIC FRONTIER",
+            merchant_name="EFF",
+        )
+        followed = proposed_subscription_reserve_updates(
+            [eff],
+            [eff_post],
+            as_of=date(2026, 11, 9),
+        )
+        self.assertEqual(followed["asks"], [])
+        self.assertEqual(followed["updates"][0]["new_cents"], 3100)
+        self.assertEqual(followed["updates"][0]["old_cents"], 2600)
+        eff_jump = Transaction(
+            id="eff-jump",
+            date="2026-10-31",
+            amount_cents=3700,
+            name="ELECTRONIC FRONTIER",
+            merchant_name="EFF",
+        )
+        eff_asked = proposed_subscription_reserve_updates(
+            [eff],
+            [eff_jump],
+            as_of=date(2026, 11, 9),
+        )
+        self.assertEqual(eff_asked["updates"], [])
+        self.assertEqual(eff_asked["asks"][0]["posted_cents"], 3700)
+
         opaque = Transaction(
             id="opaque-70",
             date="2026-09-08",

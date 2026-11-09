@@ -207,7 +207,10 @@ def persist_subscription_bill_reserves(
     txns: list[Any],
     as_of: Any,
 ) -> list[dict[str, Any]]:
-    """Follow a named due-window post within 10%. Jumps become an ask, not a rewrite."""
+    """Follow a named due-window post within the larger of $10 or 10%.
+
+    Jumps past that band become an ask, not a rewrite.
+    """
     from datetime import date as date_cls
 
     from .rules import (

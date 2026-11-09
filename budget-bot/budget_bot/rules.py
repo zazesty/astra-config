@@ -994,14 +994,25 @@ def _txn_matches_any_bill_name(
     return any(_txn_matches_bill_name(b, t) for b in bills or [])
 
 
+# Named subscription price follow. $10 covers a small bill's real hike
+# (EFF $26 → $31 is 19%, outside 10%). 10% still covers a large bill's
+# ordinary drift (CSAA). Whichever is larger. Opaque matching stays on
+# the SaaS tax band so this wider band cannot pair EFF with US Mobile.
+SUBSCRIPTION_FOLLOW_FLOOR_CENTS = 1000
+SUBSCRIPTION_FOLLOW_PCT = 0.10
+
+
 def subscription_amount_slack_cents(monthly_cents: int) -> int:
-    """Same-subscription band: at least $1, otherwise 10%.
+    """Same-subscription band: the larger of $10 or 10%.
 
     Named posts only. Opaque matching stays on the SaaS tax band so a
     $25.75 EFF charge cannot clear a $27 US Mobile due.
     """
     monthly = max(0, int(monthly_cents))
-    return max(100, int(round(monthly * DEFAULT_SAAS_TAX_VARIANCE_PCT)))
+    return max(
+        SUBSCRIPTION_FOLLOW_FLOOR_CENTS,
+        int(round(monthly * SUBSCRIPTION_FOLLOW_PCT)),
+    )
 
 
 def subscription_amount_similar(posted_cents: int, monthly_cents: int) -> bool:
@@ -1094,9 +1105,10 @@ def proposed_subscription_reserve_updates(
 ) -> dict[str, list[dict[str, Any]]]:
     """Named due-window posts follow the reserve when the price is similar.
 
-    Within max($1, 10%): rewrite `amount_cents` when the post is more than $1
-    off the reserve. Above that band on the way up: do not rewrite; return an
-    ask. A split catch-up (two posts) is neither a new price nor an ask.
+    Within the larger of $10 or 10%: rewrite `amount_cents` when the post is
+    more than $1 off the reserve. Above that band on the way up: do not
+    rewrite; return an ask. A split catch-up (two posts) is neither a new
+    price nor an ask.
     Newest due with a named post wins, so an older lump cannot move today's reserve.
     """
     updates: list[dict[str, Any]] = []
@@ -2298,7 +2310,8 @@ def detect_anomalies(
     return alerts
 
 
-# SuperGrok plan is $30. ±10% matches the subscription follow band.
+# SuperGrok plan is $30. ±10% matches the SaaS tax band, not the
+# named-subscription follow band (larger of $10 or 10%).
 # A pack ($5 / $10 / $20 / $25) stays in the month it posted.
 _XAI_CARD_RE = re.compile(r"\bgrok\b|\bxai\b|\bx\.ai\b", re.I)
 XAI_PLAN_MIN_CENTS = 2700
