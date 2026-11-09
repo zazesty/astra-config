@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # git-access-check — irritation #2 fix.
 # Probes GitHub API: can the box PAT see each expected repo, and does it have push?
-# Fine-grained PATs 404 brand-new private repos until allowlisted — this emails
+# Fine-grained PATs 404 brand-new private repos until whitelisted — this emails
 # instead of failing silently on the next git push.
 #
 # Config (optional): ~/.config/agent-jobs/git-repos.list  one "owner/repo" per line
@@ -98,7 +98,7 @@ RC=$?
 if [ "$RC" -ne 0 ] && [ -f "$NOTIFY" ]; then
   {
     echo "Box GitHub PAT cannot push (or even see) one or more expected repos."
-    echo "Fine-grained tokens often 404 new private repos until allowlisted."
+    echo "Fine-grained tokens often 404 new private repos until whitelisted."
     echo
     echo "Report: $REPORT"
     echo

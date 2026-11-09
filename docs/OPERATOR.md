@@ -97,13 +97,15 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 
 **Weekly AI usage digest emails: OFF** (paused 2026-09-06; archived 2026-10-26: scripts + paused Hermes cron `d237b9f46e18`). Do not re-arm or run; historical output was kept.
 
+**AI spend review (2026-11-09):** every other Friday 09:00 PT, first send 2026-11-13. Email only, not Pushover. New job; the archived weekly digest stays archived. Dollars from the xAI management usage API and, once pasted, the OpenRouter management activity API (credits and BYOK, per model, top 5). AI Studio is named and omitted: local logs drop thinking tokens, and customers who priced without them undercounted by 2–3×. Card reloads stay out. Covers keys this box can see.
+
 **Hermes Photon restart texts: OFF** (2026-11-06). `platforms.photon.gateway_restart_notification: false` in `~/.hermes/config.yaml`. A gateway stop or restart must not text the Photon home channel. Do not turn it back on. The flag is read at process start, so a Hermes update that rewrites the platform block needs the line put back before the next restart.
 
 ### Budget Bot (when live)
 
 - **Channel:** **Pushover** (`notify-pushover.sh` + `PUSHOVER_*`) for the interrupt tiers below only. **Live** when `notify_enabled: true`.
 - **No daily digests.** Coaching = hardcap / firm pace / rare anomalies, plus one EOM leftover congrats.
-- **No weekly AI usage emails** (paused 2026-09-06).
+- **No weekly AI usage emails** (paused 2026-09-06). The every-other-Friday AI spend review is a separate mail (see above).
 - **Soft pace: culled** (2026-08-24). Firm pace superseded it.
 - **Firm pace:** rolling count is 1–4 days ahead → pri 1 interrupt, one per new txn (or **one push if a Plaid sync dumps several at once**). Window is 21 back, today, 7 ahead. On-pace line is elapsed × the calendar daily allotment (22 × about $36.67 in a 30-day month). Body is `{N} days ahead of pace.`
 - **Loud pace:** rolling count ≥5 days ahead → **pri 2** for the first crossing *and* further txns while still there (same dump collapse). Same sentence as firm pace. The calendar dollar-cap bust is retired. **No merchant names** on pace/breach (anomaly names the category). One Pushover per dump — Plaid `DEFAULT_UPDATE`+`SYNC_UPDATES_AVAILABLE` must not double-page.

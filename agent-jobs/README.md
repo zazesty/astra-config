@@ -32,7 +32,7 @@ Budget Bot code lives in `astra-config/budget-bot` (live path `/root/budget-bot`
 ## New private GitHub repo checklist
 
 1. Create private repo  
-2. **Add it to the fine-grained PAT** allowlist used in `~/.git-credentials` (Contents R/W)  
+2. **Add it to the fine-grained PAT** whitelist used in `~/.git-credentials` (Contents R/W)  
 3. Add `owner/repo` to `~/.config/agent-jobs/git-repos.list` if not in defaults  
 4. `agent-run.sh git-access-check --force` should go green  
 5. Clone under `/root/…` and prove `git push`

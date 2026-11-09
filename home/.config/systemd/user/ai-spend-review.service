@@ -1,0 +1,6 @@
+[Unit]
+Description=Every-other-Friday AI spend review email
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /root/astra-config/scripts/ai-spend-review.py

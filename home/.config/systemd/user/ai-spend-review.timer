@@ -1,0 +1,12 @@
+[Unit]
+Description=AI spend review, every other Friday 09:00 PT (first 2026-11-13)
+
+[Timer]
+# Fires every Friday. The script sends only on the 14-day cadence.
+OnCalendar=Fri *-*-* 09:00:00
+Timezone=America/Los_Angeles
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

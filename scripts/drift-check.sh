@@ -49,7 +49,7 @@ symlinks=(
   "/root/journal-trigger/journal-trigger.sh|home/journal-trigger/journal-trigger.sh"
   "/root/budget-bot|budget-bot"
 )
-for u in astra-commit health-check capacity-watch drift-check or-timeout-review argon-usage; do
+for u in astra-commit health-check capacity-watch drift-check or-timeout-review argon-usage ai-spend-review; do
   for k in service timer; do
     symlinks+=("/root/.config/systemd/user/$u.$k|home/.config/systemd/user/$u.$k")
   done

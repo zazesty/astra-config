@@ -138,6 +138,8 @@ ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.service" /root/.conf
 ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.timer"   /root/.config/systemd/user/or-timeout-review.timer
 ln -sfnT "$REPO/home/.config/systemd/user/argon-usage.service" /root/.config/systemd/user/argon-usage.service
 ln -sfnT "$REPO/home/.config/systemd/user/argon-usage.timer"   /root/.config/systemd/user/argon-usage.timer
+ln -sfnT "$REPO/home/.config/systemd/user/ai-spend-review.service" /root/.config/systemd/user/ai-spend-review.service
+ln -sfnT "$REPO/home/.config/systemd/user/ai-spend-review.timer"   /root/.config/systemd/user/ai-spend-review.timer
 
 # Claude Code settings (permissions + SessionStart auto-commit hook)
 mkdir -p /root/.claude
@@ -243,6 +245,7 @@ systemctl --user disable --now memory-harvest.timer 2>/dev/null || true
 systemctl --user disable --now journal-oauth-watch.timer 2>/dev/null || true
 systemctl --user enable --now or-timeout-review.timer
 systemctl --user enable --now argon-usage.timer
+systemctl --user enable --now ai-spend-review.timer
 systemctl --user enable --now grok-restart-reminder.timer
 systemctl --user enable --now grok-journal-pause-reminder.timer
 systemctl --user enable --now grok-journal-read-reminder.timer
@@ -261,7 +264,8 @@ chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh \
 chmod +x "$REPO"/scripts/box-status.sh "$REPO"/scripts/standing-todos.sh \
   "$REPO"/scripts/env-presence.sh "$REPO"/scripts/photon-heal.sh \
   "$REPO"/scripts/argon-usage.py \
-  "$REPO"/scripts/argon-thought-proxy.py 2>/dev/null || true
+  "$REPO"/scripts/argon-thought-proxy.py \
+  "$REPO"/scripts/ai-spend-review.py 2>/dev/null || true
 # Agent UX state (status/todos/env map) — private; not secrets.
 # The board directory is the only writable path under here (grok-mcp
 # ProtectHome=read-only). The public standing-todos.json path is a symlink
