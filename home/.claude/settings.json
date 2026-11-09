@@ -67,7 +67,7 @@
       "Read(/root/*.key)",
       "Read(/root/*.crt)"
     ],
-    "defaultMode": "bypassPermissions"
+    "defaultMode": "auto"
   },
   "model": "opus",
   "effortLevel": "low",
