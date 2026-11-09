@@ -67,9 +67,10 @@
       "Read(/root/*.key)",
       "Read(/root/*.crt)"
     ],
-    "defaultMode": "auto"
+    "defaultMode": "bypassPermissions"
   },
-  "model": "sonnet",
+  "model": "opus",
+  "effortLevel": "low",
   "hooks": {
     "SessionStart": [
       {

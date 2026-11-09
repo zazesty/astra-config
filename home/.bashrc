@@ -55,3 +55,4 @@ if [ -z "${XAI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
   XAI_API_KEY=${XAI_API_KEY%\'}
   export XAI_API_KEY
 fi
+[ -f ~/.codex/env ] && . ~/.codex/env
