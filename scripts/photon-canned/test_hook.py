@@ -16,6 +16,30 @@ def _event(text: str, platform: str = "photon"):
     return SimpleNamespace(text=text, source=src)
 
 
+class TestMemoryAuto(unittest.TestCase):
+    def test_marker_opens_the_review_gate(self):
+        calls = []
+
+        def stock(*args, **kwargs):
+            calls.append(args)
+            return "staged"
+
+        with patch.object(plugin, "_auto_consolidate_enabled", return_value=True), \
+             patch.object(plugin, "_stock_background_delete_gate", stock):
+            out = plugin._open_gate(None, "patch", None, "memory", "new", "old")
+        self.assertIsNone(out)
+        self.assertEqual(calls, [])
+
+    def test_missing_marker_keeps_the_stock_gate(self):
+        def stock(*args, **kwargs):
+            return "staged"
+
+        with patch.object(plugin, "_auto_consolidate_enabled", return_value=False), \
+             patch.object(plugin, "_stock_background_delete_gate", stock):
+            out = plugin._open_gate(None, "remove", None)
+        self.assertEqual(out, "staged")
+
+
 class TestHook(unittest.TestCase):
     def test_budget_skips(self):
         gw = SimpleNamespace(adapters={})

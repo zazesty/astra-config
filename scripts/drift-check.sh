@@ -81,6 +81,7 @@ done
 symlinks+=(
   "/root/.hermes/skills/productivity/budget-bot|home/.hermes/skills/productivity/budget-bot"
   "/root/.hermes/skills/productivity/budget-bot-ops|home/.hermes/skills/productivity/budget-bot-ops"
+  "/root/.hermes/plugins/photon-canned|scripts/photon-canned"
 )
 for pair in "${symlinks[@]}"; do
   live="${pair%%|*}"; rel="${pair##*|}"

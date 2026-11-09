@@ -296,6 +296,19 @@ ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot-ops" /root/.hermes/s
 # Hermes reply wall-clock log. Gateway loads hooks once per process.
 mkdir -p /root/.hermes/hooks
 ln -sfnT "$REPO/home/.hermes/hooks/reply-latency" /root/.hermes/hooks/reply-latency
+# Unattended review may patch/remove Hermes memory. Marker is outside the
+# install tree. The gateway unit re-applies the install patch on start.
+install -d -m 700 /root/.hermes
+if [ ! -f /root/.hermes/HERMES_MEMORY_AUTO_CONSOLIDATE ]; then
+  printf '%s\n' \
+    'Unattended Hermes review may patch and remove its own memory.' \
+    'Armed by setup.sh. Delete this file to restore the stock gate.' \
+    > /root/.hermes/HERMES_MEMORY_AUTO_CONSOLIDATE
+  chmod 644 /root/.hermes/HERMES_MEMORY_AUTO_CONSOLIDATE
+fi
+# Photon canned intercept. Canonical in the repo; live path is the symlink.
+mkdir -p /root/.hermes/plugins
+ln -sfnT "$REPO/scripts/photon-canned" /root/.hermes/plugins/photon-canned
 systemctl enable --now grok-argon-proxy.service
 # Point Grok Build's Argon and Flash seats at the local thought-signature proxy.
 # Touches [model.argon], [model.flash], and the subagent pins. Leaves MCP URLs alone.

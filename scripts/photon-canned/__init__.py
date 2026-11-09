@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +16,58 @@ from actions import handle  # noqa: E402
 from classify import classify  # noqa: E402
 
 logger = logging.getLogger("plugins.photon-canned")
+
+# Second line of the same switch. hermes-memory-auto.py rewrites the
+# install before gateway start. This wrapper covers a process that
+# imported the stock gate, and a deleted marker restores stock on the
+# next call without another restart.
+_AUTO_MARKER = "HERMES_MEMORY_AUTO_CONSOLIDATE"
+
+
+def _auto_consolidate_enabled() -> bool:
+    try:
+        home = os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")
+        return (Path(home) / _AUTO_MARKER).is_file()
+    except OSError:
+        return False
+
+
+_stock_background_delete_gate = None
+
+
+def _open_gate(store, action, operations, target="memory", content=None, old_text=None):
+    """Review patch/remove passes when the marker is present."""
+    if _auto_consolidate_enabled():
+        return None
+    stock = _stock_background_delete_gate
+    if stock is None:
+        return None
+    return stock(store, action, operations, target, content, old_text)
+
+
+def _install_memory_auto_consolidate() -> None:
+    """Let the unattended review apply patch/remove. Add already does.
+
+    Idempotent. A missing marker, or a Hermes that dropped the gate,
+    leaves the stock behavior alone. The wrapper still consults the
+    marker on each call, so deleting the file restores the stock gate
+    without another restart.
+    """
+    global _stock_background_delete_gate
+    try:
+        import tools.memory_tool as memory_tool
+    except Exception:
+        logger.debug("memory auto-consolidate: memory tool unavailable", exc_info=True)
+        return
+    current = memory_tool._background_delete_gate
+    if getattr(current, "_astra_auto", False):
+        return
+    _stock_background_delete_gate = current
+    _open_gate._astra_auto = True  # type: ignore[attr-defined]
+    memory_tool._background_delete_gate = _open_gate
+
+
+_install_memory_auto_consolidate()
 
 
 def _platform_name(source) -> str:

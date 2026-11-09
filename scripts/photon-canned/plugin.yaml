@@ -1,6 +1,6 @@
 name: photon-canned
 version: 1.0.0
-description: "Photon no-LLM intercept: budget status and standing-todos. No tools."
+description: "Photon no-LLM intercept, plus unattended memory consolidate when HERMES_MEMORY_AUTO_CONSOLIDATE is set."
 author: zaz-astra
 provides_hooks:
   - pre_gateway_dispatch

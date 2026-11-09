@@ -8,6 +8,9 @@ StartLimitIntervalSec=0
 Type=simple
 User=root
 Group=root
+# Re-apply the unattended memory gate before the process imports plugins.
+# `hermes update` replaces the install tree; this line lives in our unit.
+ExecStartPre=-/usr/local/lib/hermes-agent/venv/bin/python -c "import runpy; runpy.run_path('/root/astra-config/scripts/hermes-memory-auto.py', run_name='__main__')"
 ExecStart=/usr/local/lib/hermes-agent/venv/bin/python -m hermes_cli.main gateway run
 WorkingDirectory=/root/.hermes
 Environment="HOME=/root"

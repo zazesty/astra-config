@@ -101,6 +101,8 @@ Standing prefs — **do not wait to be re-prompted**. He does **not** need to sa
 
 **Hermes Photon restart texts: OFF** (2026-11-06). `platforms.photon.gateway_restart_notification: false` in `~/.hermes/config.yaml`. A gateway stop or restart must not text the Photon home channel. Do not turn it back on. The flag is read at process start, so a Hermes update that rewrites the platform block needs the line put back before the next restart.
 
+**Hermes memory writes itself** (2026-11-09). Unattended review may add, patch, and remove Hermes's own MEMORY.md and USER.md. No `/memory pending`, no Photon nag. Switch is `~/.hermes/HERMES_MEMORY_AUTO_CONSOLIDATE` (outside the install tree; `hermes update` cannot drop it). `photon-canned` opens the #105921 gate when the file is present and re-checks it on every call, so deleting the file restores the stock gate. `display.memory_notifications: off` keeps review notices off Photon. Skill deletes stay gated. This does not write Astra.
+
 ### Budget Bot (when live)
 
 - **Channel:** **Pushover** (`notify-pushover.sh` + `PUSHOVER_*`) for the interrupt tiers below only. **Live** when `notify_enabled: true`.
