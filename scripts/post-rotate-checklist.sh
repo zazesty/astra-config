@@ -51,10 +51,11 @@ echo
 cat <<'EOF'
 --- Human re-adds (cannot automate from the box) ---
 Live consumers only:
-[ ] Grok (cloud) connector re-added if tool list stale (Grok caches tools PER URL)
+[ ] Grok (cloud) connector re-added (caches tools PER URL)
+[ ] Claude chat connector re-added (caches tools PER URL)
 [ ] Optional: remove old connector aliases (Astra V12/V13/…) to avoid picking a dead URL
 
-Do NOT chase: claude.ai (Zavdi owns that himself), Claude Code CLI, journaling-routine MCP.
+Do NOT chase: Claude Code CLI, journaling-routine MCP.
 
 Verify with a trivial tool call from each live consumer (e.g. memory_list limit 1).
 Funnel smoke PASS only proves the box — not that cloud UIs point at it.
