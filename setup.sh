@@ -20,7 +20,7 @@ say() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 # -----------------------------------------------------------------------------
 say "1/10  APT packages (curl, git, tailscale)"
 apt-get update -qq
-apt-get install -y curl git python3 poppler-utils
+apt-get install -y curl git python3 poppler-utils tmux
 if ! command -v tailscale >/dev/null; then
   curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \
     | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
@@ -41,6 +41,9 @@ fi
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 NODE_BIN="$NVM_DIR/versions/node/v${NODE_VERSION}/bin"
+ln -sfn "$NODE_BIN/node" /usr/local/bin/node
+ln -sfn "$NODE_BIN/npm"  /usr/local/bin/npm
+ln -sfn "$NODE_BIN/npx"  /usr/local/bin/npx
 
 # -----------------------------------------------------------------------------
 say "3/10  Clone + build the MCP app (ad-astra -> $APP)"
@@ -112,6 +115,8 @@ chmod 644 "$REPO/etc/systemd/system/grok-mcp.service" "$REPO/etc/sysctl.d/99-swa
 sysctl --system >/dev/null
 
 mkdir -p /root/.config/systemd/user
+mkdir -p /root/.codex/rules
+ln -sfnT "$REPO/home/.codex/rules/default.rules" /root/.codex/rules/default.rules
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.service" /root/.config/systemd/user/astra-commit.service
 ln -sfnT "$REPO/home/.config/systemd/user/astra-commit.timer"   /root/.config/systemd/user/astra-commit.timer
 ln -sfnT "$REPO/home/.config/systemd/user/health-check.service" /root/.config/systemd/user/health-check.service
@@ -192,6 +197,13 @@ git config --global user.email "zazesty@gmail.com"
 # Root-owned repo can trip Git's "dubious ownership" guard in some contexts;
 # mark it safe so the hooks/timer never refuse to operate on it.
 git config --global --add safe.directory "$REPO"
+if id dev >/dev/null 2>&1; then
+  sudo -u dev git config --global user.name "Zavdi"
+  sudo -u dev git config --global user.email "zazesty@gmail.com"
+  sudo -u dev git config --global --add safe.directory "$REPO"
+  sudo -u dev git config --global --add safe.directory "$APP"
+  sudo -u dev git config --global --add safe.directory "/root/memory"
+fi
 git -C "$REPO" config core.hooksPath .githooks
 chmod +x "$REPO"/.githooks/* "$REPO"/scripts/*.sh "$REPO"/home/journal-trigger/*.sh
 
@@ -288,6 +300,15 @@ install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-pres
 # OPERATOR rails: live copy at /root (memory detail stays in /root/memory)
 if [ -f "$REPO/docs/OPERATOR.md" ]; then
   cp -a "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
+fi
+# Ensure dev user can traverse /root and owns project directories
+if id dev >/dev/null 2>&1; then
+  chown root:dev /root 2>/dev/null || true
+  chmod 750 /root 2>/dev/null || true
+  chown -R dev:dev /root/grok-mcp /root/astra-config /root/memory /root/health-bot /root/Grok-Journal /root/Grok_Journal /root/.claude /home/dev/.claude 2>/dev/null || true
+  ln -sfn "$REPO/CLAUDE.md" /root/CLAUDE.md
+  ln -sfn "$REPO/CLAUDE.md" /home/dev/CLAUDE.md
+  chown -h dev:dev /root/CLAUDE.md /home/dev/CLAUDE.md 2>/dev/null || true
 fi
 # Budget Bot Photon skills. Canonical in the repo; live path is the symlink.
 mkdir -p /root/.hermes/skills/productivity
@@ -400,7 +421,9 @@ cat <<EOF
        the next cron tick picks them up.)
 
 EOF
-read -rp "Press Enter once BOTH keys are saved in /etc/grok-mcp.env... " _
+if [ -t 0 ] && [ -z "${NONINTERACTIVE:-}" ]; then
+  read -rp "Press Enter once BOTH keys are saved in /etc/grok-mcp.env... " _
+fi
 
 systemctl start grok-mcp.service || systemctl restart grok-mcp.service
 sleep 2

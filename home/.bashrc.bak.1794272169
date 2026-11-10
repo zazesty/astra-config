@@ -1,0 +1,65 @@
+# ~/.bashrc: executed by bash(1) for non-login shells.
+
+# Note: PS1 is set in /etc/profile, and the default umask is defined
+# in /etc/login.defs. You should not need this unless you want different
+# defaults for root.
+# PS1='${debian_chroot:+($debian_chroot)}\h:\w\$ '
+# umask 022
+
+# You may uncomment the following lines if you want `ls' to be colorized:
+# export LS_OPTIONS='--color=auto'
+# eval "$(dircolors)"
+# alias ls='ls $LS_OPTIONS'
+# alias ll='ls $LS_OPTIONS -l'
+# alias l='ls $LS_OPTIONS -lA'
+#
+# Some more alias to avoid making mistakes:
+# alias rm='rm -i'
+# alias cp='cp -i'
+# alias mv='mv -i'
+export PATH="$HOME/.local/bin:$PATH"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# grok-mcp uncommitted-work reminder (interactive shells only)
+case $- in
+  *i*) /root/astra-config/scripts/warn-uncommitted.sh ;;
+esac
+
+
+# Grok Build custom model reads GEMINI_API_KEY from the process environment.
+# The value already lives in /etc/grok-mcp.env; export only that one name.
+if [ -z "${GEMINI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
+  GEMINI_API_KEY=$(awk -F= '/^GEMINI_API_KEY=/{print substr($0, index($0,"=")+1); exit}' /etc/grok-mcp.env)
+  GEMINI_API_KEY=${GEMINI_API_KEY#\"}
+  GEMINI_API_KEY=${GEMINI_API_KEY%\"}
+  GEMINI_API_KEY=${GEMINI_API_KEY#\'}
+  GEMINI_API_KEY=${GEMINI_API_KEY%\'}
+  export GEMINI_API_KEY
+fi
+
+# Logout falls through to this key. A live SuperGrok session token still wins,
+# so exporting it does not move an already-logged-in grok onto API billing.
+# Same single source as the Gemini key. Do not source the rest of the env file.
+if [ -z "${XAI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
+  XAI_API_KEY=$(awk -F= '/^XAI_API_KEY=/{print substr($0, index($0,"=")+1); exit}' /etc/grok-mcp.env)
+  XAI_API_KEY=${XAI_API_KEY#\"}
+  XAI_API_KEY=${XAI_API_KEY%\"}
+  XAI_API_KEY=${XAI_API_KEY#\'}
+  XAI_API_KEY=${XAI_API_KEY%\'}
+  export XAI_API_KEY
+fi
+[ -f ~/.codex/env ] && . ~/.codex/env
+
+
+# Added by Antigravity CLI installer
+export PATH="/root/.local/bin:$PATH"
+
+# Muscle-memory reminder for uninstalled Grok CLI
+grok() {
+  echo "⚠️  Grok CLI is uninstalled on this box."
+  return 1
+}
+alias agent=grok

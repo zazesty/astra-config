@@ -28,10 +28,6 @@ case $- in
   *i*) /root/astra-config/scripts/warn-uncommitted.sh ;;
 esac
 
-# >>> grok installer >>>
-export PATH="$HOME/.grok/bin:$PATH"
-[[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
-# <<< grok installer <<<
 
 # Grok Build custom model reads GEMINI_API_KEY from the process environment.
 # The value already lives in /etc/grok-mcp.env; export only that one name.
@@ -56,3 +52,13 @@ if [ -z "${XAI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
   export XAI_API_KEY
 fi
 [ -f ~/.codex/env ] && . ~/.codex/env
+
+
+# Added by Antigravity CLI installer
+export PATH="/root/.local/bin:$PATH"
+
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+[[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
+# <<< grok installer <<<

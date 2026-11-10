@@ -69,8 +69,7 @@
     ],
     "defaultMode": "auto"
   },
-  "model": "opus",
-  "effortLevel": "low",
+  "model": "sonnet",
   "hooks": {
     "SessionStart": [
       {
@@ -90,6 +89,15 @@
         ]
       }
     ]
+  },
+  "effortLevel": "low",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "low"
+    },
+    "claude-sonnet-5-5": {
+      "effortLevel": "medium"
+    }
   },
   "autoMemoryDirectory": "/root/memory",
   "theme": "auto"
