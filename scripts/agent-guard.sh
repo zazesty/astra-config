@@ -105,37 +105,13 @@ for arg in "$@"; do
 done
 
 if [ "$BYPASS" -eq 0 ]; then
-    GIT_INFO="not a git repo"
-    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
-        if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-            STATUS="dirty"
-        else
-            STATUS="clean"
-        fi
-        GIT_INFO="$BRANCH ($STATUS)"
-    fi
-
-    TMUX_INFO="no"
-    if [ -n "${TMUX:-}" ]; then
-        TMUX_INFO="active"
-    fi
-
-    echo "==> [agent-guard] Starting: $CMD_NAME"
-    echo "    Directory:   $(pwd)"
-    echo "    Git status:  $GIT_INFO"
-    echo "    Tmux:        $TMUX_INFO"
-    if [ "$TMUX_INFO" = "no" ]; then
-        echo "    [note: CLAUDE.md recommends running agents inside tmux]"
-    fi
-    echo ""
-    read -r -p "Start $CMD_NAME session? [y/N] (use --yes to bypass): " CONFIRM || true
+    echo "antigravity is free. if limits are hit, use terra in codex."
+    read -r -p "start $CMD_NAME session? [y/N] (use --yes to bypass): " CONFIRM || true
     case "$CONFIRM" in
         y|Y|yes|YES)
-            echo "==> [agent-guard] Proceeding..."
             ;;
         *)
-            echo "==> [agent-guard] Aborted."
+            echo "aborted."
             exit 1
             ;;
     esac
