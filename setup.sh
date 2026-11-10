@@ -44,12 +44,13 @@ NODE_BIN="$NVM_DIR/versions/node/v${NODE_VERSION}/bin"
 ln -sfn "$NODE_BIN/node" /usr/local/bin/node
 ln -sfn "$NODE_BIN/npm"  /usr/local/bin/npm
 ln -sfn "$NODE_BIN/npx"  /usr/local/bin/npx
-# Agent CLI global symlinks so all users (e.g. dev) have access
-[ -e "$NODE_BIN/codex" ] && ln -sfn "$NODE_BIN/codex" /usr/local/bin/codex
-[ -e /root/.local/bin/claude ] && ln -sfn /root/.local/bin/claude /usr/local/bin/claude
+# Agent CLI global symlinks via agent-guard for interactive confirmation / friction
+GUARD="$REPO/scripts/agent-guard.sh"
+[ -e "$NODE_BIN/codex" ] && ln -sfn "$GUARD" /usr/local/bin/codex
+[ -e /root/.local/share/claude/versions ] || [ -e /home/dev/.local/share/claude/versions ] && ln -sfn "$GUARD" /usr/local/bin/claude
 [ -e /root/.local/bin/agy ] && ln -sfn /root/.local/bin/agy /usr/local/bin/agy
 [ -e /root/.local/bin/agy ] && ln -sfn /root/.local/bin/agy /usr/local/bin/antigravity
-[ -e /root/.grok/bin/grok ] && ln -sfn /root/.grok/bin/grok /usr/local/bin/grok
+[ -e /root/.grok/bin/grok ] && ln -sfn "$GUARD" /usr/local/bin/grok
 
 # -----------------------------------------------------------------------------
 say "3/10  Clone + build the MCP app (ad-astra -> $APP)"
@@ -315,6 +316,11 @@ if id dev >/dev/null 2>&1; then
   ln -sfn "$REPO/CLAUDE.md" /root/CLAUDE.md
   ln -sfn "$REPO/CLAUDE.md" /home/dev/CLAUDE.md
   chown -h dev:dev /root/CLAUDE.md /home/dev/CLAUDE.md 2>/dev/null || true
+  mkdir -p /home/dev/.local/bin
+  ln -sfn "$GUARD" /home/dev/.local/bin/claude
+  ln -sfn "$GUARD" /home/dev/.local/bin/grok
+  ln -sfn "$GUARD" /home/dev/.local/bin/codex
+  chown -h dev:dev /home/dev/.local/bin/claude /home/dev/.local/bin/grok /home/dev/.local/bin/codex 2>/dev/null || true
 fi
 # Budget Bot Photon skills. Canonical in the repo; live path is the symlink.
 mkdir -p /root/.hermes/skills/productivity
