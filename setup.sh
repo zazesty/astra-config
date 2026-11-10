@@ -403,7 +403,7 @@ tailscale funnel --bg "$FUNNEL_PORT"
 systemctl restart tailscaled
 
 # -----------------------------------------------------------------------------
-say "10/10  PAUSE — paste the two API keys"
+say "10/10  Authenticate Agent CLIs"
 cat <<EOF
 
   Edit /etc/grok-mcp.env and fill in the keys (it was scaffolded blank):
@@ -431,6 +431,8 @@ cat <<EOF
         cat > /root/.config/journal-trigger/secret      # the sk-ant-oat01-... token
       (Both files were scaffolded blank at mode 600 in step 7. No restart needed —
        the next cron tick picks them up.)
+
+  Authenticate Agent CLIs.
 
 EOF
 if [ -t 0 ] && [ -z "${NONINTERACTIVE:-}" ]; then
