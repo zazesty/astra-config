@@ -44,6 +44,12 @@ NODE_BIN="$NVM_DIR/versions/node/v${NODE_VERSION}/bin"
 ln -sfn "$NODE_BIN/node" /usr/local/bin/node
 ln -sfn "$NODE_BIN/npm"  /usr/local/bin/npm
 ln -sfn "$NODE_BIN/npx"  /usr/local/bin/npx
+# Agent CLI global symlinks so all users (e.g. dev) have access
+[ -e "$NODE_BIN/codex" ] && ln -sfn "$NODE_BIN/codex" /usr/local/bin/codex
+[ -e /root/.local/bin/claude ] && ln -sfn /root/.local/bin/claude /usr/local/bin/claude
+[ -e /root/.local/bin/agy ] && ln -sfn /root/.local/bin/agy /usr/local/bin/agy
+[ -e /root/.local/bin/agy ] && ln -sfn /root/.local/bin/agy /usr/local/bin/antigravity
+[ -e /root/.grok/bin/grok ] && ln -sfn /root/.grok/bin/grok /usr/local/bin/grok
 
 # -----------------------------------------------------------------------------
 say "3/10  Clone + build the MCP app (ad-astra -> $APP)"
