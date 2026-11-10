@@ -304,9 +304,9 @@ if [ ! -e "$board_link" ]; then
   ln -s standing-todos/standing-todos.json "$board_link"
 fi
 install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-presence.sh
-# OPERATOR rails: live copy at /root (memory detail stays in /root/memory)
+# OPERATOR rails: symlink at /root to repo source (memory detail stays in /root/memory)
 if [ -f "$REPO/docs/OPERATOR.md" ]; then
-  cp -a "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
+  ln -sfn "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
 fi
 # Ensure dev user can traverse /root and owns project directories
 if id dev >/dev/null 2>&1; then
