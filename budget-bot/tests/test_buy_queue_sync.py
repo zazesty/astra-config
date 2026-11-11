@@ -286,6 +286,69 @@ updated: 2026-10-08T00:00:00.000Z
             self.assertIn("Ask before clear", text)
             self.assertIn("Amazon (ask)", text)
 
+    def test_added_date_in_table_stamps_not_before(self):
+        """Table notes with 'Added YYYY-MM-DD' stamp not_before into config."""
+        fact = """---
+id: budget-bot-buy-queue
+version: 1
+updated: 2026-11-10T00:00:00.000Z
+---
+### Order now
+
+| Pri | Item | ~$ | Merchant (auto-pull) | Notes |
+|-----|------|----|----------------------|-------|
+| A | Miller P100 filters (pair) | 35 | Amazon | id:miller-p100-filters. Added 2026-11-10. Ask before clear. |
+| A | Books | 20 | eBay | id:books-ebay. Added 2026-11-07. Ask before clear. |
+
+**Seeded matcher rows (box config, reconciled each pass):** stale.
+"""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "queue.md").write_text(fact)
+            (root / "budget.md").write_text(BUDGET)
+            (root / "config.json").write_text(json.dumps({"buy_queue": []}))
+            out = self._run(root, {"buy_queue": []})
+            miller = next(r for r in out["buy_queue"] if r["id"] == "miller-p100-filters")
+            books = next(r for r in out["buy_queue"] if r["id"] == "books-ebay")
+            self.assertEqual(miller["not_before"], "2026-11-10")
+            self.assertTrue(miller["confirm"])
+            self.assertEqual(books["not_before"], "2026-11-07")
+            self.assertTrue(books["confirm"])
+
+    def test_legacy_rows_missing_not_before_stamped_safely(self):
+        """Existing legacy rows in config without not_before get stamped safely."""
+        fact = """---
+id: budget-bot-buy-queue
+version: 1
+updated: 2026-11-10T00:00:00.000Z
+---
+### Order now
+
+| Pri | Item | ~$ | Merchant (auto-pull) | Notes |
+|-----|------|----|----------------------|-------|
+| A | Maro toe socks 6pk | 90 | Maro | id:maro-toe-socks. |
+| A | Miller P100 filters (pair) | 35 | Amazon | id:miller-p100-filters. Added 2026-11-10. Ask. |
+
+**Seeded matcher rows (box config, reconciled each pass):** stale.
+"""
+        legacy_queue = [
+            {"id": "maro-toe-socks", "name": "Maro toe socks 6pk", "amount_cents": 9000, "match": "MARO", "merchant": "Maro"},
+            {"id": "miller-p100-filters", "name": "Miller P100 filters (pair)", "amount_cents": 3500, "match": "Amazon", "merchant": "Amazon", "confirm": True},
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "queue.md").write_text(fact)
+            (root / "budget.md").write_text(BUDGET)
+            (root / "config.json").write_text(json.dumps({"buy_queue": legacy_queue}))
+            out = self._run(root, {"buy_queue": [dict(r) for r in legacy_queue]})
+            miller = next(r for r in out["buy_queue"] if r["id"] == "miller-p100-filters")
+            maro = next(r for r in out["buy_queue"] if r["id"] == "maro-toe-socks")
+            # Miller takes explicit Added date from table notes
+            self.assertEqual(miller["not_before"], "2026-11-10")
+            # Maro without explicit Added takes today PT date as floor
+            self.assertTrue(maro.get("not_before"))
+            self.assertEqual(len(maro["not_before"]), 10)
+
 
 if __name__ == "__main__":
     unittest.main()

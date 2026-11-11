@@ -158,6 +158,86 @@ class TestProposedPulls(unittest.TestCase):
         self.assertEqual([p["id"] for p in pulls], ["rice-cooker"])
         self.assertEqual(pulls[0]["txn_id"], "whse-new")
 
+    def test_added_date_inclusive_matching_auto_clear(self):
+        row = {
+            "id": "booda-soap-butter",
+            "name": "Soap + Booda Butter",
+            "amount_cents": 7400,
+            "merchant": "Booda Organics",
+            "match": r"Booda\s*Organics",
+            "not_before": "2026-11-01",
+            "confirm": False,
+        }
+        old_txn = _t(
+            id="old-soap",
+            date="2026-10-31",
+            name="BOODA ORGANICS",
+            merchant_name="BOODA ORGANICS",
+            amount_cents=7400,
+        )
+        same_day_txn = _t(
+            id="sameday-soap",
+            date="2026-11-01",
+            name="BOODA ORGANICS",
+            merchant_name="BOODA ORGANICS",
+            amount_cents=7400,
+        )
+        future_txn = _t(
+            id="future-soap",
+            date="2026-11-05",
+            name="BOODA ORGANICS",
+            merchant_name="BOODA ORGANICS",
+            amount_cents=7400,
+        )
+        # Historical purchase is never matched (prior to added date)
+        self.assertEqual(proposed_buy_queue_pulls([row], [old_txn]), [])
+        # Same-day purchase is inclusive and matches
+        pulls = proposed_buy_queue_pulls([row], [same_day_txn])
+        self.assertEqual([p["id"] for p in pulls], ["booda-soap-butter"])
+        self.assertEqual(pulls[0]["txn_id"], "sameday-soap")
+        # Future purchase matches
+        pulls_fut = proposed_buy_queue_pulls([row], [future_txn])
+        self.assertEqual([p["id"] for p in pulls_fut], ["booda-soap-butter"])
+        self.assertEqual(pulls_fut[0]["txn_id"], "future-soap")
+
+    def test_miller_filters_false_pushover_prevented_and_sameday_matches(self):
+        miller = {
+            "id": "miller-p100-filters",
+            "name": "Miller P100 filters (pair)",
+            "amount_cents": 3500,
+            "merchant": "Amazon",
+            "match": "Amazon",
+            "confirm": True,
+            "not_before": "2026-11-10",
+        }
+        march_amazon = _t(
+            id="imp-9ec1c84b3e657a48",
+            date="2026-03-20",
+            name="AMAZON.COM* 9E1C84",
+            merchant_name="Amazon",
+            amount_cents=3499,
+        )
+        nov10_amazon = _t(
+            id="amazon-today",
+            date="2026-11-10",
+            name="AMAZON.COM* TODAY",
+            merchant_name="Amazon",
+            amount_cents=3499,
+        )
+        # The March 20 transaction must NEVER match or generate ask notifications
+        self.assertEqual(proposed_buy_queue_asks([miller], [march_amazon]), [])
+        self.assertEqual(buy_queue_ask_events([miller], [march_amazon]), [])
+        self.assertEqual(proposed_buy_queue_pulls([miller], [march_amazon]), [])
+
+        # A same-day purchase (Nov 10) must match and ask
+        asks = proposed_buy_queue_asks([miller], [nov10_amazon])
+        self.assertEqual(len(asks), 1)
+        self.assertEqual(asks[0]["id"], "miller-p100-filters")
+        self.assertEqual(asks[0]["txn_id"], "amazon-today")
+        events = buy_queue_ask_events([miller], [nov10_amazon])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].key, "buyq-ask:miller-p100-filters:amazon-today")
+
     def test_costco_confirm_asks_and_does_not_clear(self):
         row = {
             "id": "rice-cooker",

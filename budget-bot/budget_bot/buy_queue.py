@@ -55,12 +55,14 @@ def _amount_in_band(posted: int, row: dict[str, Any]) -> bool:
 
 
 def _on_or_after(t: Transaction, row: dict[str, Any]) -> bool:
-    """Optional not_before (YYYY-MM-DD) skips older ledger hits.
+    """Inclusive not_before (YYYY-MM-DD) skips older ledger hits.
 
-    The pull walks the full ledger, so a merchant as broad as Costco needs
-    a floor or a past in-band trip drops a row that was never bought.
+    Enforces added-date inclusive matching: posted >= floor. Older
+    transactions (posted < floor) never match.
     """
-    floor = str(row.get("not_before") or "").strip()[:10]
+    floor = str(
+        row.get("not_before") or row.get("added") or row.get("added_date") or ""
+    ).strip()[:10]
     if not floor:
         return True
     posted = (t.date or "")[:10]

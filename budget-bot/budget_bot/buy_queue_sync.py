@@ -129,6 +129,9 @@ def parse_queue_table(text: str) -> list[dict[str, Any]] | None:
         if rid in seen:
             continue
         seen.add(rid)
+        added_m = re.search(r"\badded\s+(\d{4}-\d{2}-\d{2})\b", notes, re.I)
+        nb_m = re.search(r"\bnot[_-]before[:\s]+(\d{4}-\d{2}-\d{2})\b", notes, re.I)
+        not_before = nb_m.group(1) if nb_m else (added_m.group(1) if added_m else None)
         rows.append(
             {
                 "id": rid,
@@ -138,6 +141,7 @@ def parse_queue_table(text: str) -> list[dict[str, Any]] | None:
                 "notes": notes,
                 "pri": pri.strip(),
                 "ask": ask,
+                "not_before": not_before,
             }
         )
     return rows or None
@@ -152,6 +156,7 @@ def _table_fp(rows: list[dict[str, Any]]) -> str:
                 "amount_cents": r["amount_cents"],
                 "merchant": _norm_merchant(r.get("merchant") or ""),
                 "ask": bool(r.get("ask")),
+                "not_before": str(r.get("not_before") or ""),
             }
             for r in sorted(rows, key=lambda r: r["id"])
         ]
@@ -180,15 +185,19 @@ def _today_pt() -> str:
     return datetime.now(PT).date().isoformat()
 
 
-def _blank_rows_unarmed(rows: list[dict[str, Any]]) -> bool:
-    """A blank merchant that is not yet an amount-ask still needs a stamp."""
+def _rows_unarmed(rows: list[dict[str, Any]]) -> bool:
+    """Any row missing not_before needs a stamp."""
     for row in rows:
-        if str(row.get("merchant") or "").strip() or not row.get("id"):
+        if not row.get("id"):
             continue
-        if row.get("confirm") and str(row.get("not_before") or "").strip():
-            continue
-        return True
+        if not str(row.get("not_before") or "").strip():
+            return True
+        if not str(row.get("merchant") or "").strip() and not row.get("confirm"):
+            return True
     return False
+
+
+_blank_rows_unarmed = _rows_unarmed
 
 
 def _spec_asks(spec: dict[str, Any]) -> bool:
@@ -213,20 +222,23 @@ def _row_from_spec(spec: dict[str, Any], prev: dict[str, Any] | None) -> dict[st
     same_merchant = prev is not None and (
         not prev_merchant or prev_merchant == _norm_merchant(merchant)
     )
+    spec_nb = spec.get("not_before")
+    prev_nb = (prev or {}).get("not_before") if (prev and same_merchant) else None
+    not_before = str(spec_nb or prev_nb or _today_pt())
+
     if prev and same_merchant:
         row = dict(prev)
         row["name"] = spec["name"]
         row["amount_cents"] = int(spec["amount_cents"])
         row["merchant"] = merchant
+        row["not_before"] = not_before
         if not merchant:
             row["match"] = ""
             row["confirm"] = True
-            row.setdefault("not_before", _today_pt())
         elif costco or _spec_asks(spec):
             row["confirm"] = True
             if costco:
                 row["match"] = prev.get("match") or COSTCO_MATCH
-                row.setdefault("not_before", _today_pt())
         else:
             row["confirm"] = False
         return row
@@ -236,16 +248,12 @@ def _row_from_spec(spec: dict[str, Any], prev: dict[str, Any] | None) -> dict[st
         "match": "" if not merchant else (COSTCO_MATCH if costco else _match_for_merchant(merchant)),
         "merchant": merchant,
         "name": spec["name"],
+        "not_before": not_before,
     }
-    if not merchant:
+    if not merchant or costco or _spec_asks(spec):
         row["confirm"] = True
-        row["not_before"] = str((prev or {}).get("not_before") or _today_pt())
-    elif costco or _spec_asks(spec):
-        row["confirm"] = True
-    if costco:
-        row["not_before"] = str((prev or {}).get("not_before") or _today_pt())
-    elif prev and prev.get("not_before") and same_merchant:
-        row["not_before"] = prev["not_before"]
+    else:
+        row["confirm"] = False
     return row
 
 
@@ -272,7 +280,7 @@ def _stamp_from_table(
     specs: list[dict[str, Any]],
     current: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """First pass: record merchant and the Costco ask without renaming anything."""
+    """First pass: record merchant, ask flag, and not_before floor without renaming anything."""
     by_id = {s["id"]: s for s in specs}
     stamped = []
     for row in current:
@@ -284,17 +292,24 @@ def _stamp_from_table(
         nxt = dict(row)
         merchant = str(spec.get("merchant") or "").strip()
         nxt["merchant"] = merchant
+        costco = is_costco_merchant(merchant)
+        asks = costco or _spec_asks(spec)
         if not merchant:
             nxt["match"] = ""
             nxt["confirm"] = True
-            nxt.setdefault("not_before", _today_pt())
-        elif is_costco_merchant(merchant) or _spec_asks(spec):
+        elif asks:
             nxt["confirm"] = True
-            if is_costco_merchant(merchant):
+            if costco:
                 nxt["match"] = nxt.get("match") or COSTCO_MATCH
-                nxt.setdefault("not_before", _today_pt())
         else:
             nxt["confirm"] = False
+
+        spec_nb = spec.get("not_before")
+        if spec_nb:
+            nxt["not_before"] = spec_nb
+        elif not nxt.get("not_before"):
+            nxt["not_before"] = _today_pt()
+
         stamped.append(nxt)
     return stamped
 
@@ -464,7 +479,7 @@ def reconcile_buy_queue(
         return cfg
 
     if table_fp == prev_table and config_fp == prev_config:
-        if not _blank_rows_unarmed(current):
+        if not _rows_unarmed(current):
             return cfg
         stamped = _stamp_from_table(specs, current)
         replace_buy_queue(cfg, stamped)
