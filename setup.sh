@@ -315,7 +315,12 @@ if id dev >/dev/null 2>&1; then
   chown -R dev:dev /root/grok-mcp /root/astra-config /root/memory /root/health-bot /root/Grok-Journal /root/Grok_Journal /root/.claude /home/dev/.claude 2>/dev/null || true
   ln -sfn "$REPO/CLAUDE.md" /root/CLAUDE.md
   ln -sfn "$REPO/CLAUDE.md" /home/dev/CLAUDE.md
-  chown -h dev:dev /root/CLAUDE.md /home/dev/CLAUDE.md 2>/dev/null || true
+  ln -sfn /root/OPERATOR.md /home/dev/GEMINI.md
+  ln -sfn /root/OPERATOR.md /home/dev/AGENTS.md
+  chown -h dev:dev /root/CLAUDE.md /home/dev/CLAUDE.md /home/dev/GEMINI.md /home/dev/AGENTS.md 2>/dev/null || true
+  mkdir -p /home/dev/.codex/rules
+  ln -sfnT "$REPO/home/.codex/rules/default.rules" /home/dev/.codex/rules/default.rules
+  chown -R dev:dev /home/dev/.codex 2>/dev/null || true
   mkdir -p /home/dev/.local/bin
   ln -sfn "$GUARD" /home/dev/.local/bin/claude
   ln -sfn "$GUARD" /home/dev/.local/bin/grok
