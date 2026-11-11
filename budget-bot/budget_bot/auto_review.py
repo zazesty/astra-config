@@ -202,7 +202,7 @@ RULES: list[tuple[str, str, float]] = [
     # shipping
     (r"\bUPS\b|\bUSPS\b|\bFEDEX|\bPOSTAGE\b|\bSHIPPING\b|\bROLLO\b", "Postage & Shipping", 0.93),
     # charity
-    (r"\bACTBLUE\b|\bEFF\b|ELECTRONIC FRONTIER|\bDONATION\b|\bCHARITY\b", "Charity / Donations", 0.93),
+    (r"\bACTBLUE\b|\bEFF\b|ELECTRONIC FRONTIER|\bGIVEBUTTER\b|\bDONATION\b|\bCHARITY\b", "Charity / Donations", 0.93),
     # CNC class textbook (CamInstructor), not a subscription.
     (r"\bCAMINSTRUCTOR\b", "Shopping", 0.95),
     # Contra Costa College theatre donation, sold as an Eventbrite event.
