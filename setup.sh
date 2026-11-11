@@ -307,6 +307,7 @@ install -m 700 "$REPO/scripts/env-presence.sh" /root/.local/state/astra/env-pres
 # OPERATOR rails: symlink at /root to repo source (memory detail stays in /root/memory)
 if [ -f "$REPO/docs/OPERATOR.md" ]; then
   ln -sfn "$REPO/docs/OPERATOR.md" /root/OPERATOR.md
+  ln -sfn /root/OPERATOR.md /root/GEMINI.md
 fi
 # Ensure dev user can traverse /root and owns project directories
 if id dev >/dev/null 2>&1; then
