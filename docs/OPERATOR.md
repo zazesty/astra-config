@@ -4,7 +4,7 @@
 > **What this is not:** live status (`scripts/box-status.sh`), open work (`standing-todos`), or the memory KB detail store.  
 > **SSOT for deep facts:** `/root/memory` via Astra `memory_*` tools. This file collates rails only.
 
-**Human:** Zavdi · **Box:** zaz-astra · **Primary agent harness:** Grok Build (Claude Code optional / being culled)
+**Human:** Zavdi · **Box:** zaz-astra · **Agent harness:** coding agent CLI (Antigravity primary; Codex / Grok / Claude)
 
 ---
 
@@ -200,20 +200,7 @@ A Hermes restart that picks up a new Astra URL is allowed when the fix needs it.
 
 ---
 
-## 9. Memory dual-harness + Claude retirement schedule
-
-KB is still shared (Claude Code + Grok). Don’t fork the store; extend it.
-
-**Formal schedule** (`claude-journal-cleanup` timer, PT):
-
-| Phase | Date | Includes |
-|-------|------|----------|
-| **archive** | **2026-08-16** | Journal live surface off; **memory Claude streamline** plan/start (Grok-primary; no personal-KB wipe) |
-| **delete** | **2026-08-30** | Journal secrets + runtime purge; **memory Claude streamline** formal erase markers (Claude *machinery* only — personal facts stay) |
-
----
-
-## 10. Budget Bot data + backup (short)
+## 9. Budget Bot data + backup (short)
 
 - Live txns/tokens: **local only**, never git.
 - Budget Bot **state does not auto-regenerate** on a new box — needs re-import and/or Plaid re-Link + secrets re-paste.
