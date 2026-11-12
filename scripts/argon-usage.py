@@ -55,7 +55,7 @@ def bucket(model: str) -> str:
     m = (model or "").lower()
     if m.startswith("grok"):
         return "grok"
-    if "flash" in m:
+    if "flash" in m or "hydrogen" in m:
         return "flash"
     if "argon" in m or "gemini" in m:
         return "argon"
@@ -376,7 +376,7 @@ def self_test() -> int:
         check("argon cost absent", row["argon"]["cost_usd"] is None)
         check("grok cost", row["grok"]["cost_usd"] == 0.5)
         check("zero denominator", ratio(3, 0) is None)
-        check("flash bucket", bucket("gemini-3.8-flash") == "flash" and bucket("gemini-flash-latest") == "flash")
+        check("flash bucket", bucket("gemini-4-hydrogen") == "flash" and bucket("gemini-3.8-flash") == "flash" and bucket("gemini-flash-latest") == "flash")
         check("argon bucket", bucket("gemini-4-argon") == "argon")
         check("grok bucket", bucket("grok-4.7-build") == "grok")
         check("prompt not in snapshot", "secret-prompt" not in json.dumps(row))

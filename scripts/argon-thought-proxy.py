@@ -582,7 +582,7 @@ def point_config(path: str) -> None:
     lines = _set_key(lines, "model.argon", "api_backend", "chat_completions")
     lines = _set_key(lines, "model.argon", "stream_tool_calls", "false")
     lines = _set_key(lines, "model.flash", "base_url", PROXY_BASE)
-    lines = _set_key(lines, "model.flash", "model", "gemini-3.8-flash")
+    lines = _set_key(lines, "model.flash", "model", "gemini-4-hydrogen")
     lines = _set_key(lines, "model.flash", "env_key", "GEMINI_API_KEY")
     lines = _set_key(lines, "model.flash", "api_backend", "chat_completions")
     lines = _set_key(lines, "model.flash", "stream_tool_calls", "false")
@@ -721,7 +721,7 @@ def _self_test() -> int:
     check("mcp url preserved", 'url = "http://127.0.0.1:9/mcp/secret-path"' in text)
     check("base_url pointed", f'base_url = "{PROXY_BASE}"' in text)
     check("pins added", 'argon = "argon"' in text and 'flash = "flash"' in text and 'general-purpose = "flash"' in text)
-    check("flash model", 'model = "gemini-3.8-flash"' in text)
+    check("flash model", 'model = "gemini-4-hydrogen"' in text)
     check("other pin kept", 'explore = "grok-4.7"' in text)
     check("stream flag bare", "stream_tool_calls = false" in text)
 
@@ -730,9 +730,9 @@ def _self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         log_path = os.path.join(tmp, "latency.jsonl")
         os.environ["ARGON_PROXY_LATENCY_LOG"] = log_path
-        append_llm_latency("gemini-3.8-flash", 200, 1500, True)
+        append_llm_latency("gemini-4-hydrogen", 200, 1500, True)
         line = open(log_path, encoding="utf-8").read()
-        check("latency row", '"model":"gemini-3.8-flash"' in line and '"elapsed_ms":1500' in line)
+        check("latency row", '"model":"gemini-4-hydrogen"' in line and '"elapsed_ms":1500' in line)
         check("latency mode", oct(os.stat(log_path).st_mode & 0o777) == "0o600")
     print("argon-thought-proxy self-test:", "pass" if ok else "fail")
     return 0 if ok else 1

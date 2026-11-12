@@ -22,7 +22,7 @@ _STATIC_MAP = {
     "~openai/gpt-terra-latest": "openai/gpt-6.1-terra",
     "~openai/gpt-sol-latest": "openai/gpt-6.1-sol",
     "~google/gemini-pro-latest": "google/gemini-4-carbon",
-    "~google/gemini-flash-latest": "google/gemini-3.8-flash",
+    "~google/gemini-flash-latest": "google/gemini-4-hydrogen",
     "~anthropic/claude-sonnet-latest": "anthropic/claude-sonnet-5.5",
     "~anthropic/claude-opus-latest": "anthropic/claude-opus-5.5",
     "~x-ai/grok-latest": "x-ai/grok-4.7",
