@@ -27,6 +27,16 @@ cd /root/budget-bot && python3 -m budget_bot budget-status
 
 Photon reply: paste the CLI line. Numbers from CLI only. Same rolling sentence as Pushover.
 
+## Recent alerts & Pushover follow-up ("why was this flagged?")
+
+Pushover notifications are upserted into the active Photon conversation context (`model_only`) as system messages. If context was reset or Zavdi asks about recent alerts, inspect:
+
+```bash
+cd /root/budget-bot && python3 -m budget_bot notifications
+```
+
+Reference the alert subject, body, and category when explaining.
+
 ## Bills (`+$N bills`) — policy 2026-08-10 (+ arrears)
 
 | Period | What reserves count |

@@ -81,6 +81,31 @@ def cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_notifications(args: argparse.Namespace) -> int:
+    """Print recent Pushover notifications (Hermes / chat context)."""
+    from .photon_log import load_recent_notifications
+
+    items = load_recent_notifications(limit=args.limit)
+    if not items:
+        print("No recorded notifications.")
+        return 0
+    if args.json:
+        print(json.dumps(items, indent=2))
+        return 0
+    for it in items:
+        ts = it.get("timestamp", "?")
+        title = it.get("title", "Budget Bot")
+        body = it.get("body", "").strip()
+        kind = it.get("kind", "")
+        pri = it.get("priority", 0)
+        print(f"[{ts}] (pri={pri}, kind={kind}) {title}")
+        if body:
+            for line in body.splitlines():
+                print(f"  {line}")
+        print()
+    return 0
+
+
 def cmd_budget_status(args: argparse.Namespace) -> int:
     """Human one-liner: calendar + rolling (Hermes / chat-friendly)."""
     from .balances import checking_cash_by_cu
@@ -974,6 +999,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     s.add_argument("--as-of", default=None, help="YYYY-MM-DD (default: today PT)")
     s.set_defaults(func=cmd_budget_status)
+
+    s = sub.add_parser(
+        "notifications",
+        help="List recent Pushover notifications (Hermes-friendly)",
+    )
+    s.add_argument("--limit", type=int, default=10, help="Max entries to return")
+    s.add_argument("--json", action="store_true", help="Print raw JSON array")
+    s.set_defaults(func=cmd_notifications)
 
     s = sub.add_parser("load-fixture", help="Load sample txns into state store")
     s.add_argument("path", nargs="?", default=None)

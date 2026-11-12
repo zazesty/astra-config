@@ -115,6 +115,16 @@ RESP=$(curl -sS --max-time 20 \
 CODE=$(printf '%s\n' "$RESP" | sed -n 's/^HTTP://p' | tail -1)
 if [ "$CODE" = "200" ]; then
   log "sent http=$CODE priority=$PRIORITY title_len=${#TITLE} msg_len=${#BODY}"
+  if [ -z "${BUDGET_BOT_NOTIFY_INTERNAL:-}" ]; then
+    python3 -c '
+import sys
+try:
+    from budget_bot.photon_log import record_notification_from_push
+    record_notification_from_push(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+except Exception:
+    pass
+' "$TITLE" "$BODY" "$PRIORITY" 2>/dev/null || true
+  fi
   exit 0
 fi
 log "error http=${CODE:-?} priority=$PRIORITY body=$(printf '%s' "$RESP" | tr '\n' ' ' | cut -c1-220)"

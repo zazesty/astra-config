@@ -50,6 +50,7 @@ def notify_sms_script() -> Path:
 def _push_env(event: AlertEvent) -> dict[str, str]:
     """Pass a Yes/No link through without writing it into the notify log."""
     env = os.environ.copy()
+    env["BUDGET_BOT_NOTIFY_INTERNAL"] = "1"
     url = str((event.payload or {}).get("open_url") or "")
     if url.startswith("https://") and len(url) <= 512:
         env["PUSHOVER_URL"] = url
@@ -222,6 +223,11 @@ def _send_alert_locked(
                 f.write(f"PUSH rc={proc.returncode} {line}\n")
             if proc.returncode == 0:
                 _mark_event(event)
+                try:
+                    from .photon_log import record_notification
+                    record_notification(event, title=title, body=_push_body(event), priority=priority)
+                except Exception:
+                    pass
                 return "sent_push"
             return f"error:push_rc={proc.returncode}:{proc.stderr[-200:]}"
         except Exception as e:
