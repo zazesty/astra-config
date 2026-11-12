@@ -17,8 +17,40 @@ LOG = os.environ.get(
     "/root/.local/state/astra/hermes-reply-latency.jsonl",
 )
 
+ALIAS_MAP_CACHE = "/root/.local/state/astra/openrouter-alias-map.json"
+_STATIC_MAP = {
+    "~openai/gpt-terra-latest": "openai/gpt-6.1-terra",
+    "~openai/gpt-sol-latest": "openai/gpt-6.1-sol",
+    "~google/gemini-pro-latest": "google/gemini-4-carbon",
+    "~google/gemini-flash-latest": "google/gemini-3.8-flash",
+    "~anthropic/claude-sonnet-latest": "anthropic/claude-sonnet-5.5",
+    "~anthropic/claude-opus-latest": "anthropic/claude-opus-5.5",
+    "~x-ai/grok-latest": "x-ai/grok-4.7",
+}
+
 # session_id -> [monotonic_start, step_count]
 _open: dict[str, list] = {}
+
+
+def _resolve_model(model: str, ctx: dict) -> tuple[str, str]:
+    """Returns (resolved_model, requested_model)."""
+    requested = str(model or "").strip()
+    served = str(ctx.get("served_model") or "").strip()
+    if served and served != requested:
+        return served, requested
+    if not requested.startswith("~"):
+        return requested, requested
+
+    target = _STATIC_MAP.get(requested)
+    try:
+        if os.path.exists(ALIAS_MAP_CACHE):
+            with open(ALIAS_MAP_CACHE) as f:
+                data = json.load(f)
+                if requested in data:
+                    return str(data[requested]), requested
+    except Exception:
+        pass
+    return target or requested, requested
 
 
 def handle(event_type: str, context: dict) -> None:
@@ -41,10 +73,13 @@ def handle(event_type: str, context: dict) -> None:
     response = str(ctx.get("response") or "")
     text = response.strip()
     silent = text == "" or text == "[SILENT]"
+    model_raw = str(ctx.get("model") or "")
+    resolved_model, requested_model = _resolve_model(model_raw, ctx)
+
     row = {
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "platform": str(ctx.get("platform") or ""),
-        "model": str(ctx.get("model") or ""),
+        "model": resolved_model,
         "provider": str(ctx.get("provider") or ""),
         "e2e_ms": int((now - rec[0]) * 1000),
         "steps": int(rec[1]),
@@ -52,6 +87,8 @@ def handle(event_type: str, context: dict) -> None:
         "silent": silent,
         "response_chars": len(response),
     }
+    if requested_model and requested_model != resolved_model:
+        row["requested_model"] = requested_model
     _append(row)
 
 
