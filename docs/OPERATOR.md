@@ -53,7 +53,7 @@ Source: `user-permission-language`.
 
 1. **MCP_PATH + funnel URL are credentials.** Never commit/publish them or “no-auth” wording to GitHub (tree or history).
 2. **No unsolicited `MCP_PATH` rotation.** After restart: **check connectors first**; rotate only if stuck or tool-surface changed.
-3. **grok-mcp (`ad-astra`) push is MANUAL** after functional confirm — remind; don’t auto-push.
+3. **grok-mcp (`ad-astra`) push requires functional confirm first:** auto-push is permitted ONLY after a clean build (`npm run build`), 100% unit tests pass (`npm test`), and live smoke test. Never push unverified, in-progress, or unprompted changes.
 4. **Self-healing over nag piles.** Prefer auto-reconcile + log; reserve alerts for real failures.
 5. **Keep `/root` clean** after deploy; whitelist permanent design docs (ask_oracle_*, etc.). Keep `.bak`s but don’t litter `src/`.
 6. **Don’t add a second swap** (2 GB already active).
