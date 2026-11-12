@@ -1,8 +1,0 @@
-[Unit]
-Description=Check if Gemini Hydrogen is live on API
-After=network-online.target
-
-[Service]
-Type=oneshot
-EnvironmentFile=-/etc/grok-mcp.env
-ExecStart=/root/astra-config/scripts/check-gemini-hydrogen.sh
