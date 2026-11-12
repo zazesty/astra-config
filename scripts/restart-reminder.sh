@@ -91,7 +91,7 @@ fi
   echo "   • If claude.ai + Grok still work → do nothing (dismiss alert)."
   echo "   • If a consumer is dead → re-add; if still dead or Grok tool list stale →"
   echo "       sudo bash /root/astra-config/scripts/rotate-url.sh"
-  echo "     then re-add claude.ai + Grok only (not journaling / Claude Code)."
+  echo "     then re-add Claude, Grok, GPT, and Gemini (not journaling / Claude Code)."
   echo "   • New/changed tools always need a rotation (Grok per-URL tool cache)."
   echo "   Dismiss: rm -f $ALERT"
 } > "$ALERT"

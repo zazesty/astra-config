@@ -53,6 +53,8 @@ cat <<'EOF'
 Live consumers only:
 [ ] Grok (cloud) connector re-added (caches tools PER URL)
 [ ] Claude chat connector re-added (caches tools PER URL)
+[ ] GPT connector re-added
+[ ] Gemini connector re-added
 [ ] Optional: remove old connector aliases (Astra V12/V13/…) to avoid picking a dead URL
 
 Do NOT chase: Claude Code CLI, journaling-routine MCP.
