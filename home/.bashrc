@@ -62,3 +62,12 @@ export PATH="/root/.local/bin:$PATH"
 export PATH="$HOME/.grok/bin:$PATH"
 [[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
 # <<< grok installer <<<
+
+# Route interactive grok/codex/claude through agent-guard (nvm & ~/.grok/bin precede /usr/local/bin)
+case $- in
+  *i*)
+    grok() { /usr/local/bin/grok "$@"; }
+    codex() { /usr/local/bin/codex "$@"; }
+    claude() { /usr/local/bin/claude "$@"; }
+    ;;
+esac
