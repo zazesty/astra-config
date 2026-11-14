@@ -246,7 +246,7 @@ class TestBuyListFormatAndRead(unittest.TestCase):
                 patch("actions._QUEUE_FACT", fact),
             ):
                 self.assertEqual(
-                    handle(Intent("buy_list")),
+                    handle(Intent("buy_list"), author="Test"),
                     "Astra\u2019s buy list, last updated Oct 23:\n\nA:\n\u2022 Kettle \u2014 $35",
                 )
 

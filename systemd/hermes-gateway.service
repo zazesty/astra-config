@@ -2,32 +2,34 @@
 Description=Hermes Agent Gateway - Messaging Platform Integration
 After=network-online.target
 Wants=network-online.target
+After=user@0.service
+Wants=user@0.service
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=root
 Group=root
-# Re-apply the unattended memory gate before the process imports plugins.
-# `hermes update` replaces the install tree; this line lives in our unit.
-ExecStartPre=-/usr/local/lib/hermes-agent/venv/bin/python -c "import runpy; runpy.run_path('/root/astra-config/scripts/hermes-memory-auto.py', run_name='__main__')"
-ExecStart=/usr/local/lib/hermes-agent/venv/bin/python -m hermes_cli.main gateway run
+ExecStart="/usr/local/lib/hermes-agent/.hermes/bin/hermes" "gateway" "run"
 WorkingDirectory=/root/.hermes
 Environment="HOME=/root"
 Environment="USER=root"
 Environment="LOGNAME=root"
-Environment="PATH=/root/.nvm/versions/node/v22.22.3/bin:/usr/local/lib/hermes-agent/venv/bin:/usr/local/lib/hermes-agent/node_modules/.bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="VIRTUAL_ENV=/usr/local/lib/hermes-agent/venv"
+Environment="PATH=/root/.hermes/tools/node-26.7.0-linux-x64/bin:/root/.hermes/tools/npm-12.0.2-linux-x64/bin:/usr/local/lib/hermes-agent/node_modules/.bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 Environment="HERMES_HOME=/root/.hermes"
+Environment="HERMES_SUPERVISED_CHILD=1"
 Restart=always
 RestartSec=5
 RestartForceExitStatus=75
+SuccessExitStatus=75
 RestartPreventExitStatus=78
 KillMode=mixed
 KillSignal=SIGTERM
 ExecReload=/bin/kill -USR1 $MAINPID
-ExecStopPost=-/usr/local/lib/hermes-agent/venv/bin/python -m gateway.cgroup_cleanup
-TimeoutStopSec=60
+ExecStop=-"/usr/local/lib/hermes-agent/.hermes/bin/hermes" "--run-module" "gateway.systemd_stop_mark"
+ExecStopPost=-"/usr/local/lib/hermes-agent/.hermes/bin/hermes" "--run-module" "gateway.cgroup_cleanup"
+TimeoutStopSec=70
 StandardOutput=journal
 StandardError=journal
 

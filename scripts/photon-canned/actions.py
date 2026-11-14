@@ -243,7 +243,7 @@ def _run(cmd: list[str], *, cwd: Path | None = None, timeout: int = 20) -> str:
     return out
 
 
-def handle(intent: Intent) -> str:
+def handle(intent: Intent, *, author: str) -> str:
     if intent.kind == "budget":
         return _run(BUDGET_CMD, cwd=FINANCE_CWD)
 
@@ -262,12 +262,14 @@ def handle(intent: Intent) -> str:
                 str(TODOS),
                 "add",
                 title,
+                "--author",
+                author,
                 "--owner",
                 "agent",
                 "--priority",
                 "3",
                 "--next",
-                "Grok Build: parked from Photon",
+                f"Grok Build: parked by {author}",
             ]
         )
         if item_id.startswith("Command failed"):

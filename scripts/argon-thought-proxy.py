@@ -355,6 +355,25 @@ def _latency_log_path() -> str:
     )
 
 
+def _usage_log_path() -> str:
+    return os.environ.get(
+        "ARGON_PROXY_USAGE_LOG",
+        "/root/.local/state/astra/ai-studio-usage.jsonl",
+    )
+
+
+def _append_jsonl(path: str, rec: dict, label: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+        try:
+            os.write(fd, (json.dumps(rec, separators=(",", ":")) + "\n").encode())
+        finally:
+            os.close(fd)
+    except Exception as err:
+        _log(f"argon-proxy {label} failed: {type(err).__name__}")
+
+
 def append_llm_latency(model: str, status: int, elapsed_ms: int, stream: bool) -> None:
     """One row per subagent chat completion. No prompt, key, or signature."""
     rec = {
@@ -364,16 +383,135 @@ def append_llm_latency(model: str, status: int, elapsed_ms: int, stream: bool) -
         "status": int(status),
         "stream": bool(stream),
     }
-    try:
-        path = _latency_log_path()
-        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
-        fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+    _append_jsonl(_latency_log_path(), rec, "latency log")
+
+
+def extract_usage_from_payload(payload: Any) -> tuple[str | None, dict[str, Any] | None]:
+    """Extract (model, usage_fields) from a Gemini native or OpenAI-compat payload."""
+    if isinstance(payload, list):
+        model_found: str | None = None
+        usage_found: dict[str, Any] | None = None
+        for item in payload:
+            m, u = extract_usage_from_payload(item)
+            if m:
+                model_found = m
+            if u:
+                usage_found = u
+        return model_found, usage_found
+    if not isinstance(payload, dict):
+        return None, None
+    model = payload.get("modelVersion") or payload.get("model")
+    model_str = str(model) if isinstance(model, str) and model else None
+    meta = payload.get("usageMetadata")
+    if isinstance(meta, dict):
+        fields: dict[str, Any] = {
+            "prompt_tokens": int(meta.get("promptTokenCount") or 0),
+            "cached_tokens": int(meta.get("cachedContentTokenCount") or 0),
+            "candidates_tokens": int(meta.get("candidatesTokenCount") or 0),
+            "thoughts_tokens": int(meta.get("thoughtsTokenCount") or 0),
+            "total_tokens": int(meta.get("totalTokenCount") or 0),
+        }
+        tier = meta.get("serviceTier")
+        if isinstance(tier, str) and tier:
+            fields["service_tier"] = tier
+        return model_str, fields
+    usage = payload.get("usage")
+    if isinstance(usage, dict):
+        p_det = usage.get("prompt_tokens_details") or {}
+        c_det = usage.get("completion_tokens_details") or {}
+        fields = {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "cached_tokens": int(p_det.get("cached_tokens") or 0) if isinstance(p_det, dict) else 0,
+            "candidates_tokens": int(usage.get("completion_tokens") or 0),
+            "thoughts_tokens": int(c_det.get("reasoning_tokens") or 0) if isinstance(c_det, dict) else 0,
+            "total_tokens": int(usage.get("total_tokens") or 0),
+        }
+        return model_str, fields
+    return model_str, None
+
+
+class UsageSseTracker:
+    """Track latest usageMetadata / usage across an SSE stream."""
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self.model: str | None = None
+        self.usage: dict[str, Any] | None = None
+
+    def feed(self, text: str) -> None:
+        self._buf += text
+        while True:
+            cut = self._buf.find("\n\n")
+            sep = 2
+            if cut < 0:
+                cut = self._buf.find("\r\n\r\n")
+                sep = 4
+            if cut < 0:
+                return
+            frame = self._buf[:cut]
+            self._buf = self._buf[cut + sep :]
+            self._frame(frame)
+
+    def finish(self) -> tuple[str | None, dict[str, Any] | None]:
+        if self._buf.strip():
+            self.feed("\n\n")
+        return self.model, self.usage
+
+    def _frame(self, frame: str) -> None:
+        data: list[str] = []
+        for line in frame.splitlines():
+            if line.startswith("data:"):
+                data.append(line[5:].removeprefix(" "))
+        if not data:
+            return
+        joined = "\n".join(data).strip()
+        if not joined or joined == "[DONE]":
+            return
+        if "usageMetadata" not in joined and '"usage"' not in joined:
+            return
         try:
-            os.write(fd, (json.dumps(rec, separators=(",", ":")) + "\n").encode())
-        finally:
-            os.close(fd)
-    except Exception as err:
-        _log(f"argon-proxy latency log failed: {type(err).__name__}")
+            payload = json.loads(joined)
+        except json.JSONDecodeError:
+            return
+        m, u = extract_usage_from_payload(payload)
+        if m:
+            self.model = m
+        if u:
+            self.usage = u
+
+
+def _gemini_route_info(route: str) -> tuple[str | None, str | None]:
+    """Return (endpoint_name, model_hint) for native Gemini or OpenAI routes."""
+    if route.endswith("/chat/completions"):
+        return "chat/completions", None
+    for action in ("streamGenerateContent", "generateContent"):
+        suffix = f":{action}"
+        if route.endswith(suffix):
+            prefix = route[: -len(suffix)]
+            model_hint = prefix.rsplit("/models/", 1)[-1] if "/models/" in prefix else None
+            return action, model_hint
+    return None, None
+
+
+def append_ai_studio_usage(
+    model: str,
+    endpoint: str,
+    status: int,
+    elapsed_ms: int,
+    stream: bool,
+    usage: dict[str, Any],
+) -> None:
+    """One row per AI Studio / Gemini call with token counts incl. thoughts."""
+    rec: dict[str, Any] = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "model": model or "unknown",
+        "endpoint": endpoint,
+        "status": int(status),
+        "elapsed_ms": int(elapsed_ms),
+        "stream": bool(stream),
+        **usage,
+    }
+    _append_jsonl(_usage_log_path(), rec, "usage log")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -414,6 +552,9 @@ class Handler(BaseHTTPRequestHandler):
         model = "unknown"
         stream_req = False
         llm_call = self.command == "POST" and route.endswith("/chat/completions")
+        endpoint_name, model_hint = _gemini_route_info(route)
+        if model_hint:
+            model = model_hint
         if llm_call and raw:
             try:
                 parsed = json.loads(raw)
@@ -454,6 +595,8 @@ class Handler(BaseHTTPRequestHandler):
         ctype = upstream.headers.get("Content-Type", "")
         streaming = "text/event-stream" in ctype
         signed = unsigned = 0
+        usage_model: str | None = None
+        usage_fields: dict[str, Any] | None = None
         try:
             if streaming:
                 self.send_response(status)
@@ -463,6 +606,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_header(key, value)
                 self.end_headers()
                 extractor = SseExtractor()
+                usage_tracker = UsageSseTracker() if endpoint_name else None
                 decoder_buf = b""
                 client_gone = False
                 while True:
@@ -479,14 +623,24 @@ class Handler(BaseHTTPRequestHandler):
                     text, decoder_buf = _decode_prefix(decoder_buf)
                     if text:
                         extractor.feed(text)
+                        if usage_tracker is not None:
+                            usage_tracker.feed(text)
                 if decoder_buf:
-                    extractor.feed(decoder_buf.decode("utf-8", "replace"))
+                    tail = decoder_buf.decode("utf-8", "replace")
+                    extractor.feed(tail)
+                    if usage_tracker is not None:
+                        usage_tracker.feed(tail)
                 signed, unsigned = extractor.finish()
+                if usage_tracker is not None:
+                    usage_model, usage_fields = usage_tracker.finish()
             else:
                 payload = upstream.read()
-                if route.endswith("/chat/completions") and payload:
+                if endpoint_name and payload:
                     try:
-                        signed, unsigned = extract_json(json.loads(payload))
+                        parsed_resp = json.loads(payload)
+                        if route.endswith("/chat/completions"):
+                            signed, unsigned = extract_json(parsed_resp)
+                        usage_model, usage_fields = extract_usage_from_payload(parsed_resp)
                     except json.JSONDecodeError:
                         pass
                 try:
@@ -510,6 +664,15 @@ class Handler(BaseHTTPRequestHandler):
         )
         if llm_call:
             append_llm_latency(model, int(status or 0), elapsed_ms, stream_req or streaming)
+        if endpoint_name and usage_fields is not None:
+            append_ai_studio_usage(
+                usage_model or model,
+                endpoint_name,
+                int(status or 0),
+                elapsed_ms,
+                stream_req or streaming,
+                usage_fields,
+            )
 
 
 def _decode_prefix(buf: bytes) -> tuple[str, bytes]:
@@ -729,11 +892,47 @@ def _self_test() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         log_path = os.path.join(tmp, "latency.jsonl")
+        usage_path = os.path.join(tmp, "usage.jsonl")
         os.environ["ARGON_PROXY_LATENCY_LOG"] = log_path
+        os.environ["ARGON_PROXY_USAGE_LOG"] = usage_path
         append_llm_latency("gemini-4-hydrogen", 200, 1500, True)
         line = open(log_path, encoding="utf-8").read()
         check("latency row", '"model":"gemini-4-hydrogen"' in line and '"elapsed_ms":1500' in line)
         check("latency mode", oct(os.stat(log_path).st_mode & 0o777) == "0o600")
+
+        ep, hint = _gemini_route_info("/v1beta/models/gemini-4-hydrogen:streamGenerateContent")
+        check("gemini route", ep == "streamGenerateContent" and hint == "gemini-4-hydrogen")
+        um, uf = extract_usage_from_payload(
+            {
+                "modelVersion": "gemini-4-hydrogen",
+                "usageMetadata": {
+                    "promptTokenCount": 100,
+                    "cachedContentTokenCount": 40,
+                    "candidatesTokenCount": 20,
+                    "thoughtsTokenCount": 55,
+                    "totalTokenCount": 175,
+                    "serviceTier": "standard",
+                },
+            }
+        )
+        check(
+            "gemini usage extract",
+            um == "gemini-4-hydrogen"
+            and uf is not None
+            and uf["thoughts_tokens"] == 55
+            and uf["cached_tokens"] == 40,
+        )
+        ut = UsageSseTracker()
+        ut.feed('data: {"candidates":[{"content":{"parts":[{"text":"hi"}]}}]}\n\n')
+        ut.feed(
+            'data: {"modelVersion":"gemini-4-hydrogen","usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"thoughtsTokenCount":12,"totalTokenCount":27}}\n\n'
+        )
+        sm, sf = ut.finish()
+        check("gemini sse usage", sm == "gemini-4-hydrogen" and sf is not None and sf["thoughts_tokens"] == 12)
+        append_ai_studio_usage("gemini-4-hydrogen", "streamGenerateContent", 200, 900, True, sf or {})
+        uline = open(usage_path, encoding="utf-8").read()
+        check("usage row", '"thoughts_tokens":12' in uline and '"endpoint":"streamGenerateContent"' in uline)
+        check("usage mode", oct(os.stat(usage_path).st_mode & 0o777) == "0o600")
     print("argon-thought-proxy self-test:", "pass" if ok else "fail")
     return 0 if ok else 1
 

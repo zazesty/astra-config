@@ -54,6 +54,10 @@ fi
 [ -f ~/.codex/env ] && . ~/.codex/env
 
 
+# Route Antigravity CLI (agy) Gemini API calls through the local proxy so
+# usageMetadata (including thoughtsTokenCount) is logged locally.
+export GOOGLE_GEMINI_BASE_URL="http://127.0.0.1:8791"
+
 # Added by Antigravity CLI installer
 export PATH="/root/.local/bin:$PATH"
 

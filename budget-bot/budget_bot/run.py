@@ -39,6 +39,7 @@ from .store import (
     upsert_txns,
 )
 from .notify import send_alert, send_alerts
+from .tax import ruling_snapshot
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,8 +107,9 @@ def cmd_notifications(args: argparse.Namespace) -> int:
     return 0
 
 
+@ruling_snapshot()
 def cmd_budget_status(args: argparse.Namespace) -> int:
-    """Human one-liner: calendar + rolling (Hermes / chat-friendly)."""
+    """Human rolling-pace status, with optional cash-vs-bills and amount questions."""
     from .balances import checking_cash_by_cu
     from .config import load_bill_amount_asks
     from .templates import budget_status_text
@@ -995,7 +997,7 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser(
         "budget-status",
-        help="Human one-liner: calendar + rolling 30d (Hermes-friendly)",
+        help="Rolling pace status, with optional cash-vs-bills and amount questions",
     )
     s.add_argument("--as-of", default=None, help="YYYY-MM-DD (default: today PT)")
     s.set_defaults(func=cmd_budget_status)

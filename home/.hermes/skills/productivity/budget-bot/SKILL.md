@@ -1,7 +1,7 @@
 ---
 name: budget-bot
-description: "Budget status: calendar + rolling via Budget Bot CLI."
-version: 1.1.0
+description: "Budget status: rolling pace and optional cash-vs-bills via Budget Bot CLI."
+version: 1.1.1
 author: zaz-astra
 platforms: [linux]
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 # Budget Bot status
 
-When Zavdi asks **budget status**, how spending is going, pace, hardcap left, calendar vs rolling month — run **only** this CLI (do **not** invent numbers). Do not search Astra, read templates, or explore the repo. One command, paste both lines, stop.
+When Zavdi asks **budget status**, how spending is going, pace, hardcap left, calendar vs rolling month — run **only** this CLI (do **not** invent numbers). Do not search Astra, read templates, or explore the repo. One command, paste the actual output, stop. Do not expect or complain about a missing calendar line.
 
 Copy / policy / code changes → skill **standing-todos** (park). Do not implement from Photon.
 

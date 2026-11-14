@@ -3,7 +3,7 @@
 # State: ~/.local/state/astra/standing-todos.json
 #
 #   standing-todos.sh list
-#   standing-todos.sh add "title" [--owner agent|human|either] [--priority 1-5] [--blocked-on text] [--plain text]
+#   standing-todos.sh add "title" --author "name / agent" [--owner agent|human|either] [--priority 1-5] [--blocked-on text] [--plain text]
 #   standing-todos.sh plain <id> "text"
 #   standing-todos.sh done <id>
 #   standing-todos.sh note <id> "text"
@@ -68,7 +68,7 @@ if cmd == "list":
     done = [i for i in doc["items"] if i.get("status") != "open"]
     print(f"open={len(open_items)} done={len(done)} updated={doc.get('updated')}")
     for i in open_items:
-        print(f"  [{i.get('priority',5)}] {i['id']}  owner={i.get('owner','either')}  {i['title']}")
+        print(f"  [{i.get('priority',5)}] {i['id']}  owner={i.get('owner','either')}  author={i.get('author') or 'unknown (legacy)'}  {i['title']}")
         if i.get("blocked_on"):
             print(f"       blocked_on: {i['blocked_on']}")
         if i.get("plain"):
@@ -80,13 +80,15 @@ if cmd == "list":
 if cmd == "add":
     rest = args[1:]
     if not rest:
-        print("usage: standing-todos.sh add \"title\" [--owner agent|human|either] [--priority N] [--blocked-on x] [--next x] [--plain x]", file=sys.stderr)
+        print("usage: standing-todos.sh add \"title\" --author \"name / agent\" [--owner agent|human|either] [--priority N] [--blocked-on x] [--next x] [--plain x]", file=sys.stderr)
         sys.exit(2)
     title = rest[0]
-    owner, priority, blocked, nxt, plain = "either", 3, None, None, None
+    owner, priority, blocked, nxt, plain, author = "either", 3, None, None, None, None
     i = 1
     while i < len(rest):
-        if rest[i] == "--owner" and i + 1 < len(rest):
+        if rest[i] == "--author" and i + 1 < len(rest):
+            author = rest[i + 1].strip(); i += 2
+        elif rest[i] == "--owner" and i + 1 < len(rest):
             owner = rest[i + 1]; i += 2
         elif rest[i] == "--priority" and i + 1 < len(rest):
             priority = int(rest[i + 1]); i += 2
@@ -98,6 +100,9 @@ if cmd == "add":
             plain = rest[i + 1]; i += 2
         else:
             i += 1
+    if not author or len(author) > 100 or "\n" in author or "\r" in author:
+        print("--author is required: sign with your name / agent identity (one line, up to 100 characters)", file=sys.stderr)
+        sys.exit(2)
     doc = load()
     item_id = f"{slug(title)}-{uuid.uuid4().hex[:6]}"
     doc["items"].append({
@@ -105,6 +110,7 @@ if cmd == "add":
         "title": title,
         "status": "open",
         "owner": owner,
+        "author": author,
         "priority": priority,
         "blocked_on": blocked,
         "next_action": nxt,

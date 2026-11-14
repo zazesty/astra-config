@@ -93,7 +93,7 @@ def pre_gateway_dispatch(event, gateway, **kwargs):
         return None
 
     try:
-        reply = handle(intent)
+        reply = handle(intent, author="Zavdi via Photon")
     except Exception:
         logger.exception("photon-canned handle failed")
         reply = "Canned path failed. Try again or ask Grok Build."
@@ -124,3 +124,5 @@ def pre_gateway_dispatch(event, gateway, **kwargs):
 
 def register(ctx):
     ctx.register_hook("pre_gateway_dispatch", pre_gateway_dispatch)
+    from api_canned import wire_api_canned
+    ctx.register_platform_handler("api_server", wire_api_canned)

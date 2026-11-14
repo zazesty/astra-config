@@ -25,6 +25,7 @@ from budget_bot.tax import (
     prior_quarter,
     review_event,
     ruling_for,
+    ruling_snapshot,
     tie_out,
 )
 
@@ -40,6 +41,33 @@ def _write_book(root: Path, items: list[dict]) -> None:
 
 
 class TestTaxBook(unittest.TestCase):
+    def test_snapshot_reuses_book_and_next_request_observes_new_rulings(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write_book(root, [{"txn_id": "sale-1", "character": "return_of_capital"}])
+            with patch("budget_bot.config.state_dir", lambda: root), \
+                 patch("budget_bot.tax.load_book", wraps=load_book) as reads:
+                with ruling_snapshot():
+                    self.assertFalse(ruling_for("sale-1").counts_as_spend)
+                    _write_book(root, [{"txn_id": "sale-1", "character": "nondeductible_personal"}])
+                    with ruling_snapshot():
+                        self.assertFalse(ruling_for("sale-1").counts_as_spend)
+                    self.assertEqual(reads.call_count, 1)
+                with ruling_snapshot():
+                    self.assertTrue(ruling_for("sale-1").counts_as_spend)
+                self.assertEqual(reads.call_count, 2)
+
+    def test_snapshot_scope_resets_after_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _write_book(root, [{"txn_id": "sale-1", "character": "return_of_capital"}])
+            with patch("budget_bot.config.state_dir", lambda: root):
+                with self.assertRaisesRegex(RuntimeError, "synthetic failure"):
+                    with ruling_snapshot():
+                        raise RuntimeError("synthetic failure")
+                _write_book(root, [{"txn_id": "sale-1", "character": "nondeductible_personal"}])
+                self.assertTrue(ruling_for("sale-1").counts_as_spend)
+
     def test_return_of_capital_does_not_move_spend(self):
         deposit = Transaction(
             id="sale-1",

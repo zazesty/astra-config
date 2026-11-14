@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any
@@ -120,7 +122,7 @@ COVERAGE_NOTES: tuple[dict[str, str], ...] = (
 )
 
 EMAIL_INFLOW_CAP = 12
-_CACHE: tuple[tuple[str, int], "Book"] | None = None
+_CACHE: tuple[tuple[str, int, int, int], "Book"] | None = None
 
 
 @dataclass(frozen=True)
@@ -142,6 +144,25 @@ class Book:
     error: str | None = None
 
 
+_RULING_SNAPSHOT: ContextVar[Book | None] = ContextVar("budget_tax_snapshot", default=None)
+
+
+@contextmanager
+def ruling_snapshot():
+    """One consistent tax overlay per calculation; later requests reload it.
+
+    Bill matching calls ruling_for hundreds of thousands of times. Rechecking
+    the overlay's path and mtime on each row dominates a budget-status request.
+    Context-local scope also keeps concurrent calculations independent.
+    """
+    current = _RULING_SNAPSHOT.get()
+    token = _RULING_SNAPSHOT.set(current if current is not None else load_book())
+    try:
+        yield
+    finally:
+        _RULING_SNAPSHOT.reset(token)
+
+
 def classifications_path():
     from .config import state_dir
 
@@ -159,21 +180,23 @@ def load_book() -> Book:
     key_path = str(path)
     if not path.is_file():
         book = Book()
-        _CACHE = ((key_path, -1), book)
+        _CACHE = ((key_path, -1, -1, -1), book)
         return book
-    mtime = path.stat().st_mtime_ns
-    if _CACHE is not None and _CACHE[0] == (key_path, mtime):
+    stat = path.stat()
+    stamp = (key_path, stat.st_mtime_ns, stat.st_size, stat.st_ino)
+    if _CACHE is not None and _CACHE[0] == stamp:
         return _CACHE[1]
     try:
         book = _parse(path.read_text())
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         book = Book(error=f"tax classifications unreadable: {exc}")
-    _CACHE = ((key_path, mtime), book)
+    _CACHE = (stamp, book)
     return book
 
 
 def ruling_for(txn_id: str) -> Ruling | None:
-    return load_book().rulings.get(txn_id)
+    book = _RULING_SNAPSHOT.get()
+    return (book if book is not None else load_book()).rulings.get(txn_id)
 
 
 def is_locked(txn_id: str) -> bool:

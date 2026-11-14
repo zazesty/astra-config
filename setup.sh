@@ -102,6 +102,7 @@ for u in \
   budget-bot-tax-quarterly.timer \
   health-bot.service \
   hermes-gateway.service \
+  hermes-dashboard.service \
   photon-heal.service \
   photon-heal.timer \
   ifx-cycle-nudge.service \
@@ -331,6 +332,7 @@ fi
 # Budget Bot Photon skills. Canonical in the repo; live path is the symlink.
 mkdir -p /root/.hermes/skills/productivity
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot" /root/.hermes/skills/productivity/budget-bot
+ln -sfnT "$REPO/home/.hermes/skills/productivity/standing-todos" /root/.hermes/skills/productivity/standing-todos
 ln -sfnT "$REPO/home/.hermes/skills/productivity/budget-bot-ops" /root/.hermes/skills/productivity/budget-bot-ops
 # Hermes reply wall-clock log. Gateway loads hooks once per process.
 mkdir -p /root/.hermes/hooks
@@ -360,6 +362,7 @@ systemctl enable --now \
   budget-bot-plaid-webhook.service \
   health-bot.service \
   hermes-gateway.service \
+  hermes-dashboard.service \
   ifx-form.service \
   photon-heal.timer \
   budget-bot-eom-leftover.timer \
@@ -403,6 +406,14 @@ say "9/10  Tailscale auth + Funnel"
 tailscale up
 # Public HTTPS -> local MCP server. Persists in tailscaled state, survives reboot.
 tailscale funnel --bg "$FUNNEL_PORT"
+# Optional Hermes clients: HTTPS stays within the tailnet. Secrets are restored
+# separately, so only configure these listeners when their credentials exist.
+if [ -f /etc/hermes-dashboard.env ]; then
+  tailscale serve --bg --https=9443 http://127.0.0.1:9119
+fi
+if [ -f /root/.hermes/.env ] && grep -q '^API_SERVER_KEY=.' /root/.hermes/.env; then
+  tailscale serve --bg --https=9444 http://127.0.0.1:8642
+fi
 # Toggling HTTPS/Funnel/DNS can leave tailscaled serving a stale cert (intermittent
 # 500 on the funnel URL). Restarting clears it; auth + the --bg funnel config both
 # persist in tailscaled state across the restart, so this is safe to re-run.

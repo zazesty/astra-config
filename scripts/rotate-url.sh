@@ -5,7 +5,7 @@
 #
 # This automates the BOX side end-to-end: generate a fresh path, back up + rewrite
 # /etc/grok-mcp.env, restart the service, and smoke-test through the public Funnel.
-# The three CLOUD consumers still need a manual reconnect — the script prints that
+# Grok and Gemini need manual reconnects — the script prints that
 # checklist and the new URL at the end (the URL is a secret: it is never written to
 # git and never echoed into a tracked file).
 #
@@ -90,6 +90,11 @@ fi
 # photon-heal syncs again before it restarts the gateway.
 if [ -x "$HERE/sync-hermes-astra-mcp.sh" ]; then
   bash "$HERE/sync-hermes-astra-mcp.sh" || echo "rotate-url: WARN sync-hermes-astra-mcp failed" >&2
+fi
+# Open WebUI stores its own MCP connector URL; update that existing entry via
+# its authenticated admin API so it follows rotations without a manual edit.
+if [ -f "$HERE/sync-open-webui-astra-mcp.py" ]; then
+  python3 "$HERE/sync-open-webui-astra-mcp.py" || echo "rotate-url: WARN sync-open-webui-astra-mcp failed" >&2
 fi
 
 BASE="$(tailscale funnel status | grep -oE 'https://[^ ]+' | head -n1)"

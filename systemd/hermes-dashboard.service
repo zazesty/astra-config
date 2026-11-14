@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes dashboard for tailnet clients
+After=network-online.target hermes-gateway.service
+Wants=network-online.target
+ConditionPathExists=/etc/hermes-dashboard.env
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/hermes-dashboard.env
+ExecStart=/root/.local/bin/hermes dashboard --host 127.0.0.1 --port 9119 --no-open
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
