@@ -1,0 +1,6 @@
+[Unit]
+Description=Daily VPS telemetry snapshot (dollars, hours, leverage, churn, cache share)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /root/astra-config/scripts/vps-telemetry.py

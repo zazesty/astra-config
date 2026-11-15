@@ -49,13 +49,12 @@ fi
 echo
 
 cat <<'EOF'
---- Human re-adds (cannot automate from the box) ---
-Manual reconnects: Grok and Gemini only.
-[ ] Grok (cloud) connector re-added (caches tools PER URL)
-[ ] Gemini connector re-added
-[ ] Optional: remove old connector aliases (Astra V12/V13/…) to avoid picking a dead URL
+--- Human actions (cannot automate from the box) ---
+[ ] Grok: manually rotate URL (add the new rotated URL; Grok caches tools PER URL)
+[ ] GPT + Claude: refresh the same pinned URL in place (no new URL needed; Gemini auto-refreshes)
+[ ] Optional: remove old rotated connector aliases (Astra V12/V13/…) on Grok to avoid picking a dead URL
 
-Verify with a trivial tool call from each reconnected consumer (e.g. memory_list limit 1).
+Verify with a trivial tool call from each consumer (e.g. memory_list limit 1).
 Funnel smoke PASS only proves the box — not that cloud UIs point at it.
 
 Dismiss restart alert if present:  rm -f /root/.grok-mcp-restart.alert

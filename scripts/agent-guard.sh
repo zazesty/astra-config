@@ -33,6 +33,9 @@ case "$CMD_NAME" in
         fi
         ;;
     claude)
+        if [ "$(id -u)" -eq 0 ]; then
+            export IS_SANDBOX="${IS_SANDBOX:-1}"
+        fi
         # Check ~/.local/share/claude/versions (latest)
         if [ -d "${HOME:-}/.local/share/claude/versions" ]; then
             REAL_BIN=$(ls -td "${HOME:-}/.local/share/claude/versions/"* 2>/dev/null | head -n 1 || true)
@@ -44,7 +47,11 @@ case "$CMD_NAME" in
         fi
         ;;
     codex)
-        if command -v node >/dev/null 2>&1; then
+        if [ -x "${HOME:-}/.local/bin/codex" ] && [ "$(readlink -f "${HOME:-}/.local/bin/codex")" != "$(readlink -f "$0")" ]; then
+            REAL_BIN="${HOME:-}/.local/bin/codex"
+        elif [ -x /root/astra-config/scripts/codex-wrapper.sh ] && [ "$(readlink -f /root/astra-config/scripts/codex-wrapper.sh)" != "$(readlink -f "$0")" ]; then
+            REAL_BIN="/root/astra-config/scripts/codex-wrapper.sh"
+        elif command -v node >/dev/null 2>&1; then
             NODE_DIR="$(dirname "$(readlink -f "$(command -v node)")")"
             if [ -x "$NODE_DIR/codex" ] && [ "$(readlink -f "$NODE_DIR/codex")" != "$(readlink -f "$0")" ]; then
                 REAL_BIN="$NODE_DIR/codex"

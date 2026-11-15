@@ -200,10 +200,19 @@ def _todo_line(item: dict[str, Any]) -> str:
     return str(item.get("title") or "").strip() or "Untitled"
 
 
+def _todo_priority(item: dict[str, Any]) -> int:
+    raw = item.get("priority")
+    try:
+        return int(raw) if raw is not None else 5
+    except (TypeError, ValueError):
+        return 5
+
+
 def format_todo_list(items: list[Any]) -> str:
-    open_items = [
-        item for item in items if isinstance(item, dict) and item.get("status") == "open"
-    ]
+    open_items = sorted(
+        (item for item in items if isinstance(item, dict) and item.get("status") == "open"),
+        key=_todo_priority,
+    )
     count = len(open_items)
     if count == 0:
         return "No open items."
@@ -267,7 +276,7 @@ def handle(intent: Intent, *, author: str) -> str:
                 "--owner",
                 "agent",
                 "--priority",
-                "3",
+                "2",
                 "--next",
                 f"Grok Build: parked by {author}",
             ]

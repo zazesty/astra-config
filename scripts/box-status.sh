@@ -111,8 +111,18 @@ if agent_state.is_dir():
     for p in sorted(agent_state.glob("*.last.json")):
         jobs[p.name.replace(".last.json", "")] = loadj(p)
 
+def _todo_priority(item):
+    raw = item.get("priority")
+    try:
+        return int(raw) if raw is not None else 5
+    except (TypeError, ValueError):
+        return 5
+
 todos = loadj(todos_path) or {"items": [], "updated": None}
-open_items = [i for i in todos.get("items", []) if i.get("status") == "open"]
+open_items = sorted(
+    (i for i in todos.get("items", []) if i.get("status") == "open"),
+    key=_todo_priority,
+)
 
 env = {"keys": {}, "files": {}}
 if env_script.is_file():

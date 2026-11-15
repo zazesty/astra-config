@@ -136,7 +136,7 @@ if [ "${#findings[@]}" -gt 0 ]; then
       echo "Report: $REPORT"
       echo "Human checklist: bash $REPO/scripts/post-rotate-checklist.sh"
       echo "Grok Build sync: bash $REPO/scripts/sync-grok-build-astra-mcp.sh"
-      echo "If this followed an MCP_PATH rotation: reconnect Grok (cloud) + Grok Build loopback."
+      echo "If this followed an MCP_PATH rotation: manually rotate URL for Grok and Gemini, refresh the same pinned URL in GPT and Claude (+ Grok Build loopback)."
     } | bash "$NOTIFY" "🔴 astra consumer-health findings" || true
   fi
   exit 1

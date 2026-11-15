@@ -58,6 +58,12 @@ fi
 # usageMetadata (including thoughtsTokenCount) is logged locally.
 export GOOGLE_GEMINI_BASE_URL="http://127.0.0.1:8791"
 
+# agy Vertex ADC (Setup 2A). Values stay out of git. GEMINI_API_KEY stays exported for other tools.
+[ -f "$HOME/.config/agy-vertex.env" ] && . "$HOME/.config/agy-vertex.env"
+
+# Allow root claude --dangerously-skip-permissions
+[ "$(id -u)" -eq 0 ] && export IS_SANDBOX=1
+
 # Added by Antigravity CLI installer
 export PATH="/root/.local/bin:$PATH"
 
@@ -73,5 +79,7 @@ case $- in
     grok() { /usr/local/bin/grok "$@"; }
     codex() { /usr/local/bin/codex "$@"; }
     claude() { /usr/local/bin/claude "$@"; }
+    agy() { /usr/local/bin/agy "$@"; }
+    antigravity() { /usr/local/bin/antigravity "$@"; }
     ;;
 esac

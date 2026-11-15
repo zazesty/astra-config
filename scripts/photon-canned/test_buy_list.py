@@ -289,6 +289,18 @@ class TestTodoListFormat(unittest.TestCase):
             "1 open item:\n\n1. Only",
         )
 
+    def test_sorts_by_priority_then_insertion_order(self):
+        items = [
+            {"status": "open", "title": "P3 tax", "priority": 3},
+            {"status": "open", "title": "P2 first", "priority": 2},
+            {"status": "open", "title": "P1 urgent", "priority": 1},
+            {"status": "open", "title": "P2 second", "priority": 2},
+        ]
+        self.assertEqual(
+            format_todo_list(items),
+            "4 open items:\n\n1. P1 urgent\n2. P2 first\n3. P2 second\n4. P3 tax",
+        )
+
     def test_none_open(self):
         self.assertEqual(format_todo_list([{"status": "done", "title": "X"}]), "No open items.")
 

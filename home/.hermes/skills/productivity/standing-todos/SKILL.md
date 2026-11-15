@@ -17,7 +17,7 @@ Open work board for the box. Grok Build reads this later. Not system status.
 
 ```bash
 /root/astra-config/scripts/standing-todos.sh list
-/root/astra-config/scripts/standing-todos.sh add "title" --author "Hermes" --owner agent --priority 3 --next "Grok Build: …"
+/root/astra-config/scripts/standing-todos.sh add "title" --author "Hermes" --owner agent --priority 2 --next "Grok Build: …"
 /root/astra-config/scripts/standing-todos.sh note <id> "text"
 /root/astra-config/scripts/standing-todos.sh done <id>
 ```
@@ -25,6 +25,8 @@ Open work board for the box. Grok Build reads this later. Not system status.
 `--author` is required: sign as Hermes when you write the task; it is separate from ownership. Never guess who wrote an unsigned legacy task.
 
 `--owner` is who acts next: `agent` | `human` | `either`. Default `agent` when parking implementation.
+
+`--priority` defaults to `2` for new work (`1` only for urgent/groundbreaking errors). `list` sorts by priority ascending, then insertion order.
 
 ## When to add (default)
 

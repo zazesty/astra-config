@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily VPS telemetry snapshot (04:15 PT)
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Timezone=America/Los_Angeles
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -62,9 +62,19 @@ if not args:
 
 cmd = args[0]
 
+def priority_key(item):
+    raw = item.get("priority")
+    try:
+        return int(raw) if raw is not None else 5
+    except (TypeError, ValueError):
+        return 5
+
 if cmd == "list":
     doc = load()
-    open_items = [i for i in doc["items"] if i.get("status") == "open"]
+    open_items = sorted(
+        (i for i in doc["items"] if i.get("status") == "open"),
+        key=priority_key,
+    )
     done = [i for i in doc["items"] if i.get("status") != "open"]
     print(f"open={len(open_items)} done={len(done)} updated={doc.get('updated')}")
     for i in open_items:
@@ -83,7 +93,7 @@ if cmd == "add":
         print("usage: standing-todos.sh add \"title\" --author \"name / agent\" [--owner agent|human|either] [--priority N] [--blocked-on x] [--next x] [--plain x]", file=sys.stderr)
         sys.exit(2)
     title = rest[0]
-    owner, priority, blocked, nxt, plain, author = "either", 3, None, None, None, None
+    owner, priority, blocked, nxt, plain, author = "either", 2, None, None, None, None
     i = 1
     while i < len(rest):
         if rest[i] == "--author" and i + 1 < len(rest):
