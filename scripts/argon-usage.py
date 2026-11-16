@@ -55,7 +55,9 @@ def bucket(model: str) -> str:
     m = (model or "").lower()
     if m.startswith("grok"):
         return "grok"
-    if "flash" in m or "hydrogen" in m:
+    if "hydrogen" in m:
+        return "hydrogen"
+    if "flash" in m:
         return "flash"
     if "argon" in m or "gemini" in m:
         return "argon"
@@ -146,9 +148,9 @@ def move_grok_children(login: dict, child_grok: dict) -> None:
 
 def scan(epoch: datetime) -> dict:
     children, parents = child_ids()
-    model = {name: blank() for name in ("grok", "argon", "flash", "other")}
+    model = {name: blank() for name in ("grok", "argon", "hydrogen", "flash", "other")}
     login = blank()
-    sub = {name: blank() for name in ("all", "grok", "argon", "flash", "other")}
+    sub = {name: blank() for name in ("all", "grok", "argon", "hydrogen", "flash", "other")}
     for path in SESSIONS.glob("**/usage.json"):
         try:
             data = json.loads(path.read_text())
@@ -213,6 +215,7 @@ def snapshot(now: datetime, epoch: datetime, scanned: dict) -> dict:
     model = scanned["model"]
     sub = scanned["subagent"]
     sub_pack = pack(sub["all"])
+    sub_pack["hydrogen"] = pack(sub["hydrogen"])
     sub_pack["flash"] = pack(sub["flash"])
     sub_pack["argon"] = pack(sub["argon"])
     sub_pack["grok"] = pack(sub["grok"])
@@ -222,6 +225,7 @@ def snapshot(now: datetime, epoch: datetime, scanned: dict) -> dict:
         "since": epoch.isoformat(),
         "grok": pack(model["grok"]),
         "argon": pack(model["argon"]),
+        "hydrogen": pack(model["hydrogen"]),
         "flash": pack(model["flash"]),
         "other": pack(model["other"]),
         "work_ratio": ratio(model["argon"]["work"], model["grok"]["work"]),
@@ -258,6 +262,7 @@ def line(row: dict) -> str:
         f"argon-usage: since {row['since']} "
         f"login_work={row['login']['work_tokens']} "
         f"subagent_work={sub['work_tokens']} "
+        f"hydrogen_work={sub['hydrogen']['work_tokens']} "
         f"flash_work={sub['flash']['work_tokens']} "
         f"argon_work={sub['argon']['work_tokens']} "
         f"subagent_ratio={fmt_ratio(row['subagent_ratio'])}"
@@ -338,6 +343,7 @@ def self_test() -> int:
                     "grok-4.7-build": usage_row(4, 48, 12, 0.5),
                     "gemini-4-argon": usage_row(4, 25, 25),
                     "gemini-3.8-flash": usage_row(2, 10, 5),
+                    "gemini-4-hydrogen": usage_row(3, 14, 6),
                 },
             },
         ])
@@ -350,6 +356,9 @@ def self_test() -> int:
         write_usage("f1", [
             turn("2026-10-13T23:40:00+00:00", "gemini-3.8-flash", 2, 10, 5),
         ])
+        write_usage("h1", [
+            turn("2026-10-13T23:42:00+00:00", "gemini-4-hydrogen", 3, 14, 6),
+        ])
         write_usage("g2", [
             turn("2026-10-13T23:45:00+00:00", "grok-4.7-build", 1, 8, 2),
         ])
@@ -358,6 +367,7 @@ def self_test() -> int:
         ])
         mark_child("g1", "a1")
         mark_child("g1", "f1")
+        mark_child("g1", "h1")
         mark_child("g1", "g2")
 
         row = snapshot(epoch, epoch, scan(epoch))
@@ -366,30 +376,34 @@ def self_test() -> int:
         check("call ratio archived", "call_ratio" not in row)
         check("model work keeps the double count", row["grok"]["work_tokens"] == 70 and row["argon"]["work_tokens"] == 107)
         check("model flash keeps the double count", row["flash"]["work_tokens"] == 35)
+        check("model hydrogen keeps the double count", row["hydrogen"]["work_tokens"] == 40)
         check("work ratio stays argon over grok", row["work_ratio"] == 1.5286)
         check("login is parent grok plus one-shots", row["login"]["work_tokens"] == 62)
-        check("subagent uses the rollup once", row["subagent"]["work_tokens"] == 75)
+        check("subagent uses the rollup once", row["subagent"]["work_tokens"] == 95)
         check("subagent flash is the rollup", row["subagent"]["flash"]["work_tokens"] == 15)
+        check("subagent hydrogen is the rollup", row["subagent"]["hydrogen"]["work_tokens"] == 20)
         check("subagent argon excludes the orphan", row["subagent"]["argon"]["work_tokens"] == 50)
         check("grok child leaves the login", row["subagent"]["grok"]["work_tokens"] == 10)
-        check("subagent ratio", row["subagent_ratio"] == 1.2097)
+        check("subagent ratio", row["subagent_ratio"] == 1.5323)
         check("argon cost absent", row["argon"]["cost_usd"] is None)
         check("grok cost", row["grok"]["cost_usd"] == 0.5)
         check("zero denominator", ratio(3, 0) is None)
-        check("flash bucket", bucket("gemini-4-hydrogen") == "flash" and bucket("gemini-3.8-flash") == "flash" and bucket("gemini-flash-latest") == "flash")
+        check("hydrogen bucket", bucket("gemini-4-hydrogen") == "hydrogen")
+        check("flash bucket", bucket("gemini-3.8-flash") == "flash" and bucket("gemini-flash-latest") == "flash")
         check("argon bucket", bucket("gemini-4-argon") == "argon")
         check("grok bucket", bucket("grok-4.7-build") == "grok")
         check("prompt not in snapshot", "secret-prompt" not in json.dumps(row))
         write_snapshot(row)
         written = json.loads(LATEST_PATH.read_text())
-        check("latest written", written["work_ratio"] == 1.5286 and written["subagent_ratio"] == 1.2097)
+        check("latest written", written["work_ratio"] == 1.5286 and written["subagent_ratio"] == 1.5323)
         check("phone not in line", "153" not in line(row))
         text = line(row)
         check(
             "status line is subagent work",
             "call_ratio" not in text
             and "work_ratio" not in text
-            and "subagent_ratio=1.210" in text
+            and "subagent_ratio=1.532" in text
+            and "hydrogen_work=20" in text
             and "flash_work=15" in text
             and "argon_work=50" in text,
         )

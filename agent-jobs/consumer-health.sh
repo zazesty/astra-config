@@ -7,8 +7,7 @@
 #   A) funnel smoke (EXPECTED_TOOLS)
 #   B) Grok Build loopback URL path matches /etc/grok-mcp.env MCP_PATH (hash compare)
 #   C) Claude journal-trigger secrets stay gone (purged 2026-08-30; presence = leak)
-#   D) journal-cron.log: last successful fire age (no-op after hard-stop / crontab cull)
-#   E) optional: ~/.config/grok-journal/enabled vs paused state consistency
+#   D) optional: ~/.config/grok-journal/enabled vs paused state consistency
 set -euo pipefail
 
 REPO="${AGENT_REPO:-/root/astra-config}"
@@ -17,13 +16,7 @@ ENV_FILE="${GROK_ENV:-/etc/grok-mcp.env}"
 GROK_CFG="${GROK_CONFIG:-/root/.grok/config.toml}"
 J_ENDPOINT="${HOME}/.config/journal-trigger/endpoint"
 J_SECRET="${HOME}/.config/journal-trigger/secret"
-J_LOG="${HOME}/.local/state/journal-cron.log"
 REPORT="${HOME}/.local/state/agent-jobs/consumer-health.report.json"
-# Claude journal hard-stop (after this, stale fires are expected)
-STOP_EPOCH=$(TZ=America/Los_Angeles date -d "2026-07-19 21:00:00" +%s 2>/dev/null || echo 0)
-NOW=$(date +%s)
-# Warn if no successful journal fire in this many hours (while still in auto window)
-STALE_H="${JOURNAL_FIRE_STALE_H:-36}"
 
 mkdir -p "$(dirname "$REPORT")"
 findings=()
@@ -66,7 +59,7 @@ PY
          -H 'Accept: application/json, text/event-stream' \
          -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' 2>/dev/null; then
       findings+=("grok_build: loopback tools/list curl failed")
-    elif ! grep -qE 'memory_search|ask_consortium|ask_oracle|research_fanout' /tmp/consumer-health-mcp.out 2>/dev/null; then
+    elif ! grep -qE 'memory_search|ask_panel|research_fanout' /tmp/consumer-health-mcp.out 2>/dev/null; then
       findings+=("grok_build: loopback tools/list missing expected tools")
     fi
   fi
@@ -78,31 +71,7 @@ fi
 if [ -s "$J_ENDPOINT" ]; then findings+=("journal_trigger: retired endpoint file reappeared (should stay purged)"); fi
 if [ -s "$J_SECRET" ]; then findings+=("journal_trigger: retired secret file reappeared (should stay purged)"); fi
 
-# --- D: last successful fire ---
-LAST_FIRE_ISO=""
-if [ -f "$J_LOG" ]; then
-  LAST_FIRE_ISO=$(grep -E 'decision=fire.*post_http=(200|201)' "$J_LOG" | tail -1 | awk '{print $1}' || true)
-fi
-if [ -n "$LAST_FIRE_ISO" ]; then
-  LAST_EPOCH=$(date -d "$LAST_FIRE_ISO" +%s 2>/dev/null || echo 0)
-else
-  LAST_EPOCH=0
-fi
-# Only warn about stale fires if still before hard-stop and cron still installed
-CRON_HAS_JOURNAL=0
-crontab -l 2>/dev/null | grep -q journal-trigger && CRON_HAS_JOURNAL=1 || true
-if [ "$NOW" -lt "$STOP_EPOCH" ] && [ "$CRON_HAS_JOURNAL" = 1 ]; then
-  if [ "$LAST_EPOCH" -eq 0 ]; then
-    findings+=("journal_fire: no successful fire found in journal-cron.log")
-  else
-    age_h=$(( (NOW - LAST_EPOCH) / 3600 ))
-    if [ "$age_h" -gt "$STALE_H" ]; then
-      findings+=("journal_fire: last success ${age_h}h ago (threshold ${STALE_H}h) — may be silent fail")
-    fi
-  fi
-fi
-
-# --- E: grok journal pause flags (info only, not a finding) ---
+# --- D: grok journal pause flags (info only, not a finding) ---
 GJ_ENABLED=0; GJ_PAUSED=0
 [ -f "${HOME}/.config/grok-journal/enabled" ] && GJ_ENABLED=1
 [ -f "${HOME}/.config/grok-journal/paused" ] && GJ_PAUSED=1
@@ -110,7 +79,7 @@ GJ_ENABLED=0; GJ_PAUSED=0
 # Build report
 export REPORT
 FINDINGS_JSON=$(printf '%s\n' "${findings[@]+"${findings[@]}"}" | python3 -c 'import json,sys; print(json.dumps([ln.strip() for ln in sys.stdin if ln.strip()]))')
-python3 - "$REPORT" "$FINDINGS_JSON" "${LAST_FIRE_ISO:-}" "$GJ_ENABLED" "$GJ_PAUSED" "$CRON_HAS_JOURNAL" <<'PY'
+python3 - "$REPORT" "$FINDINGS_JSON" "" "$GJ_ENABLED" "$GJ_PAUSED" "0" <<'PY'
 import json, sys
 path, findings_s, last_fire, en, pa, cron = sys.argv[1:7]
 findings = json.loads(findings_s)
@@ -136,7 +105,7 @@ if [ "${#findings[@]}" -gt 0 ]; then
       echo "Report: $REPORT"
       echo "Human checklist: bash $REPO/scripts/post-rotate-checklist.sh"
       echo "Grok Build sync: bash $REPO/scripts/sync-grok-build-astra-mcp.sh"
-      echo "If this followed an MCP_PATH rotation: manually rotate URL for Grok and Gemini, refresh the same pinned URL in GPT and Claude (+ Grok Build loopback)."
+      echo "If this followed an MCP_PATH rotation: manually rotate URL for Grok, refresh the same pinned URL in GPT and Claude (Gemini auto-refreshes; Grok Build/Hermes auto-sync on-box)."
     } | bash "$NOTIFY" "🔴 astra consumer-health findings" || true
   fi
   exit 1

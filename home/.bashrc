@@ -40,17 +40,6 @@ if [ -z "${GEMINI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
   export GEMINI_API_KEY
 fi
 
-# Logout falls through to this key. A live SuperGrok session token still wins,
-# so exporting it does not move an already-logged-in grok onto API billing.
-# Same single source as the Gemini key. Do not source the rest of the env file.
-if [ -z "${XAI_API_KEY:-}" ] && [ -r /etc/grok-mcp.env ]; then
-  XAI_API_KEY=$(awk -F= '/^XAI_API_KEY=/{print substr($0, index($0,"=")+1); exit}' /etc/grok-mcp.env)
-  XAI_API_KEY=${XAI_API_KEY#\"}
-  XAI_API_KEY=${XAI_API_KEY%\"}
-  XAI_API_KEY=${XAI_API_KEY#\'}
-  XAI_API_KEY=${XAI_API_KEY%\'}
-  export XAI_API_KEY
-fi
 [ -f ~/.codex/env ] && . ~/.codex/env
 
 
@@ -58,8 +47,7 @@ fi
 # usageMetadata (including thoughtsTokenCount) is logged locally.
 export GOOGLE_GEMINI_BASE_URL="http://127.0.0.1:8791"
 
-# agy Vertex ADC (Setup 2A). Values stay out of git. GEMINI_API_KEY stays exported for other tools.
-[ -f "$HOME/.config/agy-vertex.env" ] && . "$HOME/.config/agy-vertex.env"
+# agy on root defaults to AI Pro OAuth; use `agy-gcp` to load ~/.config/agy-vertex.env (Vertex ADC).
 
 # Allow root claude --dangerously-skip-permissions
 [ "$(id -u)" -eq 0 ] && export IS_SANDBOX=1
@@ -80,6 +68,7 @@ case $- in
     codex() { /usr/local/bin/codex "$@"; }
     claude() { /usr/local/bin/claude "$@"; }
     agy() { /usr/local/bin/agy "$@"; }
+    agy-gcp() { /usr/local/bin/agy-gcp "$@"; }
     antigravity() { /usr/local/bin/antigravity "$@"; }
     ;;
 esac

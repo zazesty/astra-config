@@ -7,7 +7,7 @@
 # comma-separated path in MCP_PATH (configured via MCP_PATH_PINNED in the env
 # file) so Claude, GPT, and Gemini keep the same pinned URL (Claude/GPT refresh
 # in place; Gemini auto-refreshes automatically). Only the primary rotating
-# mount (first entry) rotates for Grok, plus on-box loopback/Open WebUI syncs.
+# mount (first entry) rotates for Grok, plus on-box loopback syncs.
 #
 # This automates the BOX side end-to-end: generate a fresh rotating path, keep
 # any pinned path live, back up + rewrite /etc/grok-mcp.env, restart the
@@ -131,11 +131,6 @@ fi
 # photon-heal syncs again before it restarts the gateway.
 if [ -x "$HERE/sync-hermes-astra-mcp.sh" ]; then
   bash "$HERE/sync-hermes-astra-mcp.sh" || echo "rotate-url: WARN sync-hermes-astra-mcp failed" >&2
-fi
-# Open WebUI stores its own MCP connector URL; update that existing entry via
-# its authenticated admin API so it follows rotations without a manual edit.
-if [ -f "$HERE/sync-open-webui-astra-mcp.py" ]; then
-  python3 "$HERE/sync-open-webui-astra-mcp.py" || echo "rotate-url: WARN sync-open-webui-astra-mcp failed" >&2
 fi
 
 BASE="$(tailscale funnel status | grep -oE 'https://[^ ]+' | head -n1)"

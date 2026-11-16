@@ -50,6 +50,7 @@ GUARD="$REPO/scripts/agent-guard.sh"
 [ -e /root/.local/share/claude/versions ] || [ -e /home/dev/.local/share/claude/versions ] && ln -sfn "$GUARD" /usr/local/bin/claude
 AGY_WRAP="$REPO/scripts/agy-wrapper.sh"
 [ -e /root/.local/bin/agy ] && ln -sfn "$AGY_WRAP" /usr/local/bin/agy
+[ -e /root/.local/bin/agy ] && ln -sfn "$AGY_WRAP" /usr/local/bin/agy-gcp
 [ -e /root/.local/bin/agy ] && ln -sfn "$AGY_WRAP" /usr/local/bin/antigravity
 [ -e /root/.grok/bin/grok ] && ln -sfn "$GUARD" /usr/local/bin/grok
 
@@ -66,6 +67,10 @@ cd "$APP"
 "$NODE_BIN/npm" ci
 "$NODE_BIN/npm" run build
 cp src/kalshi-series.json build/   # GOTCHA: tsc does not copy JSON; oddsTool needs it in build/
+if [ -f scripts/pre-push ]; then
+  chmod +x scripts/pre-push scripts/verify-live.mjs scripts/push-verified.sh 2>/dev/null || true
+  ln -sfn ../../scripts/pre-push .git/hooks/pre-push
+fi
 cd "$REPO"
 
 # -----------------------------------------------------------------------------
@@ -86,6 +91,8 @@ say "5/10  Symlink authored config (Stow-style: system -> repo)"
 # NEVER symlinked.
 ln -sfnT "$REPO/etc/systemd/system/grok-mcp.service" /etc/systemd/system/grok-mcp.service
 ln -sfnT "$REPO/etc/sysctl.d/99-swap.conf"            /etc/sysctl.d/99-swap.conf
+mkdir -p /etc/systemd/journald.conf.d
+ln -sfnT "$REPO/etc/systemd/journald.conf.d/99-astra-size.conf" /etc/systemd/journald.conf.d/99-astra-size.conf
 # Budget Bot, IFX, health-bot, Hermes gateway. Live path is the repo file.
 for u in \
   budget-bot-buy-queue-ask.service \
@@ -134,10 +141,7 @@ ln -sfnT "$REPO/home/.config/systemd/user/capacity-watch.service" /root/.config/
 ln -sfnT "$REPO/home/.config/systemd/user/capacity-watch.timer"   /root/.config/systemd/user/capacity-watch.timer
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.service" /root/.config/systemd/user/drift-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.timer"   /root/.config/systemd/user/drift-check.timer
-ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.service" /root/.config/systemd/user/memory-harvest.service
-ln -sfnT "$REPO/home/.config/systemd/user/memory-harvest.timer"   /root/.config/systemd/user/memory-harvest.timer
-ln -sfnT "$REPO/home/.config/systemd/user/journal-oauth-watch.service" /root/.config/systemd/user/journal-oauth-watch.service
-ln -sfnT "$REPO/home/.config/systemd/user/journal-oauth-watch.timer"   /root/.config/systemd/user/journal-oauth-watch.timer
+rm -f /root/.config/systemd/user/{memory-harvest,journal-oauth-watch,claude-journal-cleanup}.{service,timer}
 ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.service" /root/.config/systemd/user/grok-restart-reminder.service
 ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.timer"   /root/.config/systemd/user/grok-restart-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal.service" /root/.config/systemd/user/grok-journal.service
@@ -146,8 +150,6 @@ ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-pause-reminder.service" /
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-pause-reminder.timer"   /root/.config/systemd/user/grok-journal-pause-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.service" /root/.config/systemd/user/grok-journal-read-reminder.service
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.timer"   /root/.config/systemd/user/grok-journal-read-reminder.timer
-ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.service" /root/.config/systemd/user/claude-journal-cleanup.service
-ln -sfnT "$REPO/home/.config/systemd/user/claude-journal-cleanup.timer"   /root/.config/systemd/user/claude-journal-cleanup.timer
 ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.service" /root/.config/systemd/user/or-timeout-review.service
 ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.timer"   /root/.config/systemd/user/or-timeout-review.timer
 ln -sfnT "$REPO/home/.config/systemd/user/argon-usage.service" /root/.config/systemd/user/argon-usage.service
@@ -278,13 +280,13 @@ systemctl --user enable --now git-access-check.timer
 systemctl --user enable --now consumer-health.timer
 # Grok journal autopilot (02:00 PT). No-ops unless ~/.config/grok-journal/enabled.
 systemctl --user enable --now grok-journal.timer
-# Claude journal retirement: archive 2026-08-16 / delete secrets 2026-08-30
-systemctl --user enable --now claude-journal-cleanup.timer
+# Claude journal retirement: archive 2026-08-16 / delete secrets 2026-08-30 (completed)
+systemctl --user disable --now claude-journal-cleanup.timer 2>/dev/null || true
 # Ensure agent job scripts executable after rebuild
 chmod +x "$REPO"/scripts/agent-run.sh "$REPO"/scripts/grok-journal-run.sh \
   "$REPO"/scripts/grok-journal-read-reminder.sh \
   "$REPO"/scripts/grok-journal-pause-reminder.sh \
-  "$REPO"/scripts/claude-journal-cleanup.sh "$REPO"/agent-jobs/*.sh 2>/dev/null || true
+  "$REPO"/agent-jobs/*.sh 2>/dev/null || true
 chmod +x "$REPO"/scripts/box-status.sh "$REPO"/scripts/standing-todos.sh \
   "$REPO"/scripts/env-presence.sh "$REPO"/scripts/photon-heal.sh \
   "$REPO"/scripts/argon-usage.py \
@@ -356,8 +358,8 @@ fi
 mkdir -p /root/.hermes/plugins
 ln -sfnT "$REPO/scripts/photon-canned" /root/.hermes/plugins/photon-canned
 systemctl enable --now grok-argon-proxy.service
-# Point Grok Build's Argon and Flash seats at the local thought-signature proxy.
-# Touches [model.argon], [model.flash], and the subagent pins. Leaves MCP URLs alone.
+# Point Grok Build's Argon and Hydrogen seats at the local thought-signature proxy.
+# Touches [model.argon], [model.hydrogen], and the subagent pins. Leaves MCP URLs alone.
 if [ -f /root/.grok/config.toml ]; then
   python3 "$REPO/scripts/argon-thought-proxy.py" --point-config /root/.grok/config.toml
 fi
@@ -429,14 +431,13 @@ say "10/10  Authenticate Agent CLIs"
 cat <<EOF
 
   Edit /etc/grok-mcp.env and fill in the keys (it was scaffolded blank):
-      XAI_API_KEY=xai-...        (https://console.x.ai      — set a spend cap)
+      OPENROUTER_API_KEY=sk-or-... (https://openrouter.ai/keys — set a spend cap;
+                                  powers Grok x-ai/grok-4.7, Sol, Sonnet, and
+                                  the default GEMINI_TRANSPORT=openrouter; also
+                                  add GEMINI_API_KEY as a BYOK provider key in
+                                  the OpenRouter dashboard)
       GEMINI_API_KEY=...         (https://aistudio.google.com — RESTRICT key to
                                   the Generative Language API, or it's blocked)
-      OPENROUTER_API_KEY=sk-or-... (https://openrouter.ai/keys — REQUIRED for the
-                                  default GEMINI_TRANSPORT=openrouter; also add the
-                                  GEMINI_API_KEY as a BYOK provider key in the
-                                  OpenRouter dashboard. To run with just the first
-                                  two keys instead, set GEMINI_TRANSPORT=direct.)
 
   OPTIONAL (alert emails; absent = alerts safely no-op):
       RESEND_API_KEY=...         (https://resend.com — sign up with the address

@@ -112,7 +112,7 @@ for arg in "$@"; do
 done
 
 if [ "$BYPASS" -eq 0 ]; then
-    echo "antigravity is free. if limits are hit, use terra in codex."
+    echo "Use Antigravity + Hydrogen. Increase to Argon or Opus for debugging as needed. Codex uses Azure credits."
     read -r -p "start $CMD_NAME session? [y/N] (use --yes to bypass): " CONFIRM || true
     case "$CONFIRM" in
         y|Y|yes|YES)

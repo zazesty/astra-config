@@ -20,7 +20,7 @@ file_presence() {
   else echo "$f  FILE  missing"; fi
 }
 echo "# env presence $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-for k in XAI_API_KEY GEMINI_API_KEY GEMINI_TRANSPORT OPENROUTER_API_KEY MCP_PATH RESEND_API_KEY NOTIFY_EMAIL_TO NOTIFY_EMAIL_FROM; do
+for k in GEMINI_API_KEY GEMINI_TRANSPORT OPENROUTER_API_KEY MCP_PATH MCP_PATH_PINNED RESEND_API_KEY NOTIFY_EMAIL_TO NOTIFY_EMAIL_FROM; do
   presence /etc/grok-mcp.env "$k"
 done
 for k in PLAID_CLIENT_ID PLAID_SECRET PLAID_SECRET_SANDBOX PLAID_ENV \
@@ -30,9 +30,6 @@ for k in PLAID_CLIENT_ID PLAID_SECRET PLAID_SECRET_SANDBOX PLAID_ENV \
   presence /etc/budget-bot.env "$k"
 done
 presence /root/.hermes/.env OPENROUTER_API_KEY
-presence /root/.hermes/.env XAI_API_KEY
-file_presence /root/.config/journal-trigger/endpoint
-file_presence /root/.config/journal-trigger/secret
 file_presence /root/.git-credentials
 file_presence /root/.new-mcp-url
 presence /root/.local/state/astra/xai-management.env XAI_MANAGEMENT_KEY

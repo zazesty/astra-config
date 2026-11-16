@@ -43,6 +43,7 @@ findings=()
 symlinks=(
   "/etc/systemd/system/grok-mcp.service|etc/systemd/system/grok-mcp.service"
   "/etc/sysctl.d/99-swap.conf|etc/sysctl.d/99-swap.conf"
+  "/etc/systemd/journald.conf.d/99-astra-size.conf|etc/systemd/journald.conf.d/99-astra-size.conf"
   "/root/.claude/settings.json|home/.claude/settings.json"
   "/root/.bashrc|home/.bashrc"
   "/root/journal-trigger/usage-gate.sh|home/journal-trigger/usage-gate.sh"

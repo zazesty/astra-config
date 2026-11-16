@@ -22,12 +22,12 @@ from __future__ import annotations
 import json
 import os
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from astra_common import http_json, load_env, validate_xai_team
 
 TZ = ZoneInfo("America/Los_Angeles")
 CENTS = Decimal("0.01")
@@ -52,36 +52,6 @@ def dec(v) -> Decimal:
         return Decimal(str(v))
     except Exception:
         return Decimal("0")
-
-
-def load_env(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    if not path.is_file():
-        return out
-    for line in path.read_text(errors="replace").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k.strip()] = v.strip().strip("'").strip('"')
-    return out
-
-
-def http_json(url: str, key: str, body: dict | None = None, timeout: int = 30):
-    data = None if body is None else json.dumps(body).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        method="POST" if body is not None else "GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        return e.code, None
-    except Exception as e:
-        return type(e).__name__, None
 
 
 def window(now: datetime) -> tuple:
@@ -114,16 +84,10 @@ def add_usd(bucket: dict[str, Decimal], model: str, usd: Decimal) -> None:
 
 
 def xai_usage(start, end) -> dict:
-    env = load_env(XAI_ENV)
-    key = env.get("XAI_MANAGEMENT_KEY", "")
-    if not key:
-        return {"ok": False, "error": "no XAI_MANAGEMENT_KEY", "by_model": {}}
-    status, meta = http_json(
-        "https://management-api.x.ai/auth/management-keys/validation", key
-    )
-    team = meta.get("teamId") if isinstance(meta, dict) else None
-    if status != 200 or not team:
-        return {"ok": False, "error": f"validation {status}", "by_model": {}}
+    key = load_env(XAI_ENV).get("XAI_MANAGEMENT_KEY", "")
+    team, err = validate_xai_team(key)
+    if err or not team:
+        return {"ok": False, "error": err, "by_model": {}}
     # endTime is exclusive. Noon the day after `end` covers that PT date.
     body = {
         "analyticsRequest": {

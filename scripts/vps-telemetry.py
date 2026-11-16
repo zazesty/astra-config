@@ -27,13 +27,13 @@ import os
 import sqlite3
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from astra_common import http_json, load_env, validate_xai_team
 
 TZ = ZoneInfo("America/Los_Angeles")
 STATE_DIR = Path(os.environ.get("VPS_TELEMETRY_STATE", str(Path.home() / ".local/state/astra")))
@@ -85,6 +85,19 @@ AI_STUDIO_RATES = {
 }
 
 
+def ai_studio_seat(model: str) -> str:
+    m = (model or "").lower()
+    if "hydrogen" in m:
+        return "hydrogen"
+    if "flash-lite" in m:
+        return "flash-lite"
+    if "flash" in m:
+        return "flash"
+    if "argon" in m:
+        return "argon"
+    return "other"
+
+
 def load_config() -> dict:
     cfg = dict(DEFAULT_CONFIG)
     if CONFIG_PATH.is_file():
@@ -122,36 +135,6 @@ def save_cache(cache: dict) -> None:
     os.chmod(STATE_DIR, 0o700)
     CACHE_PATH.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.chmod(CACHE_PATH, 0o600)
-
-
-def load_env(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
-    if not path.is_file():
-        return out
-    for line in path.read_text(errors="replace").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        out[k.strip()] = v.strip().strip("'").strip('"')
-    return out
-
-
-def http_json(url: str, key: str, body: dict | None = None, timeout: int = 30):
-    data = None if body is None else json.dumps(body).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        method="POST" if body is not None else "GET",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, json.loads(resp.read().decode())
-    except urllib.error.HTTPError as e:
-        return e.code, None
-    except Exception as e:
-        return type(e).__name__, None
 
 
 def parse_any_ts(val) -> datetime | None:
@@ -225,14 +208,10 @@ def bucket_active_hours(
 
 
 def fetch_xai_daily(start: date, end: date, cache: dict) -> tuple[bool, str | None]:
-    env = load_env(XAI_ENV)
-    key = env.get("XAI_MANAGEMENT_KEY", "")
-    if not key:
-        return False, "no XAI_MANAGEMENT_KEY"
-    status, meta = http_json("https://management-api.x.ai/auth/management-keys/validation", key)
-    team = meta.get("teamId") if isinstance(meta, dict) else None
-    if status != 200 or not team:
-        return False, f"validation {status}"
+    key = load_env(XAI_ENV).get("XAI_MANAGEMENT_KEY", "")
+    team, err = validate_xai_team(key)
+    if err or not team:
+        return False, err
 
     body = {
         "analyticsRequest": {
@@ -351,6 +330,15 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
         "thoughts_tokens": 0,
         "total_tokens": 0,
         "est_list_usd": 0.0,
+        "by_seat": defaultdict(lambda: {
+            "reqs": 0,
+            "prompt_tokens": 0,
+            "cached_tokens": 0,
+            "output_tokens": 0,
+            "thoughts_tokens": 0,
+            "total_tokens": 0,
+            "est_list_usd": 0.0,
+        }),
         "by_day": defaultdict(lambda: {"reqs": 0, "prompt_tokens": 0, "cached_tokens": 0, "total_tokens": 0, "est_list_usd": 0.0}),
     }
     if not AI_STUDIO_LOG.is_file():
@@ -377,11 +365,8 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
         thoughts = int(row.get("thoughts_tokens") or 0)
         tot = prompt + cand + thoughts
 
-        rates = AI_STUDIO_RATES["flash"]
-        for key, r in AI_STUDIO_RATES.items():
-            if key in model:
-                rates = r
-                break
+        seat = ai_studio_seat(model)
+        rates = AI_STUDIO_RATES.get(seat, AI_STUDIO_RATES["flash"])
         usd = (fresh * rates[0] + cached * rates[1] + (cand + thoughts) * rates[2]) / 1_000_000.0
 
         out["reqs"] += 1
@@ -392,6 +377,15 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
         out["total_tokens"] += tot
         out["est_list_usd"] += usd
 
+        srow = out["by_seat"][seat]
+        srow["reqs"] += 1
+        srow["prompt_tokens"] += prompt
+        srow["cached_tokens"] += cached
+        srow["output_tokens"] += cand
+        srow["thoughts_tokens"] += thoughts
+        srow["total_tokens"] += tot
+        srow["est_list_usd"] += usd
+
         d_str = d_pt.isoformat()
         day = out["by_day"][d_str]
         day["reqs"] += 1
@@ -401,6 +395,10 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
         day["est_list_usd"] += usd
 
     out["est_list_usd"] = round(out["est_list_usd"], 4)
+    out["by_seat"] = {
+        k: {**v, "est_list_usd": round(v["est_list_usd"], 4)}
+        for k, v in sorted(out["by_seat"].items())
+    }
     return out
 
 
@@ -837,6 +835,7 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None, skip_n
                 "total_vps_usd": total_vps_usd,
                 "ai_studio_proxy_est_list_usd": studio_win["est_list_usd"],
                 "ai_studio_proxy_reqs": studio_win["reqs"],
+                "ai_studio_proxy_by_seat": studio_win["by_seat"],
             },
             "hours": {
                 "human_hours": human_hours,
@@ -987,6 +986,10 @@ def self_test() -> int:
     assert parse_any_ts(1794267852230).year == 2026
     assert parse_any_ts(1794265639).year == 2026
     assert parse_any_ts("2026-11-15T00:06:13.803196996Z").year == 2026
+    assert ai_studio_seat("gemini-4-hydrogen") == "hydrogen"
+    assert ai_studio_seat("gemini-3.8-flash") == "flash"
+    assert ai_studio_seat("gemini-flash-lite-latest") == "flash-lite"
+    assert ai_studio_seat("gemini-4-argon") == "argon"
     print("vps-telemetry self-test ok")
     return 0
 

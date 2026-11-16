@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# grok-journal-run.sh — nightly Grok journal autopilot (xAI API → private repo)
+# grok-journal-run.sh — nightly Grok journal autopilot (OpenRouter API → private repo)
 #
 # Usage:
 #   grok-journal-run.sh              # live: write entry, commit, push
@@ -15,11 +15,11 @@
 #
 # Config (env, optional overrides):
 #   GROK_JOURNAL_REPO   default /root/Grok-Journal
-#   GROK_JOURNAL_MODEL  default grok-4.7
-#   GROK_JOURNAL_EFFORT unset → omit field (xAI default is high)
+#   GROK_JOURNAL_MODEL  default x-ai/grok-4.7
+#   GROK_JOURNAL_EFFORT unset → omit field (provider default applies)
 #   GROK_JOURNAL_MAX_TOKENS default 4096
 #   GROK_JOURNAL_API_TIMEOUT default 480 (seconds; systemd TimeoutStartSec must exceed this)
-#   NOTIFY_ENV          default /etc/grok-mcp.env  (XAI_API_KEY lives here)
+#   NOTIFY_ENV          default /etc/grok-mcp.env  (OPENROUTER_API_KEY lives here)
 #   API: one extra attempt on 429/5xx (incl. Cloudflare 520) or network errors
 #        when the failed attempt was <120s. Timeouts are not retried.
 # =============================================================================
@@ -55,13 +55,13 @@ LAST_JSON="$STATE_DIR/last.json"
 SUCCESS_PT="$STATE_DIR/last-success-pt-date"
 NOTIFY="$ASTRA/scripts/notify-email.sh"
 TZPT=America/Los_Angeles
-MODEL="${GROK_JOURNAL_MODEL:-grok-4.7}"
+MODEL="${GROK_JOURNAL_MODEL:-x-ai/grok-4.7}"
 EFFORT="${GROK_JOURNAL_EFFORT:-}"
 MAX_TOKENS="${GROK_JOURNAL_MAX_TOKENS:-4096}"
 API_TIMEOUT="${GROK_JOURNAL_API_TIMEOUT:-480}"
-API_BASE="${XAI_BASE_URL:-https://api.x.ai/v1}"
-# grok-4.7 → Grok 4.7
-MODEL_TAG="Grok ${MODEL#grok-}"
+API_BASE="${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}"
+# x-ai/grok-4.7 (or grok-4.7) → Grok 4.7
+MODEL_TAG="Grok ${MODEL##*grok-}"
 
 mkdir -p "$CFG_DIR" "$STATE_DIR"
 
@@ -236,19 +236,19 @@ EOF
 else
   # shellcheck disable=SC1090
   set -a; . "$ENV_FILE" 2>/dev/null || true; set +a
-  if [ -z "${XAI_API_KEY:-}" ]; then
-    log "fail reason=no_XAI_API_KEY"
-    [ -x "$NOTIFY" ] && printf '%s\n' "grok-journal-run: XAI_API_KEY missing in $ENV_FILE" \
+  if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+    log "fail reason=no_OPENROUTER_API_KEY"
+    [ -x "$NOTIFY" ] && printf '%s\n' "grok-journal-run: OPENROUTER_API_KEY missing in $ENV_FILE" \
       | bash "$NOTIFY" "🔴 grok-journal-run failed (no API key)" || true
     exit 1
   fi
 
-  if ! XAI_API_KEY="$XAI_API_KEY" API_BASE="$API_BASE" MODEL="$MODEL" EFFORT="$EFFORT" \
+  if ! OPENROUTER_API_KEY="$OPENROUTER_API_KEY" API_BASE="$API_BASE" MODEL="$MODEL" EFFORT="$EFFORT" \
       MAX_TOKENS="$MAX_TOKENS" API_TIMEOUT="$API_TIMEOUT" SYSTEM_FILE="$SYSTEM_FILE" \
       PROMPT_USER="$PROMPT_USER" OUT_RAW="$OUT_RAW" OUT_USAGE="$OUT_USAGE" python3 - <<'PY'
 import json, os, sys, time, urllib.request, urllib.error
 
-api_key = os.environ["XAI_API_KEY"]
+api_key = os.environ["OPENROUTER_API_KEY"]
 base = os.environ["API_BASE"].rstrip("/")
 model = os.environ["MODEL"]
 effort = (os.environ.get("EFFORT") or "").strip()
@@ -266,11 +266,13 @@ body = {
     "max_tokens": max_tokens,
 }
 if effort:
-    body["reasoning_effort"] = effort
+    body["reasoning"] = {"effort": effort}
 payload = json.dumps(body).encode("utf-8")
 headers = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {api_key}",
+    "HTTP-Referer": "https://zaz-astra.local",
+    "X-Title": "grok-journal",
 }
 url = f"{base}/chat/completions"
 RETRYABLE = {429, 500, 502, 503, 504, 520, 521, 522, 523, 524}
@@ -287,34 +289,34 @@ for attempt in range(1, max_attempts + 1):
     except urllib.error.HTTPError as e:
         err = e.read().decode("utf-8", errors="replace")[:800]
         elapsed = time.monotonic() - t0
-        print(f"xAI HTTP {e.code}: {err}", file=sys.stderr)
+        print(f"OpenRouter HTTP {e.code}: {err}", file=sys.stderr)
         retry = e.code in RETRYABLE and attempt < max_attempts and elapsed < 120
         if not retry:
             sys.exit(1)
         print(
-            f"xAI retry {attempt}/{max_attempts - 1} after HTTP {e.code} ({elapsed:.0f}s); sleep {backoff}s",
+            f"OpenRouter retry {attempt}/{max_attempts - 1} after HTTP {e.code} ({elapsed:.0f}s); sleep {backoff}s",
             file=sys.stderr,
         )
         time.sleep(backoff)
     except Exception as e:
         elapsed = time.monotonic() - t0
         is_timeout = isinstance(e, TimeoutError) or "timed out" in str(e).lower()
-        print(f"xAI request failed: {e}", file=sys.stderr)
+        print(f"OpenRouter request failed: {e}", file=sys.stderr)
         retry = (not is_timeout) and attempt < max_attempts and elapsed < 120
         if not retry:
             sys.exit(1)
         print(
-            f"xAI retry {attempt}/{max_attempts - 1} after {type(e).__name__} ({elapsed:.0f}s); sleep {backoff}s",
+            f"OpenRouter retry {attempt}/{max_attempts - 1} after {type(e).__name__} ({elapsed:.0f}s); sleep {backoff}s",
             file=sys.stderr,
         )
         time.sleep(backoff)
 if data is None:
-    print("xAI request failed: no response after retries", file=sys.stderr)
+    print("OpenRouter request failed: no response after retries", file=sys.stderr)
     sys.exit(1)
 
 text = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
 if not text.strip():
-    print("xAI returned empty content", file=sys.stderr)
+    print("OpenRouter returned empty content", file=sys.stderr)
     sys.exit(1)
 
 # Strip accidental markdown fences
@@ -345,7 +347,7 @@ print(json.dumps(meta))
 PY
   then
     log "fail reason=api_call"
-    [ "$DRY_RUN" != 1 ] && [ -x "$NOTIFY" ] && printf '%s\n' "grok-journal-run: xAI API call failed. See $LOG" \
+    [ "$DRY_RUN" != 1 ] && [ -x "$NOTIFY" ] && printf '%s\n' "grok-journal-run: OpenRouter API call failed. See $LOG" \
       | bash "$NOTIFY" "🔴 grok-journal-run failed (API)" || true
     exit 1
   fi

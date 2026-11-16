@@ -30,7 +30,7 @@ sudo bash setup.sh
 #    - PAUSE: it tells you to paste the 2 keys, then starts the service
 
 # 3. When it pauses, in another shell:
-sudo nano /etc/grok-mcp.env      # fill XAI_API_KEY and GEMINI_API_KEY, save
+sudo nano /etc/grok-mcp.env      # fill OPENROUTER_API_KEY and GEMINI_API_KEY, save
 #    back in setup.sh: press Enter -> service starts
 ```
 
@@ -38,13 +38,10 @@ sudo nano /etc/grok-mcp.env      # fill XAI_API_KEY and GEMINI_API_KEY, save
 
 | Key | Get it from | Notes |
 |-----|-------------|-------|
-| `XAI_API_KEY`    | https://console.x.ai | Format `xai-...`. **Set a spend cap.** |
-| `GEMINI_API_KEY` | https://aistudio.google.com → "Get API key" | **RESTRICT the key to the Generative Language API** in Google Cloud, or calls are blocked. Set a spend cap. |
-| `OPENROUTER_API_KEY` | https://openrouter.ai/keys | Format `sk-or-...`. **Required for the default `GEMINI_TRANSPORT=openrouter`** (the live setting); also register `GEMINI_API_KEY` as a BYOK provider key in the OpenRouter dashboard. Set a spend cap. To skip it, run `GEMINI_TRANSPORT=direct` on just the first two keys. |
+| `OPENROUTER_API_KEY` | https://openrouter.ai/keys | Format `sk-or-...`. **Set a spend cap.** Powers Grok (`x-ai/grok-4.7`), Sol, Sonnet, and the default `GEMINI_TRANSPORT=openrouter` (register `GEMINI_API_KEY` as a BYOK provider key in the OpenRouter dashboard). |
+| `GEMINI_API_KEY` | https://aistudio.google.com → "Get API key" | **RESTRICT the key to the Generative Language API** in Google Cloud, or calls are blocked. Set a spend cap. Used by direct transport & OR→direct failover. |
 
-These live in `/etc/grok-mcp.env` (chmod 600, **never** in git). The first two
-alone get you a working box on `GEMINI_TRANSPORT=direct`; the live default
-`openrouter` wants the third.
+These live in `/etc/grok-mcp.env` (chmod 600, **never** in git).
 
 ## Endpoints
 

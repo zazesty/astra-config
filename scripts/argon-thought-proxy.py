@@ -695,6 +695,15 @@ def serve() -> None:
     httpd.serve_forever()
 
 
+def _insert_before_trailing_blanks(out: list[str], new_line: str) -> None:
+    blanks: list[str] = []
+    while out and not out[-1].strip():
+        blanks.append(out.pop())
+    out.append(new_line)
+    while blanks:
+        out.append(blanks.pop())
+
+
 def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
     """Set key inside a toml table. Append the table when it is missing."""
     header = f"[{section}]"
@@ -706,7 +715,7 @@ def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             if in_section and not found:
-                out.append(f'{key} = "{value}"\n')
+                _insert_before_trailing_blanks(out, f'{key} = "{value}"\n')
                 found = True
             in_section = stripped == header
             if in_section:
@@ -721,7 +730,7 @@ def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
             continue
         out.append(line if line.endswith("\n") else line + "\n")
     if in_section and not found:
-        out.append(f'{key} = "{value}"\n')
+        _insert_before_trailing_blanks(out, f'{key} = "{value}"\n')
         found = True
     if not saw_section:
         if out and not out[-1].endswith("\n"):
@@ -733,25 +742,65 @@ def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
     return out
 
 
+def _drop_section(lines: list[str], section: str) -> list[str]:
+    header = f"[{section}]"
+    out: list[str] = []
+    in_section = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_section = stripped == header
+            if in_section:
+                continue
+        if in_section:
+            continue
+        out.append(line)
+    # Collapse excess blank lines left behind if a section was dropped.
+    cleaned: list[str] = []
+    for line in out:
+        if not line.strip() and cleaned and not cleaned[-1].strip():
+            continue
+        cleaned.append(line)
+    return cleaned
+
+
+def _drop_key(lines: list[str], section: str, key: str) -> list[str]:
+    header = f"[{section}]"
+    out: list[str] = []
+    in_section = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_section = stripped == header
+            out.append(line)
+            continue
+        if in_section and (stripped.startswith(f"{key} ") or stripped.startswith(f"{key}=")):
+            continue
+        out.append(line)
+    return out
+
+
 def point_config(path: str) -> None:
     with open(path, encoding="utf-8") as handle:
         original = handle.read()
     lines = original.splitlines(keepends=True)
     if not lines:
         lines = []
+    lines = _drop_section(lines, "model.flash")
+    lines = _drop_key(lines, "subagents.models", "flash")
     lines = _set_key(lines, "model.argon", "base_url", PROXY_BASE)
     lines = _set_key(lines, "model.argon", "model", "gemini-4-argon")
     lines = _set_key(lines, "model.argon", "env_key", "GEMINI_API_KEY")
     lines = _set_key(lines, "model.argon", "api_backend", "chat_completions")
     lines = _set_key(lines, "model.argon", "stream_tool_calls", "false")
-    lines = _set_key(lines, "model.flash", "base_url", PROXY_BASE)
-    lines = _set_key(lines, "model.flash", "model", "gemini-4-hydrogen")
-    lines = _set_key(lines, "model.flash", "env_key", "GEMINI_API_KEY")
-    lines = _set_key(lines, "model.flash", "api_backend", "chat_completions")
-    lines = _set_key(lines, "model.flash", "stream_tool_calls", "false")
+    lines = _set_key(lines, "model.hydrogen", "base_url", PROXY_BASE)
+    lines = _set_key(lines, "model.hydrogen", "model", "gemini-4-hydrogen")
+    lines = _set_key(lines, "model.hydrogen", "env_key", "GEMINI_API_KEY")
+    lines = _set_key(lines, "model.hydrogen", "api_backend", "chat_completions")
+    lines = _set_key(lines, "model.hydrogen", "stream_tool_calls", "false")
     lines = _set_key(lines, "subagents.models", "argon", "argon")
-    lines = _set_key(lines, "subagents.models", "flash", "flash")
-    lines = _set_key(lines, "subagents.models", "general-purpose", "flash")
+    lines = _set_key(lines, "subagents.models", "hydrogen", "hydrogen")
+    lines = _set_key(lines, "subagents.models", "general-purpose", "hydrogen")
     # _set_key quotes every value. stream_tool_calls is a bare bool.
     text = "".join(lines)
     text = text.replace('stream_tool_calls = "false"', "stream_tool_calls = false")
@@ -872,7 +921,11 @@ def _self_test() -> int:
         'url = "http://127.0.0.1:9/mcp/secret-path"\n'
         "enabled = true\n"
         "\n"
+        "[model.flash]\n"
+        'model = "gemini-4-hydrogen"\n'
+        "\n"
         "[subagents.models]\n"
+        'flash = "flash"\n'
         'explore = "grok-4.7"\n'
     )
     with tempfile.TemporaryDirectory() as tmp:
@@ -883,8 +936,9 @@ def _self_test() -> int:
         text = open(path, encoding="utf-8").read()
     check("mcp url preserved", 'url = "http://127.0.0.1:9/mcp/secret-path"' in text)
     check("base_url pointed", f'base_url = "{PROXY_BASE}"' in text)
-    check("pins added", 'argon = "argon"' in text and 'flash = "flash"' in text and 'general-purpose = "flash"' in text)
-    check("flash model", 'model = "gemini-4-hydrogen"' in text)
+    check("flash renamed to hydrogen", "[model.flash]" not in text and "[model.hydrogen]" in text and 'flash = "flash"' not in text)
+    check("pins added", 'argon = "argon"' in text and 'hydrogen = "hydrogen"' in text and 'general-purpose = "hydrogen"' in text)
+    check("hydrogen model", 'model = "gemini-4-hydrogen"' in text)
     check("other pin kept", 'explore = "grok-4.7"' in text)
     check("stream flag bare", "stream_tool_calls = false" in text)
 
