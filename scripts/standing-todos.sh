@@ -10,13 +10,15 @@
 set -euo pipefail
 export TODOS_PATH="${TODOS_PATH:-$HOME/.local/state/astra/standing-todos.json}"
 exec python3 - "$TODOS_PATH" "$@" <<'PY'
-import json, os, sys, re, uuid
+import fcntl, json, os, sys, re, uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 path = Path(sys.argv[1])
 args = sys.argv[2:]
-path.parent.mkdir(parents=True, exist_ok=True)
+if os.environ.get("STANDING_TODOS_INPLACE") != "1":
+    path.parent.mkdir(parents=True, exist_ok=True)
 
 def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -26,16 +28,42 @@ def load():
         return {"schema": "standing-todos/v1", "updated": None, "items": []}
     return json.loads(path.read_text())
 
+@contextmanager
+def board_lock():
+    """Serialize read-modify-write across concurrent editors/agents via flock."""
+    target = path.resolve()
+    inplace = os.environ.get("STANDING_TODOS_INPLACE") == "1"
+    if not inplace:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = target.with_suffix(".lock")
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    except OSError:
+        if not inplace:
+            raise
+        # Read-only parent fallback: lock the target file itself.
+        fd = os.open(target, os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
 def save(doc):
     doc["updated"] = now()
     payload = (json.dumps(doc, indent=2) + "\n").encode()
     # The public path may be a symlink into the one writable directory.
     # Resolve first so replace() updates the file and leaves the link in place.
     target = path.resolve()
-    target.parent.mkdir(parents=True, exist_ok=True)
+    inplace = os.environ.get("STANDING_TODOS_INPLACE") == "1"
+    if not inplace:
+        target.parent.mkdir(parents=True, exist_ok=True)
     # grok-mcp sets STANDING_TODOS_INPLACE=1. ProtectHome leaves the parent
     # read-only, so that mode must not create a sibling temp.
-    if os.environ.get("STANDING_TODOS_INPLACE") == "1":
+    if inplace:
         flags = os.O_WRONLY | os.O_TRUNC
         if not target.exists():
             flags |= os.O_CREAT
@@ -113,24 +141,25 @@ if cmd == "add":
     if not author or len(author) > 100 or "\n" in author or "\r" in author:
         print("--author is required: sign with your name / agent identity (one line, up to 100 characters)", file=sys.stderr)
         sys.exit(2)
-    doc = load()
-    item_id = f"{slug(title)}-{uuid.uuid4().hex[:6]}"
-    doc["items"].append({
-        "id": item_id,
-        "title": title,
-        "status": "open",
-        "owner": owner,
-        "author": author,
-        "priority": priority,
-        "blocked_on": blocked,
-        "next_action": nxt,
-        "created": now(),
-        "updated": now(),
-        "notes": [],
-    })
-    if isinstance(plain, str) and plain.strip():
-        doc["items"][-1]["plain"] = plain.strip()
-    save(doc)
+    with board_lock():
+        doc = load()
+        item_id = f"{slug(title)}-{uuid.uuid4().hex[:6]}"
+        doc["items"].append({
+            "id": item_id,
+            "title": title,
+            "status": "open",
+            "owner": owner,
+            "author": author,
+            "priority": priority,
+            "blocked_on": blocked,
+            "next_action": nxt,
+            "created": now(),
+            "updated": now(),
+            "notes": [],
+        })
+        if isinstance(plain, str) and plain.strip():
+            doc["items"][-1]["plain"] = plain.strip()
+        save(doc)
     print(item_id)
     sys.exit(0)
 
@@ -139,19 +168,20 @@ if cmd == "done":
         print("usage: standing-todos.sh done <id>", file=sys.stderr)
         sys.exit(2)
     iid = args[1]
-    doc = load()
-    found = False
-    for it in doc["items"]:
-        if it["id"] == iid or it["id"].startswith(iid):
-            it["status"] = "done"
-            it["updated"] = now()
-            found = True
-            print(it["id"])
-            break
-    if not found:
-        print(f"not found: {iid}", file=sys.stderr)
-        sys.exit(1)
-    save(doc)
+    with board_lock():
+        doc = load()
+        found = False
+        for it in doc["items"]:
+            if it["id"] == iid or it["id"].startswith(iid):
+                it["status"] = "done"
+                it["updated"] = now()
+                found = True
+                print(it["id"])
+                break
+        if not found:
+            print(f"not found: {iid}", file=sys.stderr)
+            sys.exit(1)
+        save(doc)
     sys.exit(0)
 
 if cmd == "plain":
@@ -159,17 +189,18 @@ if cmd == "plain":
         print("usage: standing-todos.sh plain <id> \"text\"", file=sys.stderr)
         sys.exit(2)
     iid, text = args[1], args[2].strip()
-    doc = load()
-    for it in doc["items"]:
-        if it["id"] == iid or it["id"].startswith(iid):
-            if text:
-                it["plain"] = text
-            else:
-                it.pop("plain", None)
-            it["updated"] = now()
-            save(doc)
-            print(it["id"])
-            sys.exit(0)
+    with board_lock():
+        doc = load()
+        for it in doc["items"]:
+            if it["id"] == iid or it["id"].startswith(iid):
+                if text:
+                    it["plain"] = text
+                else:
+                    it.pop("plain", None)
+                it["updated"] = now()
+                save(doc)
+                print(it["id"])
+                sys.exit(0)
     print(f"not found: {iid}", file=sys.stderr)
     sys.exit(1)
 
@@ -178,14 +209,15 @@ if cmd == "note":
         print("usage: standing-todos.sh note <id> \"text\"", file=sys.stderr)
         sys.exit(2)
     iid, text = args[1], args[2]
-    doc = load()
-    for it in doc["items"]:
-        if it["id"] == iid or it["id"].startswith(iid):
-            it.setdefault("notes", []).append({"ts": now(), "text": text})
-            it["updated"] = now()
-            save(doc)
-            print(it["id"])
-            sys.exit(0)
+    with board_lock():
+        doc = load()
+        for it in doc["items"]:
+            if it["id"] == iid or it["id"].startswith(iid):
+                it.setdefault("notes", []).append({"ts": now(), "text": text})
+                it["updated"] = now()
+                save(doc)
+                print(it["id"])
+                sys.exit(0)
     print(f"not found: {iid}", file=sys.stderr)
     sys.exit(1)
 

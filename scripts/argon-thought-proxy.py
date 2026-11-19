@@ -1078,6 +1078,7 @@ def _live_test() -> int:
     status, first = post(
         {
             "model": "google/gemini-4-hydrogen",
+            "reasoning_effort": "low",
             "messages": [{"role": "user", "content": "Call echo_ok now."}],
             "tools": tools,
             "tool_choice": {"type": "function", "function": {"name": "echo_ok"}},
@@ -1093,6 +1094,7 @@ def _live_test() -> int:
     replay_status, _ = post(
         {
             "model": "google/gemini-4-hydrogen",
+            "reasoning_effort": "low",
             "messages": [
                 {"role": "user", "content": "Call echo_ok now."},
                 {"role": "assistant", "tool_calls": [bare]},
