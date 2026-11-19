@@ -358,8 +358,8 @@ fi
 mkdir -p /root/.hermes/plugins
 ln -sfnT "$REPO/scripts/photon-canned" /root/.hermes/plugins/photon-canned
 systemctl enable --now grok-argon-proxy.service
-# Point Grok Build's Argon and Hydrogen seats at the local thought-signature proxy.
-# Touches [model.argon], [model.hydrogen], and the subagent pins. Leaves MCP URLs alone.
+# Point Grok Build's Hydrogen seat at Vertex via the local thought-signature proxy.
+# Drops legacy [model.argon]/[model.flash] and pins general-purpose -> hydrogen. Leaves MCP URLs alone.
 if [ -f /root/.grok/config.toml ]; then
   python3 "$REPO/scripts/argon-thought-proxy.py" --point-config /root/.grok/config.toml
 fi

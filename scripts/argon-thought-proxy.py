@@ -13,8 +13,8 @@ Binds 127.0.0.1 only. Does not log prompts, keys, or signature values.
   argon-thought-proxy.py --self-test  offline checks
   argon-thought-proxy.py --live-test  one tool round-trip through the proxy
   argon-thought-proxy.py --point-config [path]
-                                      point [model.argon] and [model.flash]
-                                      at this proxy; pin general-purpose to flash
+                                      point [model.hydrogen] at Vertex via this
+                                      proxy and remove legacy argon/flash pins
 """
 
 from __future__ import annotations
@@ -35,7 +35,25 @@ PORT = int(os.environ.get("ARGON_PROXY_PORT", "8791"))
 UPSTREAM = os.environ.get(
     "ARGON_PROXY_UPSTREAM", "https://generativelanguage.googleapis.com"
 ).rstrip("/")
-PROXY_BASE = f"http://{HOST}:{PORT}/v1beta/openai"
+VERTEX_UPSTREAM = os.environ.get(
+    "ARGON_PROXY_VERTEX_UPSTREAM", "https://aiplatform.googleapis.com"
+).rstrip("/")
+VERTEX_PROJECT = os.environ.get(
+    "ARGON_PROXY_VERTEX_PROJECT", "gen-lang-client-0789043233"
+)
+VERTEX_LOCATION = os.environ.get("ARGON_PROXY_VERTEX_LOCATION", "global")
+PROXY_BASE = (
+    f"http://{HOST}:{PORT}/v1beta1/projects/{VERTEX_PROJECT}"
+    f"/locations/{VERTEX_LOCATION}/endpoints/openapi"
+)
+GCLOUD_BIN = os.environ.get("GCLOUD_BIN", "/opt/google-cloud-sdk/bin/gcloud")
+
+
+def _upstream_for_route(route: str) -> str:
+    """Route Vertex OpenAI-compat /v1*/projects/... paths to Vertex, else AI Studio."""
+    if route.startswith("/v1beta1/projects/") or route.startswith("/v1/projects/"):
+        return VERTEX_UPSTREAM
+    return UPSTREAM
 SENTINEL = "skip_thought_signature_validator"
 CACHE_MAX = int(os.environ.get("ARGON_PROXY_CACHE_MAX", "5000"))
 CACHE_TTL_S = int(os.environ.get("ARGON_PROXY_CACHE_TTL_S", "3600"))
@@ -545,10 +563,10 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or "0")
         raw = self.rfile.read(length) if length else b""
         path = self.path
-        upstream_url = UPSTREAM + path
         body = raw
         real = sentinel = 0
         route = path.split("?", 1)[0]
+        upstream_url = _upstream_for_route(route) + path
         model = "unknown"
         stream_req = False
         llm_call = self.command == "POST" and route.endswith("/chat/completions")
@@ -704,9 +722,10 @@ def _insert_before_trailing_blanks(out: list[str], new_line: str) -> None:
         out.append(blanks.pop())
 
 
-def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
+def _set_key(lines: list[str], section: str, key: str, value: str, *, raw: bool = False) -> list[str]:
     """Set key inside a toml table. Append the table when it is missing."""
     header = f"[{section}]"
+    rendered = f"{key} = {value}\n" if raw else f'{key} = "{value}"\n'
     out: list[str] = []
     in_section = False
     found = False
@@ -715,7 +734,7 @@ def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             if in_section and not found:
-                _insert_before_trailing_blanks(out, f'{key} = "{value}"\n')
+                _insert_before_trailing_blanks(out, rendered)
                 found = True
             in_section = stripped == header
             if in_section:
@@ -725,12 +744,12 @@ def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
         if in_section and stripped.startswith(f"{key} ") or (
             in_section and stripped.startswith(f"{key}=")
         ):
-            out.append(f'{key} = "{value}"\n')
+            out.append(rendered)
             found = True
             continue
         out.append(line if line.endswith("\n") else line + "\n")
     if in_section and not found:
-        _insert_before_trailing_blanks(out, f'{key} = "{value}"\n')
+        _insert_before_trailing_blanks(out, rendered)
         found = True
     if not saw_section:
         if out and not out[-1].endswith("\n"):
@@ -738,7 +757,7 @@ def _set_key(lines: list[str], section: str, key: str, value: str) -> list[str]:
         if out and out[-1].strip():
             out.append("\n")
         out.append(header + "\n")
-        out.append(f'{key} = "{value}"\n')
+        out.append(rendered)
     return out
 
 
@@ -787,28 +806,31 @@ def point_config(path: str) -> None:
     if not lines:
         lines = []
     lines = _drop_section(lines, "model.flash")
+    lines = _drop_section(lines, "model.argon")
     lines = _drop_key(lines, "subagents.models", "flash")
-    lines = _set_key(lines, "model.argon", "base_url", PROXY_BASE)
-    lines = _set_key(lines, "model.argon", "model", "gemini-4-argon")
-    lines = _set_key(lines, "model.argon", "env_key", "GEMINI_API_KEY")
-    lines = _set_key(lines, "model.argon", "api_backend", "chat_completions")
-    lines = _set_key(lines, "model.argon", "stream_tool_calls", "false")
+    lines = _drop_key(lines, "subagents.models", "argon")
+    lines = _drop_key(lines, "model.hydrogen", "env_key")
+    lines = _set_key(lines, "auth_provider.vertex", "command", GCLOUD_BIN)
+    lines = _set_key(
+        lines,
+        "auth_provider.vertex",
+        "args",
+        '["auth", "application-default", "print-access-token"]',
+        raw=True,
+    )
+    lines = _set_key(lines, "auth_provider.vertex", "token_ttl_secs", "3000", raw=True)
     lines = _set_key(lines, "model.hydrogen", "base_url", PROXY_BASE)
-    lines = _set_key(lines, "model.hydrogen", "model", "gemini-4-hydrogen")
-    lines = _set_key(lines, "model.hydrogen", "env_key", "GEMINI_API_KEY")
+    lines = _set_key(lines, "model.hydrogen", "model", "google/gemini-4-hydrogen")
+    lines = _set_key(lines, "model.hydrogen", "auth_provider", "vertex")
     lines = _set_key(lines, "model.hydrogen", "api_backend", "chat_completions")
-    lines = _set_key(lines, "model.hydrogen", "stream_tool_calls", "false")
-    lines = _set_key(lines, "subagents.models", "argon", "argon")
+    lines = _set_key(lines, "model.hydrogen", "stream_tool_calls", "false", raw=True)
     lines = _set_key(lines, "subagents.models", "hydrogen", "hydrogen")
     lines = _set_key(lines, "subagents.models", "general-purpose", "hydrogen")
-    # _set_key quotes every value. stream_tool_calls is a bare bool.
-    text = "".join(lines)
-    text = text.replace('stream_tool_calls = "false"', "stream_tool_calls = false")
-    updated = text
+    updated = "".join(lines)
     if updated != original:
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(updated)
-        _log(f"argon-thought-proxy pointed {path} at the local proxy")
+        _log(f"argon-thought-proxy pointed {path} at Vertex via local proxy")
     else:
         _log(f"argon-thought-proxy config already pointed ({path})")
 
@@ -921,10 +943,18 @@ def _self_test() -> int:
         'url = "http://127.0.0.1:9/mcp/secret-path"\n'
         "enabled = true\n"
         "\n"
+        "[model.argon]\n"
+        'model = "gemini-4-argon"\n'
+        "\n"
         "[model.flash]\n"
         'model = "gemini-4-hydrogen"\n'
         "\n"
+        "[model.hydrogen]\n"
+        'env_key = "GEMINI_API_KEY"\n'
+        'model = "gemini-4-hydrogen"\n'
+        "\n"
         "[subagents.models]\n"
+        'argon = "argon"\n'
         'flash = "flash"\n'
         'explore = "grok-4.7"\n'
     )
@@ -936,11 +966,21 @@ def _self_test() -> int:
         text = open(path, encoding="utf-8").read()
     check("mcp url preserved", 'url = "http://127.0.0.1:9/mcp/secret-path"' in text)
     check("base_url pointed", f'base_url = "{PROXY_BASE}"' in text)
-    check("flash renamed to hydrogen", "[model.flash]" not in text and "[model.hydrogen]" in text and 'flash = "flash"' not in text)
-    check("pins added", 'argon = "argon"' in text and 'hydrogen = "hydrogen"' in text and 'general-purpose = "hydrogen"' in text)
-    check("hydrogen model", 'model = "gemini-4-hydrogen"' in text)
+    check("flash and argon dropped", "[model.flash]" not in text and "[model.argon]" not in text and 'argon = "argon"' not in text and 'flash = "flash"' not in text)
+    check("vertex auth provider added", "[auth_provider.vertex]" in text and 'auth_provider = "vertex"' in text and "env_key" not in text)
+    check("pins updated", 'hydrogen = "hydrogen"' in text and 'general-purpose = "hydrogen"' in text)
+    check("hydrogen model", 'model = "google/gemini-4-hydrogen"' in text)
     check("other pin kept", 'explore = "grok-4.7"' in text)
     check("stream flag bare", "stream_tool_calls = false" in text)
+    check(
+        "vertex route upstream",
+        _upstream_for_route("/v1beta1/projects/p/locations/global/endpoints/openapi/chat/completions")
+        == VERTEX_UPSTREAM,
+    )
+    check(
+        "aistudio route upstream",
+        _upstream_for_route("/v1beta/models/gemini-embedding-2:batchEmbedContents") == UPSTREAM,
+    )
 
     import tempfile
 
@@ -992,15 +1032,22 @@ def _self_test() -> int:
 
 
 def _live_test() -> int:
-    key = os.environ.get("GEMINI_API_KEY", "")
-    if not key:
-        print("argon-thought-proxy live-test: GEMINI_API_KEY unset")
+    import subprocess
+
+    try:
+        token = subprocess.check_output(
+            [GCLOUD_BIN, "auth", "application-default", "print-access-token"],
+            text=True,
+            timeout=15,
+        ).strip()
+    except Exception as err:
+        print(f"argon-thought-proxy live-test: ADC token failed: {err}")
         return 1
     health = urllib.request.urlopen(f"http://{HOST}:{PORT}/healthz", timeout=5)
     if health.status != 200:
         print("argon-thought-proxy live-test: health", health.status)
         return 1
-    url = f"http://{HOST}:{PORT}/v1beta/openai/chat/completions"
+    url = f"{PROXY_BASE}/chat/completions"
     tools = [
         {
             "type": "function",
@@ -1016,7 +1063,7 @@ def _live_test() -> int:
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode(),
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             method="POST",
         )
         try:
@@ -1030,7 +1077,7 @@ def _live_test() -> int:
 
     status, first = post(
         {
-            "model": "gemini-4-argon",
+            "model": "google/gemini-4-hydrogen",
             "messages": [{"role": "user", "content": "Call echo_ok now."}],
             "tools": tools,
             "tool_choice": {"type": "function", "function": {"name": "echo_ok"}},
@@ -1045,7 +1092,7 @@ def _live_test() -> int:
     bare = {k: tool_call[k] for k in ("id", "type", "function")}
     replay_status, _ = post(
         {
-            "model": "gemini-4-argon",
+            "model": "google/gemini-4-hydrogen",
             "messages": [
                 {"role": "user", "content": "Call echo_ok now."},
                 {"role": "assistant", "tool_calls": [bare]},
