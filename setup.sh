@@ -357,6 +357,18 @@ fi
 # Photon canned intercept. Canonical in the repo; live path is the symlink.
 mkdir -p /root/.hermes/plugins
 ln -sfnT "$REPO/scripts/photon-canned" /root/.hermes/plugins/photon-canned
+# Hermes cron scripts sandbox rejects symlinks escaping ~/.hermes/scripts/; keep real wrapper here.
+install -d -m 700 /root/.hermes/scripts
+cat > /root/.hermes/scripts/weekly_kaizen_preflight.py <<'PYSHIM'
+#!/usr/bin/env python3
+"""In-tree entrypoint for Hermes cron (--script sandbox requires real file here)."""
+import os
+import sys
+
+TARGET = "/root/astra-config/scripts/weekly-kaizen-preflight.py"
+os.execv(sys.executable, [sys.executable, TARGET, *sys.argv[1:]])
+PYSHIM
+chmod 700 /root/.hermes/scripts/weekly_kaizen_preflight.py
 systemctl enable --now grok-argon-proxy.service
 # Point Grok Build's Hydrogen seat at Vertex via the local thought-signature proxy.
 # Drops legacy [model.argon]/[model.flash] and pins general-purpose -> hydrogen. Leaves MCP URLs alone.

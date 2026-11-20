@@ -25,6 +25,7 @@ PT = ZoneInfo("America/Los_Angeles")
 HOME = Path.home()
 STATE_DIR = HOME / ".local/state/astra/kaizen-staging"
 PIN_CACHE = STATE_DIR / "openrouter-pins.json"
+PIN_PENDING = STATE_DIR / "openrouter-pins.pending.json"
 TELEMETRY_MD = HOME / ".local/state/astra/vps-telemetry.md"
 STANDING_TODOS_SH = Path("/root/astra-config/scripts/standing-todos.sh")
 
@@ -193,6 +194,48 @@ def _per_m(raw: str) -> str:
         return raw or "?"
 
 
+def observe_openrouter_pins(
+    live_models: dict[str, dict],
+    pin_cache: Path = PIN_CACHE,
+    pin_pending: Path = PIN_PENDING,
+) -> list[str]:
+    """Diff live_models against acknowledged pin_cache and write only to pin_pending."""
+    prev: dict[str, dict] | None = None
+    if pin_cache.is_file():
+        try:
+            prev = json.loads(pin_cache.read_text()).get("models")
+        except Exception:
+            prev = None
+
+    notes, current = diff_openrouter_pins(live_models, prev)
+    pin_pending.parent.mkdir(parents=True, exist_ok=True)
+    if pin_pending.parent == STATE_DIR:
+        os.chmod(STATE_DIR, 0o700)
+    tmp = pin_pending.with_suffix(".tmp")
+    tmp.write_text(
+        json.dumps(
+            {"updated_at": datetime.now(timezone.utc).isoformat(), "models": current},
+            indent=2,
+        )
+        + "\n"
+    )
+    tmp.replace(pin_pending)
+    return notes
+
+
+def ack_openrouter_pins(
+    pin_cache: Path = PIN_CACHE,
+    pin_pending: Path = PIN_PENDING,
+) -> int:
+    """Promote pending OpenRouter pin snapshot to acknowledged baseline."""
+    if not pin_pending.is_file():
+        print("ack-pins: no pending snapshot to acknowledge.")
+        return 0
+    pin_pending.replace(pin_cache)
+    print(f"ack-pins: promoted pending snapshot to {pin_cache}")
+    return 0
+
+
 def section_openrouter_watch() -> str:
     try:
         req = urllib.request.Request(
@@ -205,25 +248,7 @@ def section_openrouter_watch() -> str:
     except Exception as exc:
         return f"(OpenRouter fetch failed: {exc})"
 
-    prev: dict[str, dict] | None = None
-    if PIN_CACHE.is_file():
-        try:
-            prev = json.loads(PIN_CACHE.read_text()).get("models")
-        except Exception:
-            prev = None
-
-    notes, current = diff_openrouter_pins(live_models, prev)
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(STATE_DIR, 0o700)
-    tmp = PIN_CACHE.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(
-            {"updated_at": datetime.now(timezone.utc).isoformat(), "models": current},
-            indent=2,
-        )
-        + "\n"
-    )
-    tmp.replace(PIN_CACHE)
+    notes = observe_openrouter_pins(live_models)
     return "\n".join(notes)
 
 
@@ -322,6 +347,21 @@ def run_self_test() -> int:
         fresh.write_text("#!/bin/sh\n")
         found = find_stale_candidates([d], "ExecStart=/somewhere/other.sh", datetime.now(timezone.utc).timestamp())
         assert len(found) == 1 and "legacy_unused.sh" in found[0], found
+
+        # Verify OR pin deltas survive unacknowledged retries until --ack-pins
+        cache = d / "pins.json"
+        pending = d / "pins.pending.json"
+        baseline = {slug: {"pricing": {"prompt": "0.000001", "completion": "0.000002", "input_cache_read": "0.0000001"}, "context_length": 1000} for slug in PINNED_MODELS}
+        observe_openrouter_pins(baseline, cache, pending)
+        ack_openrouter_pins(cache, pending)
+        changed = {**baseline, "x-ai/grok-4.7": {"pricing": {"prompt": "0.000009", "completion": "0.000002", "input_cache_read": "0.0000001"}, "context_length": 1000}}
+        first = observe_openrouter_pins(changed, cache, pending)
+        retry = observe_openrouter_pins(changed, cache, pending)
+        assert any("`x-ai/grok-4.7` CHANGED" in n for n in first), first
+        assert retry == first, (first, retry)
+        ack_openrouter_pins(cache, pending)
+        after_ack = observe_openrouter_pins(changed, cache, pending)
+        assert after_ack == ["No changes in pinned OpenRouter models/pricing vs prior snapshot."], after_ack
     print("weekly-kaizen-preflight self-test passed")
     return 0
 
@@ -329,6 +369,8 @@ def run_self_test() -> int:
 def main() -> int:
     if "--self-test" in sys.argv[1:]:
         return run_self_test()
+    if "--ack-pins" in sys.argv[1:]:
+        return ack_openrouter_pins()
     now_pt = datetime.now(PT).strftime("%Y-%m-%d %H:%M %Z")
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(STATE_DIR, 0o700)

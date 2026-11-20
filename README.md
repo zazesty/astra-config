@@ -1,9 +1,10 @@
 # astra-config — zaz-astra rebuild runbook
 
 Config backup + reproducible rebuild for host **zaz-astra** (Debian 13).
-Runs the **astra MCP server** (`ad-astra` repo): tools `get_odds`, `ask_panel`,
-`get_news_digest`, `get_metrics`, `research_fanout`, and four `memory_*` tools, exposed publicly via Tailscale Funnel as a custom
-connector for claude.ai / Grok. (`ask_grok` + `ask_gemini` were merged into
+Runs the **astra MCP server** (`ad-astra` repo): 11 tools (`get_odds`, `ask_panel`,
+`get_news_digest`, `get_metrics`, `research_fanout`, `standing_todo_add`,
+`personal_memory_sync`, and four `memory_*` tools), exposed publicly via Tailscale Funnel as a custom
+connector for Claude / Grok / GPT / Gemini. (`ask_grok` + `ask_gemini` were merged into
 `ask_panel` on 2026-06-14.)
 
 **Target: clone + `setup.sh` + paste 2 keys = working box in ~30 min.**
@@ -61,7 +62,9 @@ breaks.**
 > Restarting `grok-mcp.service` can drop live remote MCP sessions (providers often
 > do not auto-reconnect). Engine-only restarts do **not** always break every client
 > (2026-07-08: Gemini stayed up without rotation). If a consumer is dead, re-add;
-> if still stuck (common on Grok), `rotate-url.sh` then re-add **claude.ai + Grok**.
+> if still stuck (common on Grok), `rotate-url.sh` rotates the primary URL while keeping
+> the pinned path live—then manually rotate Grok and refresh the pinned URL in GPT + Claude
+> (Gemini auto-refreshes; Grok Build / Hermes auto-sync on-box).
 > **Always rotate** when the tool list/schema changes (Grok caches tools per URL).
 > In-session reminder: `/root/.grok-mcp-restart.alert` via `grok-restart-reminder.timer`
 > (no routine email). Do **not** nag about Claude Code or journaling-routine MCP.
@@ -120,7 +123,7 @@ Run it anytime:
 ```bash
 sudo bash scripts/smoke-test.sh
 # discovers the funnel URL from `tailscale funnel status`, calls tools/list,
-# asserts EXPECTED_TOOLS (auto from toolSurface, currently 9): get_odds, ask_panel, get_news_digest, get_metrics, research_fanout + 4 memory_*
+# asserts EXPECTED_TOOLS (auto from toolSurface, currently 11): get_odds, ask_panel, get_news_digest, get_metrics, research_fanout, standing_todo_add, personal_memory_sync + 4 memory_*
 # reads the mount path from MCP_PATH in the off-repo env file (/etc/grok-mcp.env)
 # tunables: EXPECTED_TOOLS, MCP_PATH (override), RETRIES, SLEEP_SECS, FUNNEL_URL
 ```
@@ -133,7 +136,7 @@ MCP_PATH="$(grep -E '^MCP_PATH=' /etc/grok-mcp.env | cut -d= -f2- | cut -d, -f1)
 curl -s "$BASE$MCP_PATH" -X POST \
   -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-# expect 10 tools (6 original + memory_search/retrieve/upsert/list)
+# expect 11 tools (see grok-mcp/src/toolSurface.ts)
 ```
 
 ## Gotchas that cost hours
@@ -150,10 +153,10 @@ not "ignore it when debugging a live box or a manual redeploy."
   rebuild — but NOT on a manual `tsc` redeploy, where you must do it yourself.)*
 - **Gemini key must be RESTRICTED to the Generative Language API** or every
   Gemini call (now via `ask_panel`) 403s. *(setup.sh prompts for this; it can't set it for you.)*
-- **Argon and Flash tool calls need the thought-signature proxy.** Grok 1.0.60 drops
-  Gemini's `thought_signature`, so a direct AI Studio base URL 400s on the
+- **Gemini/Hydrogen tool calls in `grok` need the thought-signature proxy.** `grok` drops
+  Gemini's `thought_signature`, so direct calls 400 on the
   tool round-trip. `grok-argon-proxy.service` listens on `127.0.0.1:8791` and
-  `[model.argon]` and `[model.flash]` `base_url` point at it. *(included in setup.sh. The proxy
+  `[model.hydrogen]` `base_url` points at it (routing to Vertex AI). *(included in setup.sh. The proxy
   stores nothing on disk and does not log prompts or keys.)*
 - **Tailscale cert 500 after toggling HTTPS/DNS in the admin console:** run
   `sudo systemctl restart tailscaled` to force a netmap refresh, then retry.
