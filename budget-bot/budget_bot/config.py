@@ -64,6 +64,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # saas: true → fuzzy $ also allows ~10% over (CA tax-inclusive SaaS).
     "bills": [],
     "goals": [],  # [{name, amount_cents}]
+    # reserves: monthly sinking-fund set-asides tracked separately from bills[] and goals[].
+    # Fields: id, name, monthly_cents, start_month ("YYYY-MM"),
+    #         match? (regex on merchant/name), category_match? (regex on category), initial_cents?
+    # Transfers (transfer=True or transfer-shaped) never count as reserve draws or additions.
+    "reserves": [],
     # Leftover-funded buy queue. Auto-pulled on high-conf named+amount spend.
     # [{id, name, amount_cents, match, merchant?, confirm?, amount_tol_cents?, not_before?}]
     # confirm (or merchant Costco): ask, do not auto-clear.

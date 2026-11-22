@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from .models import AlertEvent, Transaction
 from .balances import CU_PILE_LABELS, checking_cash_by_cu
-from .transfers import is_opaque_mastermoney
+from .transfers import is_opaque_mastermoney, looks_like_transfer
 from .templates import (
     anomaly_body,
     anomaly_subject,
@@ -1794,6 +1794,130 @@ def cash_bills_alert(
     )
 
 
+def parse_ym(raw: Any) -> tuple[int, int] | None:
+    """Parse 'YYYY-MM' into (year, month) or return None."""
+    text = str(raw or "").strip()
+    if len(text) < 7 or text[4] != "-":
+        return None
+    try:
+        year = int(text[:4])
+        month = int(text[5:7])
+    except ValueError:
+        return None
+    if month < 1 or month > 12:
+        return None
+    return year, month
+
+
+def reserve_months_elapsed(reserve: dict[str, Any], as_of: date) -> int:
+    """Inclusive months accrued from start_month through as_of's month."""
+    ym = parse_ym(reserve.get("start_month"))
+    if ym is None:
+        return 1
+    sy, sm = ym
+    months = (as_of.year - sy) * 12 + (as_of.month - sm) + 1
+    return max(0, months)
+
+
+def reserve_matches_txn(reserve: dict[str, Any], tx: Transaction) -> bool:
+    """True when non-transfer spend matches the reserve's merchant/name or category pattern."""
+    if tx.transfer or looks_like_transfer(
+        name=tx.name,
+        merchant_name=tx.merchant_name,
+        category=tx.category,
+        institution=tx.institution,
+        amount_cents=tx.amount_cents,
+    ):
+        return False
+    pat = str(reserve.get("match") or "").strip()
+    cat_pat = str(reserve.get("category_match") or "").strip()
+    if not pat and not cat_pat:
+        return False
+    if pat:
+        blob = f"{tx.merchant_name or ''} {tx.name or ''}"
+        try:
+            if re.search(pat, blob, re.I):
+                return True
+        except re.error:
+            pass
+    if cat_pat:
+        try:
+            if re.search(cat_pat, tx.category or "", re.I):
+                return True
+        except re.error:
+            pass
+    return False
+
+
+def evaluate_reserves(
+    reserves: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    as_of: date,
+    *,
+    exclude_pending: bool = True,
+) -> list[dict[str, Any]]:
+    """Compute separate monthly sinking-fund reserve balances without double-counting transfers."""
+    out: list[dict[str, Any]] = []
+    month_start = date(as_of.year, as_of.month, 1)
+    tx_list = txns or []
+    for r in reserves or []:
+        if not isinstance(r, dict):
+            continue
+        monthly = int(r.get("monthly_cents") or 0)
+        if monthly <= 0:
+            continue
+        initial = int(r.get("initial_cents") or 0)
+        ym = parse_ym(r.get("start_month"))
+        start_month = f"{ym[0]:04d}-{ym[1]:02d}" if ym else None
+        start_date = date(ym[0], ym[1], 1) if ym else month_start
+        months = reserve_months_elapsed(r, as_of)
+        accrued = initial + (months * monthly)
+        spent_total = 0
+        spent_month = 0
+        if months > 0:
+            for t in tx_list:
+                if not counts_as_spend(t, exclude_pending=exclude_pending):
+                    continue
+                if not reserve_matches_txn(r, t):
+                    continue
+                d = parse_ymd(t.date)
+                if d < start_date or d > as_of:
+                    continue
+                spent_total += int(t.amount_cents)
+                if d >= month_start:
+                    spent_month += int(t.amount_cents)
+        month_remaining = max(0, monthly - max(0, spent_month)) if months > 0 else 0
+        out.append(
+            {
+                "id": str(r.get("id") or r.get("name") or "reserve"),
+                "name": str(r.get("name") or r.get("id") or "Reserve"),
+                "monthly_cents": monthly,
+                "start_month": start_month,
+                "months_elapsed": months,
+                "accrued_cents": accrued,
+                "spent_cents": spent_total,
+                "spent_this_month_cents": spent_month,
+                "month_remaining_cents": month_remaining,
+                "balance_cents": accrued - spent_total,
+            }
+        )
+    return out
+
+
+def reserves_month_remaining_cents(
+    reserves: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    as_of: date,
+    *,
+    exclude_pending: bool = True,
+) -> int:
+    """Remaining monthly reserve set-asides not yet covered by matching spend this month."""
+    return sum(
+        int(item["month_remaining_cents"])
+        for item in evaluate_reserves(reserves, txns, as_of, exclude_pending=exclude_pending)
+    )
+
+
 def safe_to_spend_cents(
     hardcap_cents: int,
     spend_to_date: int,
@@ -1811,8 +1935,9 @@ def safe_to_spend_cents(
     window_end: date | None = None,
     arrears_lookback_months: int = 6,
     payment_grace_days: int = 21,
+    reserves: list[dict[str, Any]] | None = None,
 ) -> int:
-    """Hardcap − spend − remaining bill reserves − goals.
+    """Hardcap − spend − remaining bill reserves − goals − monthly reserve set-asides.
 
     Bill reserves clear once matched (exact or fuzzy); arrears stack unpaid months.
     """
@@ -1832,6 +1957,15 @@ def safe_to_spend_cents(
     )
     for g in goals or []:
         reserved += int(g.get("amount_cents") or 0)
+    if reserves:
+        ref = as_of or period_end or period_start
+        if ref is not None:
+            reserved += reserves_month_remaining_cents(
+                reserves, txns, ref, exclude_pending=exclude_pending
+            )
+        else:
+            for r in reserves:
+                reserved += max(0, int((r or {}).get("monthly_cents") or 0))
     return hardcap_cents - spend_to_date - reserved
 
 
@@ -1886,6 +2020,8 @@ class BudgetSnapshot:
     committed_cents: int = 0  # spend_to_date + bills_reserved_cents
     # Positive => ahead of spend schedule (over pace); negative => under pace.
     days_off_pace: float = 0.0
+    reserves_reserved_cents: int = 0
+    reserves: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -1899,6 +2035,7 @@ class BudgetSnapshot:
             "hardcap_cents": self.hardcap_cents,
             "spend_to_date": self.spend_to_date,
             "bills_reserved_cents": self.bills_reserved_cents,
+            "reserves_reserved_cents": self.reserves_reserved_cents,
             "committed_cents": self.committed_cents,
             "remaining_cents": self.remaining_cents,
             "pct": round(self.pct, 4),
@@ -1906,6 +2043,7 @@ class BudgetSnapshot:
             "days_off_pace": round(self.days_off_pace, 2),
             "safe_to_spend_cents": self.safe_to_spend_cents,
             "risk": self.risk,
+            "reserves": self.reserves,
             "top_merchants": [
                 {"name": n, "amount_cents": c} for n, c in self.top_merchants
             ],
@@ -2031,6 +2169,10 @@ def evaluate_budget(
         days_in,
         bills_reserved_cents=bills_reserved,
     )
+    reserves_summary = evaluate_reserves(
+        cfg.get("reserves"), txns, as_of, exclude_pending=exclude_pending
+    )
+    reserves_reserved = sum(int(r["month_remaining_cents"]) for r in reserves_summary)
     sts = safe_to_spend_cents(
         hardcap,
         spend,
@@ -2047,6 +2189,7 @@ def evaluate_budget(
         window_end=end,
         arrears_lookback_months=arrears_months,
         payment_grace_days=pay_grace,
+        reserves=cfg.get("reserves"),
     )
     dop = days_off_pace(committed, hardcap, days_elapsed, days_in)
 
@@ -2112,6 +2255,8 @@ def evaluate_budget(
         bills_reserved_cents=bills_reserved,
         committed_cents=committed,
         days_off_pace=dop,
+        reserves_reserved_cents=reserves_reserved,
+        reserves=reserves_summary,
     )
 
 

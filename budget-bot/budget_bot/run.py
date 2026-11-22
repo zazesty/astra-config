@@ -19,6 +19,7 @@ from .rules import (
     eom_leftover_event,
     evaluate_budget,
     evaluate_budget_both,
+    evaluate_reserves,
     make_digest,
     pending_spend_cents,
     pending_spend_count,
@@ -73,12 +74,33 @@ def cmd_status(_args: argparse.Namespace) -> int:
         "txn_count": len(txns),
         "snapshot": both["calendar"].to_dict(),
         "snapshot_rolling_30d": both["rolling_30d"].to_dict(),
+        "reserves": both["calendar"].reserves,
         "periods": {
             "calendar": both["calendar"].to_dict(),
             "rolling_30d": both["rolling_30d"].to_dict(),
         },
         "last_run": load_last_run(),
     }, indent=2))
+    return 0
+
+
+def cmd_reserves(args: argparse.Namespace) -> int:
+    """Print monthly sinking-fund reserves separately from pace/bills."""
+    from .templates import reserves_text
+
+    cfg = load_config()
+    txns = load_txns()
+    as_of = _as_of(cfg, getattr(args, "as_of", None))
+    rows = evaluate_reserves(
+        cfg.get("reserves"),
+        txns,
+        as_of,
+        exclude_pending=bool(cfg.get("exclude_pending", True)),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps({"as_of": as_of.isoformat(), "reserves": rows}, indent=2))
+        return 0
+    print(reserves_text(rows))
     return 0
 
 
@@ -994,6 +1016,11 @@ def main(argv: list[str] | None = None) -> int:
 
     s = sub.add_parser("status", help="Print snapshot JSON")
     s.set_defaults(func=cmd_status)
+
+    s = sub.add_parser("reserves", help="Print monthly sinking-fund reserves")
+    s.add_argument("--as-of", default=None, help="YYYY-MM-DD (default: today PT)")
+    s.add_argument("--json", action="store_true", help="Print raw JSON")
+    s.set_defaults(func=cmd_reserves)
 
     s = sub.add_parser(
         "budget-status",

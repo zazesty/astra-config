@@ -357,3 +357,21 @@ def anomaly_body(category: str, amount_cents: int, prior_cents: int) -> str:
         f"{money_dollars(amount_cents)} this month, "
         f"vs {money_dollars(prior_cents)} last month.\n"
     )
+
+
+def reserves_text(reserves: list[dict[str, Any]]) -> str:
+    """Format monthly sinking-fund reserves separately from regular bills/pace."""
+    if not reserves:
+        return "No monthly reserves configured."
+    lines: list[str] = []
+    for r in reserves:
+        name = str(r.get("name") or r.get("id") or "Reserve")
+        monthly = money(int(r.get("monthly_cents") or 0))
+        accrued = money(int(r.get("accrued_cents") or 0))
+        spent = money(int(r.get("spent_cents") or 0))
+        balance = money(int(r.get("balance_cents") or 0))
+        start = r.get("start_month") or "current"
+        lines.append(
+            f"{name}: {balance} balance ({monthly}/mo since {start}; accrued {accrued}, spent {spent})"
+        )
+    return "\n".join(lines)
