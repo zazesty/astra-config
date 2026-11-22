@@ -1,9 +1,8 @@
 [Unit]
-Description=Poll for a settled grok-mcp restart and send one reminder
+Description=One-shot startup check for grok-mcp restart reminder (boot catch-up)
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=5min
+OnStartupSec=11min
 AccuracySec=1min
 
 [Install]

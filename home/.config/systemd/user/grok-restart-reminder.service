@@ -3,4 +3,5 @@ Description=Debounced grok-mcp restart reminder (check connectors; rotate as nee
 
 [Service]
 Type=oneshot
+TimeoutStartSec=1800
 ExecStart=/root/astra-config/scripts/restart-reminder.sh

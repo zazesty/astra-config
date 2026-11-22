@@ -7,27 +7,39 @@
 # of today PT). No Pushover. Fail-open via notify-email.
 #
 # Usage:
-#   grok-journal-read-reminder.sh           # send email
+#   grok-journal-read-reminder.sh           # send email (if enabled)
 #   grok-journal-read-reminder.sh --dry-run # print body, no send
+#   grok-journal-read-reminder.sh --force   # ignore disabled gate
 # =============================================================================
 set -uo pipefail
 
 DRY_RUN=0
+FORCE=0
+REPO_ASTRA="/root/astra-config"
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY_RUN=1 ;;
+    --force) FORCE=1 ;;
     -h|--help)
-      sed -n '2,14p' "$0" | sed 's/^# \?//'
+      sed -n '2,15p' "$0" | sed 's/^# \?//'
       exit 0
+      ;;
+    -*)
+      echo "unknown arg: $a" >&2
+      exit 2
+      ;;
+    *)
+      REPO_ASTRA="$a"
       ;;
   esac
 done
 
-REPO_ASTRA="${1:-/root/astra-config}"
-# allow --dry-run as only arg
-if [ "$REPO_ASTRA" = "--dry-run" ]; then
-  REPO_ASTRA=/root/astra-config
+ENABLED_FLAG="${HOME}/.config/grok-journal/read-reminder-enabled"
+if [ "$DRY_RUN" != 1 ] && [ "$FORCE" != 1 ] && [ ! -f "$ENABLED_FLAG" ]; then
+  echo "grok-journal-read-reminder: disabled (touch $ENABLED_FLAG or pass --force)"
+  exit 0
 fi
+
 NOTIFY="$REPO_ASTRA/scripts/notify-email.sh"
 JREPO="${GROK_JOURNAL_REPO:-/root/Grok-Journal}"
 JDIR="$JREPO/Grok_Journal"

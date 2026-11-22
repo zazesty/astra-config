@@ -141,15 +141,12 @@ ln -sfnT "$REPO/home/.config/systemd/user/capacity-watch.service" /root/.config/
 ln -sfnT "$REPO/home/.config/systemd/user/capacity-watch.timer"   /root/.config/systemd/user/capacity-watch.timer
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.service" /root/.config/systemd/user/drift-check.service
 ln -sfnT "$REPO/home/.config/systemd/user/drift-check.timer"   /root/.config/systemd/user/drift-check.timer
-rm -f /root/.config/systemd/user/{memory-harvest,journal-oauth-watch,claude-journal-cleanup}.{service,timer}
+rm -f /root/.config/systemd/user/{memory-harvest,journal-oauth-watch,claude-journal-cleanup,grok-journal-pause-reminder,grok-journal-read-reminder}.{service,timer}
 ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.service" /root/.config/systemd/user/grok-restart-reminder.service
+ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.path"    /root/.config/systemd/user/grok-restart-reminder.path
 ln -sfnT "$REPO/home/.config/systemd/user/grok-restart-reminder.timer"   /root/.config/systemd/user/grok-restart-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal.service" /root/.config/systemd/user/grok-journal.service
 ln -sfnT "$REPO/home/.config/systemd/user/grok-journal.timer"   /root/.config/systemd/user/grok-journal.timer
-ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-pause-reminder.service" /root/.config/systemd/user/grok-journal-pause-reminder.service
-ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-pause-reminder.timer"   /root/.config/systemd/user/grok-journal-pause-reminder.timer
-ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.service" /root/.config/systemd/user/grok-journal-read-reminder.service
-ln -sfnT "$REPO/home/.config/systemd/user/grok-journal-read-reminder.timer"   /root/.config/systemd/user/grok-journal-read-reminder.timer
 ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.service" /root/.config/systemd/user/or-timeout-review.service
 ln -sfnT "$REPO/home/.config/systemd/user/or-timeout-review.timer"   /root/.config/systemd/user/or-timeout-review.timer
 ln -sfnT "$REPO/home/.config/systemd/user/argon-usage.service" /root/.config/systemd/user/argon-usage.service
@@ -272,9 +269,13 @@ systemctl --user enable --now or-timeout-review.timer
 systemctl --user enable --now argon-usage.timer
 systemctl --user enable --now ai-spend-review.timer
 systemctl --user enable --now vps-telemetry.timer
+install -d -m 755 /var/lib/grok-mcp
+systemctl --user enable --now grok-restart-reminder.path
 systemctl --user enable --now grok-restart-reminder.timer
-systemctl --user enable --now grok-journal-pause-reminder.timer
-systemctl --user enable --now grok-journal-read-reminder.timer
+# Grok journal emails are disabled (2026-11-21); do not re-enable on rebuild.
+systemctl --user disable --now grok-journal-pause-reminder.timer 2>/dev/null || true
+systemctl --user disable --now grok-journal-read-reminder.timer 2>/dev/null || true
+systemctl --user reset-failed grok-journal-pause-reminder.timer grok-journal-read-reminder.timer 2>/dev/null || true
 systemctl --user enable --now ops-log.timer
 systemctl --user enable --now git-access-check.timer
 systemctl --user enable --now consumer-health.timer

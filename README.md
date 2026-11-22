@@ -66,8 +66,8 @@ breaks.**
 > the pinned path live—then manually rotate Grok and refresh the pinned URL in GPT + Claude
 > (Gemini auto-refreshes; Grok Build / Hermes auto-sync on-box).
 > **Always rotate** when the tool list/schema changes (Grok caches tools per URL).
-> In-session reminder: `/root/.grok-mcp-restart.alert` via `grok-restart-reminder.timer`
-> (no routine email). Do **not** nag about Claude Code or journaling-routine MCP.
+> In-session reminder: `/root/.grok-mcp-restart.alert` via `grok-restart-reminder.path`
+> (+ boot catch-up `grok-restart-reminder.timer`, no routine email). Do **not** nag about Claude Code or journaling-routine MCP.
 
 **Fastest path:** `sudo bash scripts/rotate-url.sh` automates the box side —
 generates a fresh path, backs up + rewrites the env, restarts the service, smoke-tests

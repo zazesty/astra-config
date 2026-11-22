@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch grok-mcp restart-marker for settled restart reminders
+
+[Path]
+PathModified=/var/lib/grok-mcp/restart-marker
+
+[Install]
+WantedBy=paths.target
