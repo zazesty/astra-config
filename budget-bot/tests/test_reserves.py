@@ -17,6 +17,7 @@ from budget_bot.rules import (
     eom_leftover_event,
     evaluate_budget,
     evaluate_reserves,
+    reserve_spend_offset_cents,
     reserves_month_remaining_cents,
 )
 from budget_bot.run import main as cli_main
@@ -124,15 +125,105 @@ class ReserveTests(unittest.TestCase):
         cfg["reserves"] = [self.glasses]
 
         snap = evaluate_budget(txns, cfg, as_of=date(2026, 12, 20), period_kind="calendar")
-        # Actual spend stays visible in spend_to_date ($120).
-        self.assertEqual(snap.spend_to_date, 12_000)
-        # Dec's $30 set-aside is covered by the $120 glasses purchase, so STS is $1100 - $120.
+        # Prior accrued ($30 from Nov) offsets $30 of the $120 Zenni purchase.
+        self.assertEqual(snap.reserves_offset_cents, 3000)
+        self.assertEqual(snap.spend_to_date, 9000)
+        # Dec's $30 set-aside is covered by the remaining $90 purchase, so STS is $1100 - $90.
         self.assertEqual(snap.reserves_reserved_cents, 0)
-        self.assertEqual(snap.safe_to_spend_cents, 110_000 - 12_000)
-        # 2 months accrued ($60) - $120 spent = -$60 balance.
+        self.assertEqual(snap.safe_to_spend_cents, 110_000 - 9000)
+        # Raw actuals remain intact: 2 months accrued ($60) - $120 spent = -$60 balance.
         self.assertEqual(snap.reserves[0]["accrued_cents"], 6000)
         self.assertEqual(snap.reserves[0]["spent_cents"], 12_000)
+        self.assertEqual(snap.reserves[0]["drawn_prior_cents"], 3000)
         self.assertEqual(snap.reserves[0]["balance_cents"], -6000)
+
+    def _base_cfg(self):
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["hardcap_cents"] = 110_000
+        cfg["bills"] = []
+        cfg["goals"] = []
+        cfg["reserves"] = [self.glasses]
+        return cfg
+
+    def test_full_12_month_drawdown_zeroes_double_count(self):
+        txns = [
+            Transaction(
+                id="zenni-full",
+                date="2027-10-15",
+                amount_cents=36_000,
+                name="Zenni Optical",
+                merchant_name="Zenni Optical",
+                category="Medical",
+            )
+        ]
+        snap = evaluate_budget(txns, self._base_cfg(), as_of=date(2027, 10, 20), period_kind="calendar")
+        self.assertEqual(snap.reserves_offset_cents, 33_000)
+        self.assertEqual(snap.spend_to_date, 3000)
+        self.assertEqual(snap.reserves_reserved_cents, 0)
+        self.assertEqual(snap.safe_to_spend_cents, 110_000 - 3000)
+        self.assertEqual(snap.reserves[0]["balance_cents"], 0)
+
+    def test_partial_drawdown_keeps_current_month_set_aside(self):
+        txns = [
+            Transaction(
+                id="zenni-partial",
+                date="2027-10-15",
+                amount_cents=20_000,
+                name="Zenni Optical",
+                merchant_name="Zenni Optical",
+                category="Medical",
+            )
+        ]
+        snap = evaluate_budget(txns, self._base_cfg(), as_of=date(2027, 10, 20), period_kind="calendar")
+        self.assertEqual(snap.reserves_offset_cents, 20_000)
+        self.assertEqual(snap.spend_to_date, 0)
+        self.assertEqual(snap.reserves_reserved_cents, 3000)
+        self.assertEqual(snap.safe_to_spend_cents, 110_000 - 3000)
+        self.assertEqual(snap.reserves[0]["balance_cents"], 16_000)
+
+    def test_overrun_drawdown_charges_only_excess_above_accrued(self):
+        txns = [
+            Transaction(
+                id="zenni-over",
+                date="2027-10-15",
+                amount_cents=40_000,
+                name="Zenni Optical",
+                merchant_name="Zenni Optical",
+                category="Medical",
+            )
+        ]
+        snap = evaluate_budget(txns, self._base_cfg(), as_of=date(2027, 10, 20), period_kind="calendar")
+        self.assertEqual(snap.reserves_offset_cents, 33_000)
+        self.assertEqual(snap.spend_to_date, 7000)
+        self.assertEqual(snap.reserves_reserved_cents, 0)
+        self.assertEqual(snap.safe_to_spend_cents, 110_000 - 7000)
+        self.assertEqual(snap.reserves[0]["balance_cents"], -4000)
+
+    def test_rolling_30d_drawdown_prevents_false_pace_alarm(self):
+        txns = [
+            Transaction(
+                id="zenni-r30",
+                date="2027-10-10",
+                amount_cents=36_000,
+                name="Zenni Optical",
+                merchant_name="Zenni Optical",
+                category="Medical",
+            )
+        ]
+        snap = evaluate_budget(txns, self._base_cfg(), as_of=date(2027, 10, 15), period_kind="rolling_30d")
+        self.assertEqual(snap.reserves_offset_cents, 33_000)
+        self.assertEqual(snap.spend_to_date, 3000)
+        self.assertEqual(snap.risk, "ok")
+        self.assertEqual(
+            reserve_spend_offset_cents(
+                [self.glasses],
+                txns,
+                date(2027, 9, 24),
+                date(2027, 10, 15),
+                date(2027, 10, 15),
+            ),
+            33_000,
+        )
 
     def test_refund_and_pending_handling(self):
         txns = [

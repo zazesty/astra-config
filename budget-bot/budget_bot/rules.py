@@ -1872,7 +1872,8 @@ def evaluate_reserves(
         start_date = date(ym[0], ym[1], 1) if ym else month_start
         months = reserve_months_elapsed(r, as_of)
         accrued = initial + (months * monthly)
-        spent_total = 0
+        accrued_before_month = initial + max(0, months - 1) * monthly if months > 0 else 0
+        spent_before_month = 0
         spent_month = 0
         if months > 0:
             for t in tx_list:
@@ -1883,10 +1884,15 @@ def evaluate_reserves(
                 d = parse_ymd(t.date)
                 if d < start_date or d > as_of:
                     continue
-                spent_total += int(t.amount_cents)
-                if d >= month_start:
+                if d < month_start:
+                    spent_before_month += int(t.amount_cents)
+                else:
                     spent_month += int(t.amount_cents)
-        month_remaining = max(0, monthly - max(0, spent_month)) if months > 0 else 0
+        spent_total = spent_before_month + spent_month
+        available_prior = max(0, accrued_before_month - spent_before_month)
+        drawn_prior = min(max(0, spent_month), available_prior)
+        unoffset_month_spend = max(0, spent_month) - drawn_prior
+        month_remaining = max(0, monthly - unoffset_month_spend) if months > 0 else 0
         out.append(
             {
                 "id": str(r.get("id") or r.get("name") or "reserve"),
@@ -1897,11 +1903,58 @@ def evaluate_reserves(
                 "accrued_cents": accrued,
                 "spent_cents": spent_total,
                 "spent_this_month_cents": spent_month,
+                "drawn_prior_cents": drawn_prior,
                 "month_remaining_cents": month_remaining,
                 "balance_cents": accrued - spent_total,
             }
         )
     return out
+
+
+def reserve_spend_offset_cents(
+    reserves: list[dict[str, Any]] | None,
+    txns: list[Transaction] | None,
+    period_start: date,
+    period_end: date,
+    as_of: date,
+    *,
+    exclude_pending: bool = True,
+) -> int:
+    """Portion of in-period reserve-matched spend covered by prior months' accrued balance."""
+    total_offset = 0
+    month_start = date(as_of.year, as_of.month, 1)
+    eff_end = min(period_end, as_of)
+    tx_list = txns or []
+    for r in reserves or []:
+        if not isinstance(r, dict):
+            continue
+        monthly = int(r.get("monthly_cents") or 0)
+        if monthly <= 0:
+            continue
+        months = reserve_months_elapsed(r, as_of)
+        if months <= 0:
+            continue
+        initial = int(r.get("initial_cents") or 0)
+        ym = parse_ym(r.get("start_month"))
+        start_date = date(ym[0], ym[1], 1) if ym else month_start
+        accrued_before_month = initial + max(0, months - 1) * monthly
+        spent_before_period = 0
+        spent_in_period = 0
+        for t in tx_list:
+            if not counts_as_spend(t, exclude_pending=exclude_pending):
+                continue
+            if not reserve_matches_txn(r, t):
+                continue
+            d = parse_ymd(t.date)
+            if d < start_date or d > eff_end:
+                continue
+            if d < period_start:
+                spent_before_period += int(t.amount_cents)
+            else:
+                spent_in_period += int(t.amount_cents)
+        available_prior = max(0, accrued_before_month - spent_before_period)
+        total_offset += min(max(0, spent_in_period), available_prior)
+    return total_offset
 
 
 def reserves_month_remaining_cents(
@@ -2021,6 +2074,7 @@ class BudgetSnapshot:
     # Positive => ahead of spend schedule (over pace); negative => under pace.
     days_off_pace: float = 0.0
     reserves_reserved_cents: int = 0
+    reserves_offset_cents: int = 0
     reserves: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -2036,6 +2090,7 @@ class BudgetSnapshot:
             "spend_to_date": self.spend_to_date,
             "bills_reserved_cents": self.bills_reserved_cents,
             "reserves_reserved_cents": self.reserves_reserved_cents,
+            "reserves_offset_cents": self.reserves_offset_cents,
             "committed_cents": self.committed_cents,
             "remaining_cents": self.remaining_cents,
             "pct": round(self.pct, 4),
@@ -2142,6 +2197,15 @@ def evaluate_budget(
         exclude_pending,
         fuzzy_amount_tol_cents=fuzzy_tol,
     )
+    reserves_offset = reserve_spend_offset_cents(
+        cfg.get("reserves"),
+        txns,
+        start,
+        spend_through,
+        as_of,
+        exclude_pending=exclude_pending,
+    )
+    spend -= reserves_offset
     remaining = hardcap - spend
     pct = (spend / hardcap) if hardcap else 0.0
     # Bills: arrears stack + horizon/window upcoming
@@ -2256,6 +2320,7 @@ def evaluate_budget(
         committed_cents=committed,
         days_off_pace=dop,
         reserves_reserved_cents=reserves_reserved,
+        reserves_offset_cents=reserves_offset,
         reserves=reserves_summary,
     )
 
