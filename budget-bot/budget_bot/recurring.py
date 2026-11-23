@@ -475,3 +475,67 @@ def enroll_interval_candidate(candidate_id: str) -> dict[str, Any]:
     save_config(cfg)
     held = _set_candidate_hold(candidate_id, "enrolled")
     return {"ok": True, "name": name, "interval_months": row["interval_months"], **held}
+
+
+def notify_interval_candidates(*, dry_run: bool = True) -> list[dict[str, Any]]:
+    """Send one email (never Pushover) for newly detected interval-bill candidates."""
+    from .models import AlertEvent
+    from .notify import send_alert
+    from .store import already_notified
+
+    doc = load_interval_candidate_doc()
+    open_rows = list(doc.get("open") or [])
+    fresh = [
+        row
+        for row in open_rows
+        if row.get("id") and not already_notified(f"interval_candidate|{row['id']}")
+    ]
+    if not fresh:
+        return []
+
+    lines: list[str] = ["New recurring bill candidates awaiting confirmation:", ""]
+    keys: list[str] = []
+    cand_ids: list[str] = []
+    for row in fresh:
+        cid = str(row["id"])
+        keys.append(f"interval_candidate|{cid}")
+        cand_ids.append(cid)
+        name = str(row.get("name") or cid)
+        amt = int(row.get("amount_cents") or 0)
+        interval = int(row.get("interval_months") or 1)
+        day = int(row.get("day_of_month") or 1)
+        months = ", ".join(str(m) for m in (row.get("months") or []))
+        lines.append(
+            f"- {name}: ${amt / 100:.2f} every {interval}m (day {day}, months: {months}) [id: {cid}]"
+        )
+    lines.extend(
+        [
+            "",
+            "Enroll:  budget-bot interval-candidates enroll <id>",
+            "Dismiss: budget-bot interval-candidates dismiss <id>",
+            "(Or tell Grok/Hermes to enroll or dismiss.)",
+        ]
+    )
+    if len(fresh) == 1:
+        r0 = fresh[0]
+        subject = f"Budget Bot: recurring bill candidate — {r0.get('name') or r0['id']}"
+    else:
+        subject = f"Budget Bot: {len(fresh)} new recurring bill candidates"
+
+    ev = AlertEvent(
+        kind="interval_candidate",
+        subject=subject,
+        body="\n".join(lines) + "\n",
+        key=keys[0],
+        payload={"also_mark_keys": keys, "candidate_ids": cand_ids},
+    )
+    status = send_alert(ev, dry_run=dry_run, channel="email")
+    return [
+        {
+            "kind": ev.kind,
+            "key": ev.key,
+            "status": status,
+            "subject": ev.subject,
+            "count": len(fresh),
+        }
+    ]

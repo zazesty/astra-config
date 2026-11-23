@@ -1746,6 +1746,27 @@ def canned_cash_bills_by_cu(
     return rows
 
 
+def effective_hardcap_cents(cfg: dict[str, Any], as_of: date) -> int:
+    """Resolve hardcap_cents for as_of, honoring any dated hardcap_schedule entries."""
+    cap = int(cfg.get("hardcap_cents") or 0)
+    best_date: date | None = None
+    best_cap: int | None = None
+    for row in cfg.get("hardcap_schedule") or []:
+        if not isinstance(row, dict):
+            continue
+        raw_date = str(row.get("effective_from") or "").strip()
+        if not raw_date or row.get("hardcap_cents") is None:
+            continue
+        try:
+            eff = parse_ymd(raw_date)
+        except ValueError:
+            continue
+        if eff <= as_of and (best_date is None or eff >= best_date):
+            best_date = eff
+            best_cap = int(row["hardcap_cents"])
+    return best_cap if best_cap is not None else cap
+
+
 def cash_bills_alert(
     cfg: dict[str, Any],
     txns: list[Transaction] | None,
@@ -1770,7 +1791,7 @@ def cash_bills_alert(
     if not piles:
         return None
     days = int(snap.days_in_period) if snap is not None else 30
-    cap = int(snap.hardcap_cents) if snap is not None else int(cfg.get("hardcap_cents") or 0)
+    cap = int(snap.hardcap_cents) if snap is not None else effective_hardcap_cents(cfg, as_of)
     shown = canned_cash_bills_by_cu(
         cfg.get("bills"),
         txns,
@@ -2189,7 +2210,7 @@ def evaluate_budget(
         kind = "calendar"
         start, end, days_in, days_elapsed = period_bounds(as_of)
 
-    monthly_cap = int(cfg["hardcap_cents"])
+    monthly_cap = effective_hardcap_cents(cfg, as_of)
     if kind == "rolling_30d":
         # Daily allotment is the calendar month's, not monthly_cap / rolling length.
         # hardcap = daily × window length keeps days_off = committed/daily − elapsed,
@@ -2588,7 +2609,14 @@ def detect_xai_month(
     tz = ZoneInfo(cfg.get("timezone") or "America/Los_Angeles")
     if as_of is None:
         as_of = datetime.now(tz).date()
-    limit = int(cfg.get("xai_month_over_cents", 5000))
+    if cfg.get("xai_month_enabled", True) is False:
+        return []
+    raw_limit = cfg.get("xai_month_over_cents", 5000)
+    if raw_limit is None or raw_limit is False:
+        return []
+    limit = int(raw_limit)
+    if limit <= 0:
+        return []
     exclude_pending = bool(cfg.get("exclude_pending", True))
     period = f"{as_of.year:04d}-{as_of.month:02d}"
     total = 0

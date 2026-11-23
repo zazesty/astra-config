@@ -13,9 +13,12 @@ from pathlib import Path
 
 from budget_bot.config import DEFAULT_CONFIG
 from budget_bot.models import Transaction
+from budget_bot.recurring import notify_interval_candidates, persist_interval_candidates
 from budget_bot.rules import (
     canned_cash_bills_cents,
+    detect_xai_month,
     effective_bills_reserve_cents,
+    effective_hardcap_cents,
     eom_leftover_event,
     evaluate_budget,
     evaluate_reserves,
@@ -396,6 +399,81 @@ class ReserveTests(unittest.TestCase):
             ),
             12_600,
         )
+
+    def test_scheduled_hardcap_flips_on_effective_date(self):
+        cfg = dict(DEFAULT_CONFIG)
+        cfg["hardcap_cents"] = 110_000
+        cfg["hardcap_schedule"] = [{"effective_from": "2026-12-01", "hardcap_cents": 120_000}]
+        cfg["bills"] = []
+        cfg["goals"] = []
+        cfg["reserves"] = []
+        self.assertEqual(effective_hardcap_cents(cfg, date(2026, 11, 30)), 110_000)
+        self.assertEqual(effective_hardcap_cents(cfg, date(2026, 12, 1)), 120_000)
+        nov = evaluate_budget([], cfg, as_of=date(2026, 11, 30), period_kind="calendar")
+        dec = evaluate_budget([], cfg, as_of=date(2026, 12, 1), period_kind="calendar")
+        dec_roll = evaluate_budget([], cfg, as_of=date(2026, 12, 1), period_kind="rolling_30d")
+        self.assertEqual(nov.hardcap_cents, 110_000)
+        self.assertEqual(dec.hardcap_cents, 120_000)
+        # Dec has 31 days and rolling_30d window is 29 days (21+1+7): round(120_000 * 29 / 31) = 112_258.
+        self.assertEqual(dec_roll.hardcap_cents, 112_258)
+
+    def test_xai_month_deprecated_when_disabled_or_zero(self):
+        tx = [
+            Transaction(
+                id="xai-80",
+                date="2026-11-10",
+                amount_cents=8000,
+                name="XAI LLC",
+                merchant_name="xAI",
+            )
+        ]
+        cfg_zero = dict(DEFAULT_CONFIG)
+        cfg_zero["xai_month_over_cents"] = 0
+        self.assertEqual(detect_xai_month(tx, cfg_zero, as_of=date(2026, 11, 23)), [])
+        cfg_off = dict(DEFAULT_CONFIG)
+        cfg_off["xai_month_enabled"] = False
+        self.assertEqual(detect_xai_month(tx, cfg_off, as_of=date(2026, 11, 23)), [])
+
+    def test_notify_interval_candidates_sends_once_via_email_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            email_log = state / "email_calls.log"
+            push_log = state / "push_calls.log"
+            email_cmd = state / "email.sh"
+            push_cmd = state / "push.sh"
+            email_cmd.write_text(
+                f"#!/usr/bin/env bash\nprintf '%s\\n' \"$1\" >> '{email_log}'\ncat >> '{email_log}'\n"
+            )
+            push_cmd.write_text(f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{push_log}'\n")
+            os.chmod(email_cmd, 0o755)
+            os.chmod(push_cmd, 0o755)
+            old_env = {
+                k: os.environ.get(k)
+                for k in ("BUDGET_BOT_STATE", "BUDGET_BOT_NOTIFY_CMD", "BUDGET_BOT_PUSH_CMD")
+            }
+            os.environ["BUDGET_BOT_STATE"] = str(state)
+            os.environ["BUDGET_BOT_NOTIFY_CMD"] = str(email_cmd)
+            os.environ["BUDGET_BOT_PUSH_CMD"] = str(push_cmd)
+            try:
+                txns = [
+                    Transaction(id="y1", date="2026-10-23", amount_cents=3240, name="Yes In My Back Yard"),
+                    Transaction(id="y2", date="2026-11-23", amount_cents=3240, name="Yes In My Back Yard"),
+                ]
+                persist_interval_candidates(txns, [], as_of=date(2026, 11, 23))
+                res1 = notify_interval_candidates(dry_run=False)
+                self.assertEqual(len(res1), 1)
+                self.assertEqual(res1[0]["status"], "sent")
+                self.assertTrue(email_log.exists())
+                self.assertIn("Yes In My Back Yard", email_log.read_text())
+                self.assertFalse(push_log.exists())
+                res2 = notify_interval_candidates(dry_run=False)
+                self.assertEqual(res2, [])
+            finally:
+                for k, v in old_env.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
 
 
 if __name__ == "__main__":

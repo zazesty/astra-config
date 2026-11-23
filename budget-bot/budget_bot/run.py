@@ -954,8 +954,10 @@ def cmd_watch(args: argparse.Namespace) -> int:
     results = send_alerts(flags, dry_run=dry_run)
     if not args.fixture:
         from .buy_queue import notify_buy_queue_asks
+        from .recurring import notify_interval_candidates
 
         results.extend(notify_buy_queue_asks(cfg, all_tx, dry_run=dry_run))
+        results.extend(notify_interval_candidates(dry_run=dry_run))
 
     # Daily digest OFF by default (owner: irregular coaching only)
     digest_status = "disabled"
