@@ -252,6 +252,70 @@ def _run(cmd: list[str], *, cwd: Path | None = None, timeout: int = 20) -> str:
     return out
 
 
+def photon_asks_path() -> Path:
+    return _buy_queue_config_path().parent / "photon_asks.json"
+
+
+def has_pending_binary_asks(path: Path | None = None, *, now: datetime | None = None) -> bool:
+    """Fast check for unexpired binary asks so normal 'yes'/'no' texts pass to Hermes."""
+    src = path if path is not None else photon_asks_path()
+    if not src.is_file():
+        return False
+    try:
+        data = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+    pending = data.get("pending") if isinstance(data, dict) else None
+    if not isinstance(pending, list) or not pending:
+        return False
+    cur = now or datetime.now(timezone.utc)
+    if cur.tzinfo is None:
+        cur = cur.replace(tzinfo=timezone.utc)
+    for row in pending:
+        if not isinstance(row, dict):
+            continue
+        raw_exp = str(row.get("expires_at") or "").strip()
+        if not raw_exp:
+            return True
+        try:
+            exp = datetime.fromisoformat(raw_exp.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp > cur:
+            return True
+    return False
+
+
+def handle_binary_reply(answer: str, code: str | None = None) -> str:
+    cmd = ["python3", "-m", "budget_bot", "photon-ask", "answer", answer]
+    if code is not None and str(code).strip():
+        cmd.append(str(code).strip())
+    cmd.append("--json")
+    proc = subprocess.run(
+        cmd,
+        cwd=str(FINANCE_CWD),
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=False,
+        env=os.environ.copy(),
+    )
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if out:
+        try:
+            data = json.loads(out)
+            if isinstance(data, dict) and data.get("message"):
+                return str(data["message"])
+        except json.JSONDecodeError:
+            pass
+    if proc.returncode != 0:
+        return f"Command failed: {(err or out or f'exit {proc.returncode}')[:300]}"
+    return out or "Done."
+
+
 def handle(intent: Intent, *, author: str) -> str:
     if intent.kind == "budget":
         return _run(BUDGET_CMD, cwd=FINANCE_CWD)

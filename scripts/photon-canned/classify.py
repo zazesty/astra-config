@@ -168,6 +168,22 @@ def _is_work(text: str) -> bool:
     return bool(_WORK.search(text) or _WORK_UPDATE.search(text))
 
 
+_BINARY_REPLY = re.compile(
+    r"^\s*(y|yes|yep|yeah|enroll|n|no|nope|dismiss|skip)(?:\s+#?(\d+))?\s*[.!?]*\s*$",
+    re.I,
+)
+_BINARY_YES = frozenset({"y", "yes", "yep", "yeah", "enroll"})
+
+
+def parse_binary_reply(text: str) -> tuple[str, Optional[str]] | None:
+    """Match strict binary replies ('y', 'n', 'yes 2', 'no #1') for pending Photon asks."""
+    m = _BINARY_REPLY.match(text or "")
+    if not m:
+        return None
+    ans = "yes" if m.group(1).lower() in _BINARY_YES else "no"
+    return ans, m.group(2)
+
+
 def classify(text: str) -> Optional[Intent]:
     n = _norm(text)
     if not n or len(n) > 240:

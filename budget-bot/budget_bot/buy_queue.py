@@ -293,17 +293,32 @@ def notify_buy_queue_asks(
     dry_run: bool,
 ) -> list[dict[str, str]]:
     from .notify import already_notified, send_alert
+    from .photon_asks import enqueue_photon_ask
 
     results = []
     for ev in buy_queue_ask_events(cfg.get("buy_queue"), txns):
+        ask = ev.payload.get("ask") or {}
+        name = str(ask.get("name") or ev.subject.rstrip("?"))
+        paid = _dollars(int(ask.get("txn_cents") or 0))
+        listed = _dollars(int(ask.get("amount_cents") or 0))
+        when = str(ask.get("txn_date") or "that charge")
+        merchant = str(ask.get("merchant") or "Charge")
+        code = "?"
         if not dry_run and not already_notified(ev.key):
-            try:
-                from .buy_queue_ask import mint_ask
-
-                ev.payload["open_url"] = mint_ask(ev.payload.get("ask") or {})
-            except Exception:
-                pass
-        st = send_alert(ev, dry_run=dry_run, channel="pushover")
+            entry = enqueue_photon_ask(
+                kind="buy_queue_ask",
+                key=ev.key,
+                item_id=str(ask.get("id") or ""),
+                name=name,
+                summary=f"{name} ({merchant} {paid} on {when})",
+                meta=ask,
+            )
+            code = str(entry["code"])
+        ev.body = (
+            f'Buy list (#{code}): {merchant} {paid} on {when} '
+            f'— was that "{name}" ({listed})? Reply y/n (or y {code} / n {code}).\n'
+        )
+        st = send_alert(ev, dry_run=dry_run, channel="photon")
         results.append(
             {"kind": ev.kind, "key": ev.key, "status": st, "subject": ev.subject}
         )

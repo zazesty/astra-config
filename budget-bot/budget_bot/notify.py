@@ -198,12 +198,24 @@ def _send_alert_locked(
     )
     use_sms = ch == "sms"
     use_email = ch == "email"
+    use_photon = ch == "photon"
 
-    if not use_push and not use_sms and not use_email:
+    if not use_push and not use_sms and not use_email and not use_photon:
         with log_path.open("a") as f:
             f.write(f"SKIP_CHANNEL ch={ch} {line}\n")
         mark_notified(event.key)
         return "skipped_channel"
+
+    if use_photon:
+        from .photon_asks import send_photon_text
+
+        ok, detail = send_photon_text(_push_body(event))
+        with log_path.open("a") as f:
+            f.write(f"PHOTON ok={ok} {line}\n")
+        if ok:
+            _mark_event(event)
+            return "sent_photon"
+        return f"error:photon:{detail}"
 
     if use_push:
         script = notify_push_script()

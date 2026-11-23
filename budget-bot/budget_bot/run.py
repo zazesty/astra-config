@@ -250,6 +250,31 @@ def cmd_interval_bills(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_photon_ask(args: argparse.Namespace) -> int:
+    """List or resolve binary Photon asks (buy-queue confirms / interval bills)."""
+    from .photon_asks import list_pending_photon_asks, resolve_photon_ask
+
+    if args.action == "list":
+        rows = list_pending_photon_asks()
+        if args.json:
+            print(json.dumps({"pending": rows}, indent=2))
+        elif not rows:
+            print("No open Photon asks.")
+        else:
+            for r in rows:
+                print(f"{r['code']}. [{r['kind']}] {r.get('summary') or r.get('name')}")
+        return 0
+    if not args.reply:
+        print("usage: photon-ask answer <yes|no> [code]", file=sys.stderr)
+        return 2
+    res = resolve_photon_ask(args.reply, args.code)
+    if args.json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(res.get("message") or json.dumps(res))
+    return 0 if res.get("ok") else 1
+
+
 def _finish_plaid_link(result: dict, update_id: str | None) -> None:
     print(json.dumps({"linked": True, **result}, indent=2))
     if update_id:
@@ -1088,6 +1113,16 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("id", nargs="?", default=None)
     s.add_argument("--as-of", default=None, help="YYYY-MM-DD for refresh")
     s.set_defaults(func=cmd_interval_bills)
+
+    s = sub.add_parser(
+        "photon-ask",
+        help="List or answer binary Photon asks (buy-queue Y/N and interval candidates)",
+    )
+    s.add_argument("action", choices=("list", "answer"))
+    s.add_argument("reply", nargs="?", default=None, help="yes|no (for answer)")
+    s.add_argument("code", nargs="?", default=None, help="optional numeric ask code")
+    s.add_argument("--json", action="store_true", help="Print JSON output")
+    s.set_defaults(func=cmd_photon_ask)
 
     s = sub.add_parser("plaid-link", help="Start Plaid Link UI (PayPal / any bank)")
     s.add_argument(

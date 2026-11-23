@@ -434,24 +434,34 @@ class ReserveTests(unittest.TestCase):
         cfg_off["xai_month_enabled"] = False
         self.assertEqual(detect_xai_month(tx, cfg_off, as_of=date(2026, 11, 23)), [])
 
-    def test_notify_interval_candidates_sends_once_via_email_only(self):
+    def test_notify_interval_candidates_sends_once_via_photon_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
+            photon_log = state / "photon_calls.log"
             email_log = state / "email_calls.log"
             push_log = state / "push_calls.log"
+            photon_cmd = state / "photon.sh"
             email_cmd = state / "email.sh"
             push_cmd = state / "push.sh"
+            photon_cmd.write_text(f"#!/usr/bin/env bash\ncat >> '{photon_log}'\n")
             email_cmd.write_text(
                 f"#!/usr/bin/env bash\nprintf '%s\\n' \"$1\" >> '{email_log}'\ncat >> '{email_log}'\n"
             )
             push_cmd.write_text(f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{push_log}'\n")
+            os.chmod(photon_cmd, 0o755)
             os.chmod(email_cmd, 0o755)
             os.chmod(push_cmd, 0o755)
             old_env = {
                 k: os.environ.get(k)
-                for k in ("BUDGET_BOT_STATE", "BUDGET_BOT_NOTIFY_CMD", "BUDGET_BOT_PUSH_CMD")
+                for k in (
+                    "BUDGET_BOT_STATE",
+                    "BUDGET_BOT_PHOTON_CMD",
+                    "BUDGET_BOT_NOTIFY_CMD",
+                    "BUDGET_BOT_PUSH_CMD",
+                )
             }
             os.environ["BUDGET_BOT_STATE"] = str(state)
+            os.environ["BUDGET_BOT_PHOTON_CMD"] = str(photon_cmd)
             os.environ["BUDGET_BOT_NOTIFY_CMD"] = str(email_cmd)
             os.environ["BUDGET_BOT_PUSH_CMD"] = str(push_cmd)
             try:
@@ -462,9 +472,10 @@ class ReserveTests(unittest.TestCase):
                 persist_interval_candidates(txns, [], as_of=date(2026, 11, 23))
                 res1 = notify_interval_candidates(dry_run=False)
                 self.assertEqual(len(res1), 1)
-                self.assertEqual(res1[0]["status"], "sent")
-                self.assertTrue(email_log.exists())
-                self.assertIn("Yes In My Back Yard", email_log.read_text())
+                self.assertEqual(res1[0]["status"], "sent_photon")
+                self.assertTrue(photon_log.exists())
+                self.assertIn("Yes In My Back Yard", photon_log.read_text())
+                self.assertFalse(email_log.exists())
                 self.assertFalse(push_log.exists())
                 res2 = notify_interval_candidates(dry_run=False)
                 self.assertEqual(res2, [])

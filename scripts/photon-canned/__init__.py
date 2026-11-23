@@ -12,8 +12,8 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from actions import handle  # noqa: E402
-from classify import classify  # noqa: E402
+from actions import handle, handle_binary_reply, has_pending_binary_asks  # noqa: E402
+from classify import classify, parse_binary_reply  # noqa: E402
 
 logger = logging.getLogger("plugins.photon-canned")
 
@@ -82,22 +82,7 @@ async def _send(adapter, chat_id: str, text: str) -> None:
         logger.exception("photon-canned send failed")
 
 
-def pre_gateway_dispatch(event, gateway, **kwargs):
-    del kwargs
-    src = getattr(event, "source", None)
-    if src is None or _platform_name(src) != "photon":
-        return None
-    text = getattr(event, "text", None) or ""
-    intent = classify(text)
-    if intent is None:
-        return None
-
-    try:
-        reply = handle(intent, author="Zavdi via Photon")
-    except Exception:
-        logger.exception("photon-canned handle failed")
-        reply = "Canned path failed. Try again or ask Grok Build."
-
+def _reply_via_photon(gateway, src, reply: str) -> None:
     adapters = getattr(gateway, "adapters", None) or {}
     plat = getattr(src, "platform", None)
     adapter = None
@@ -119,6 +104,34 @@ def pre_gateway_dispatch(event, gateway, **kwargs):
         except RuntimeError:
             logger.warning("photon-canned: no event loop; skip send")
 
+
+def pre_gateway_dispatch(event, gateway, **kwargs):
+    del kwargs
+    src = getattr(event, "source", None)
+    if src is None or _platform_name(src) != "photon":
+        return None
+    text = getattr(event, "text", None) or ""
+    binary = parse_binary_reply(text)
+    if binary is not None and has_pending_binary_asks():
+        try:
+            reply = handle_binary_reply(binary[0], binary[1])
+        except Exception:
+            logger.exception("photon-canned binary ask failed")
+            reply = "Binary ask failed. Try again or ask Grok Build."
+        _reply_via_photon(gateway, src, reply)
+        return {"action": "skip", "reason": "canned-binary-ask"}
+
+    intent = classify(text)
+    if intent is None:
+        return None
+
+    try:
+        reply = handle(intent, author="Zavdi via Photon")
+    except Exception:
+        logger.exception("photon-canned handle failed")
+        reply = "Canned path failed. Try again or ask Grok Build."
+
+    _reply_via_photon(gateway, src, reply)
     return {"action": "skip", "reason": f"canned-{intent.kind}"}
 
 

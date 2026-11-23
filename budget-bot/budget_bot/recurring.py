@@ -478,9 +478,10 @@ def enroll_interval_candidate(candidate_id: str) -> dict[str, Any]:
 
 
 def notify_interval_candidates(*, dry_run: bool = True) -> list[dict[str, Any]]:
-    """Send one email (never Pushover) for newly detected interval-bill candidates."""
+    """Send one inline Photon prompt (never Pushover) for newly detected interval-bill candidates."""
     from .models import AlertEvent
     from .notify import send_alert
+    from .photon_asks import enqueue_photon_ask
     from .store import already_notified
 
     doc = load_interval_candidate_doc()
@@ -493,49 +494,79 @@ def notify_interval_candidates(*, dry_run: bool = True) -> list[dict[str, Any]]:
     if not fresh:
         return []
 
-    lines: list[str] = ["New recurring bill candidates awaiting confirmation:", ""]
     keys: list[str] = []
     cand_ids: list[str] = []
-    for row in fresh:
+    entries: list[tuple[str, dict[str, Any]]] = []
+    for idx, row in enumerate(fresh, start=1):
         cid = str(row["id"])
-        keys.append(f"interval_candidate|{cid}")
+        key = f"interval_candidate|{cid}"
+        keys.append(key)
         cand_ids.append(cid)
         name = str(row.get("name") or cid)
         amt = int(row.get("amount_cents") or 0)
         interval = int(row.get("interval_months") or 1)
         day = int(row.get("day_of_month") or 1)
-        months = ", ".join(str(m) for m in (row.get("months") or []))
-        lines.append(
-            f"- {name}: ${amt / 100:.2f} every {interval}m (day {day}, months: {months}) [id: {cid}]"
+        months = [str(m) for m in (row.get("months") or [])]
+        if dry_run:
+            code = str(idx)
+        else:
+            entry = enqueue_photon_ask(
+                kind="interval_candidate",
+                key=key,
+                item_id=cid,
+                name=name,
+                summary=f"{name} (${amt / 100:.2f} every {interval}m, day {day})",
+                meta={
+                    "amount_cents": amt,
+                    "interval_months": interval,
+                    "day_of_month": day,
+                    "months": months,
+                },
+            )
+            code = str(entry["code"])
+        entries.append((code, row))
+
+    if len(entries) == 1:
+        code, r0 = entries[0]
+        name = str(r0.get("name") or r0["id"])
+        amt = int(r0.get("amount_cents") or 0)
+        interval = int(r0.get("interval_months") or 1)
+        day = int(r0.get("day_of_month") or 1)
+        months_str = ", ".join(str(m) for m in (r0.get("months") or []))
+        body = (
+            f"Recurring bill (#{code}): {name} — ${amt / 100:.2f} every {interval}m "
+            f"(day {day}; {months_str}). Add to bills? Reply y/n (or y {code} / n {code}).\n"
         )
-    lines.extend(
-        [
-            "",
-            "Enroll:  budget-bot interval-candidates enroll <id>",
-            "Dismiss: budget-bot interval-candidates dismiss <id>",
-            "(Or tell Grok/Hermes to enroll or dismiss.)",
-        ]
-    )
-    if len(fresh) == 1:
-        r0 = fresh[0]
-        subject = f"Budget Bot: recurring bill candidate — {r0.get('name') or r0['id']}"
+        subject = f"Budget Bot: recurring bill candidate — {name}"
     else:
-        subject = f"Budget Bot: {len(fresh)} new recurring bill candidates"
+        c0 = entries[0][0]
+        lines = [f"New recurring bill candidates (reply e.g. y {c0} or n {c0}):"]
+        for code, row in entries:
+            name = str(row.get("name") or row["id"])
+            amt = int(row.get("amount_cents") or 0)
+            interval = int(row.get("interval_months") or 1)
+            day = int(row.get("day_of_month") or 1)
+            months_str = ", ".join(str(m) for m in (row.get("months") or []))
+            lines.append(
+                f"{code}. {name} — ${amt / 100:.2f} every {interval}m (day {day}; {months_str})"
+            )
+        body = "\n".join(lines) + "\n"
+        subject = f"Budget Bot: {len(entries)} new recurring bill candidates"
 
     ev = AlertEvent(
         kind="interval_candidate",
         subject=subject,
-        body="\n".join(lines) + "\n",
+        body=body,
         key=keys[0],
         payload={"also_mark_keys": keys, "candidate_ids": cand_ids},
     )
-    status = send_alert(ev, dry_run=dry_run, channel="email")
+    status = send_alert(ev, dry_run=dry_run, channel="photon")
     return [
         {
             "kind": ev.kind,
             "key": ev.key,
             "status": status,
             "subject": ev.subject,
-            "count": len(fresh),
+            "count": len(entries),
         }
     ]
