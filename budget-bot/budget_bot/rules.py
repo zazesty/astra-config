@@ -917,6 +917,8 @@ def proposed_saas_reserve_updates(
     out: list[dict[str, Any]] = []
     tol = max(0, int(fuzzy_amount_tol_cents))
     for bill in bills or []:
+        if bill.get("cash_only"):
+            continue
         if saas_tax_pct(bill) is None:
             continue
         if bill_is_annual(bill) or bill.get("annual_cents") is not None:
@@ -1117,6 +1119,8 @@ def proposed_subscription_reserve_updates(
     bill_list = list(bills or [])
     rows = txns or []
     for bill in bill_list:
+        if bill.get("cash_only"):
+            continue
         if bill.get("follow_amount") is False:
             continue
         if bill_is_annual(bill) or bill.get("annual_cents") is not None:
@@ -1442,7 +1446,7 @@ def effective_bills_reserve_cents(
         return sum(
             bill_monthly_reserve_cents(b)
             for b in (bills or [])
-            if bill_monthly_reserve_cents(b) > 0
+            if not b.get("cash_only") and bill_monthly_reserve_cents(b) > 0
         )
     remain_end = window_end or period_end
     kind = (period_kind or "calendar").strip().lower()
@@ -1464,6 +1468,8 @@ def effective_bills_reserve_cents(
     )
 
     for b in bills or []:
+        if b.get("cash_only"):
+            continue
         monthly = bill_monthly_reserve_cents(b)
         if monthly <= 0:
             continue
@@ -1585,17 +1591,32 @@ def upcoming_unpaid_bills_cents(
         exclude_pending=exclude_pending,
         fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
     )
+    shared_cash_only_credits: dict[str, dict[str, int]] = {}
     for b in bills or []:
         pull = bill_cash_pull_cents(b)
         if pull <= 0:
             continue
-        pay_credits = build_bill_payment_credits(
-            b,
-            txns,
-            exclude_pending=exclude_pending,
-            fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
-            skip_txn_ids=annual_ids,
-        )
+        is_cash_only = bool(b.get("cash_only"))
+        match_key = str(b.get("match") or "").strip().lower()
+        if is_cash_only and match_key:
+            if match_key not in shared_cash_only_credits:
+                pool_bill = {**b, "amount_cents": 1, "cadence": "monthly"}
+                shared_cash_only_credits[match_key] = build_bill_payment_credits(
+                    pool_bill,
+                    txns,
+                    exclude_pending=exclude_pending,
+                    fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+                    skip_txn_ids=annual_ids,
+                )
+            pay_credits = shared_cash_only_credits[match_key]
+        else:
+            pay_credits = build_bill_payment_credits(
+                b,
+                txns,
+                exclude_pending=exclude_pending,
+                fuzzy_amount_tol_cents=fuzzy_amount_tol_cents,
+                skip_txn_ids=annual_ids,
+            )
         dues: list[date] = []
         if include_arrears and grace > 0:
             arrears_end = as_of - timedelta(days=1)

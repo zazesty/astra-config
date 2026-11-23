@@ -14,11 +14,15 @@ from pathlib import Path
 from budget_bot.config import DEFAULT_CONFIG
 from budget_bot.models import Transaction
 from budget_bot.rules import (
+    canned_cash_bills_cents,
+    effective_bills_reserve_cents,
     eom_leftover_event,
     evaluate_budget,
     evaluate_reserves,
+    proposed_subscription_reserve_updates,
     reserve_spend_offset_cents,
     reserves_month_remaining_cents,
+    upcoming_unpaid_bills_cents,
 )
 from budget_bot.run import main as cli_main
 from budget_bot.templates import reserves_text
@@ -275,6 +279,123 @@ class ReserveTests(unittest.TestCase):
                     os.environ.pop("BUDGET_BOT_STATE", None)
                 else:
                     os.environ["BUDGET_BOT_STATE"] = old
+
+    def _iherb_cash_only_bills(self):
+        base = {
+            "day_of_month": 20,
+            "institution": "alliant",
+            "match": r"(?i)\biherb\b",
+            "cash_only": True,
+            "follow_amount": False,
+        }
+        return [
+            {**base, "name": "iHerb 2mo", "amount_cents": 6100, "interval_months": 2, "anchor": "2026-12"},
+            {**base, "name": "iHerb 3mo", "amount_cents": 4700, "interval_months": 3, "anchor": "2026-12"},
+            {**base, "name": "iHerb 4mo (Jan)", "amount_cents": 1600, "interval_months": 4, "anchor": "2027-01"},
+            {**base, "name": "iHerb 4mo (Mar)", "amount_cents": 3700, "interval_months": 4, "anchor": "2027-03"},
+            {**base, "name": "iHerb 6mo", "amount_cents": 4200, "interval_months": 6, "anchor": "2027-03"},
+        ]
+
+    def test_cash_only_bills_excluded_from_sts_and_follow_updates(self):
+        bills = self._iherb_cash_only_bills()
+        self.assertEqual(
+            effective_bills_reserve_cents(
+                bills,
+                [],
+                period_start=date(2026, 12, 1),
+                period_end=date(2026, 12, 31),
+                as_of=date(2026, 12, 18),
+                period_kind="calendar",
+            ),
+            0,
+        )
+        self.assertEqual(effective_bills_reserve_cents(bills, []), 0)
+        txns = [
+            Transaction(
+                id="ih-dec",
+                date="2026-12-20",
+                amount_cents=11_800,
+                name="Payment to iHerb, LLC",
+                institution="alliant",
+            )
+        ]
+        res = proposed_subscription_reserve_updates(bills, txns, as_of=date(2026, 12, 22))
+        self.assertEqual(res, {"updates": [], "asks": []})
+
+    def test_cash_only_sibling_pool_for_overlapping_iherb_dues(self):
+        bills = self._iherb_cash_only_bills()
+        # Dec 18 (within 3d horizon of Dec 20): $61 + $47 = $108
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(bills, [], date(2026, 12, 18), horizon_days=3),
+            10_800,
+        )
+        # Canned cash-vs-bills surfaces $108 when cash < 2x ($150), hides when >= 2x ($250).
+        self.assertEqual(
+            canned_cash_bills_cents(
+                bills,
+                [],
+                date(2026, 12, 18),
+                hardcap_cents=120_000,
+                days_in_period=31,
+                cash_cents=15_000,
+            ),
+            10_800,
+        )
+        self.assertEqual(
+            canned_cash_bills_cents(
+                bills,
+                [],
+                date(2026, 12, 18),
+                hardcap_cents=120_000,
+                days_in_period=31,
+                cash_cents=25_000,
+            ),
+            0,
+        )
+        # One combined $118 checkout clears both Dec 20 bills.
+        combined = [
+            Transaction(
+                id="ih-comb",
+                date="2026-12-20",
+                amount_cents=11_800,
+                name="Payment to iHerb, LLC",
+                institution="alliant",
+            )
+        ]
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                bills, combined, date(2026, 12, 21), horizon_days=3, include_arrears=True
+            ),
+            0,
+        )
+        # Only one $61 checkout clears the $61 bill and leaves the $47 bill unpaid.
+        one_only = [
+            Transaction(
+                id="ih-one",
+                date="2026-12-20",
+                amount_cents=6100,
+                name="Payment to iHerb, LLC",
+                institution="alliant",
+            )
+        ]
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                bills, one_only, date(2026, 12, 21), horizon_days=3, include_arrears=True
+            ),
+            4700,
+        )
+        # Mar 20: prior Dec/Feb paid -> $47 + $37 + $42 = $126 due.
+        prior_paid = [
+            Transaction(id="p-dec", date="2026-12-20", amount_cents=10_800, name="iHerb", institution="alliant"),
+            Transaction(id="p-jan", date="2027-01-20", amount_cents=1600, name="iHerb", institution="alliant"),
+            Transaction(id="p-feb", date="2027-02-20", amount_cents=6100, name="iHerb", institution="alliant"),
+        ]
+        self.assertEqual(
+            upcoming_unpaid_bills_cents(
+                bills, prior_paid, date(2027, 3, 18), horizon_days=3, include_arrears=True
+            ),
+            12_600,
+        )
 
 
 if __name__ == "__main__":
