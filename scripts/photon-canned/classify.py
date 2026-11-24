@@ -169,7 +169,7 @@ def _is_work(text: str) -> bool:
 
 
 _BINARY_REPLY = re.compile(
-    r"^\s*(y|yes|yep|yeah|enroll|n|no|nope|dismiss|skip)(?:\s+#?(\d+))?\s*[.!?]*\s*$",
+    r"^\s*(y|yes|yep|yeah|enroll|n|no|nope|dismiss|skip)(?:\s*#?(\d+))?\s*[.!?]*\s*$",
     re.I,
 )
 _BINARY_YES = frozenset({"y", "yes", "yep", "yeah", "enroll"})

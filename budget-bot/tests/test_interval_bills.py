@@ -249,6 +249,16 @@ class TestIntervalDetect(unittest.TestCase):
             [],
         )
 
+    def test_monthly_pair_missing_current_month_drops(self):
+        txns = [
+            _txn("a", "2026-09-06", 899, "NETFLIX.COM"),
+            _txn("b", "2026-10-06", 899, "NETFLIX.COM"),
+        ]
+        self.assertEqual(
+            detect_interval_candidates(txns, [], as_of=date(2026, 11, 23)),
+            [],
+        )
+
     def test_two_deliveries_in_one_month_are_not_one_cadence(self):
         txns = [
             _txn("a", "2026-06-02", 3093, "VSP"),

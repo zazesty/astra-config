@@ -215,6 +215,12 @@ def _process_update_unlocked(
         persist_names_health(txns, as_of)
     except Exception as e:
         whlog(f"names_health error: {e}")
+    try:
+        from .recurring import persist_interval_candidates
+
+        persist_interval_candidates(txns, cfg.get("bills"), as_of=as_of)
+    except Exception as e:
+        whlog(f"interval-candidates error: {e}")
     both = evaluate_budget_both(txns, cfg, as_of=as_of)
     snap = both["calendar"]
     notify = both["rolling_30d"]
@@ -256,6 +262,12 @@ def _process_update_unlocked(
         results.extend(notify_buy_queue_asks(cfg, txns, dry_run=dry_run))
     except Exception as e:
         whlog(f"buy-queue ask error: {e}")
+    try:
+        from .recurring import notify_interval_candidates
+
+        results.extend(notify_interval_candidates(dry_run=dry_run))
+    except Exception as e:
+        whlog(f"interval-candidates notify error: {e}")
     pri_by_key = {ev.key: (ev.payload or {}).get("push_priority") for ev in push_events}
     for row in results:
         row["priority"] = pri_by_key.get(row["key"])

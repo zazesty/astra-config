@@ -332,7 +332,7 @@ def detect_interval_candidates(
             interval = gaps[0]
             if interval not in INTERVAL_MONTHS or any(gap != interval for gap in gaps):
                 continue
-            if interval == 1 and idxs[-1] < cur_idx - 1:
+            if interval == 1 and idxs[-1] < cur_idx:
                 continue
             picked_ids = {txn.id for txn in picked}
             # Same-day duplicates of the cadence amount are not "other" charges.

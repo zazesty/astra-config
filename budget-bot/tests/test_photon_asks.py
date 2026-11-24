@@ -123,8 +123,8 @@ class PhotonAsksTests(unittest.TestCase):
         txns = [
             Transaction(id="y1", date="2026-10-23", amount_cents=3240, name="Yes In My Back Yard"),
             Transaction(id="y2", date="2026-11-23", amount_cents=3240, name="Yes In My Back Yard"),
-            Transaction(id="n1", date="2026-09-06", amount_cents=899, name="Netflix"),
-            Transaction(id="n2", date="2026-10-05", amount_cents=899, name="Netflix"),
+            Transaction(id="n1", date="2026-10-06", amount_cents=899, name="Netflix"),
+            Transaction(id="n2", date="2026-11-05", amount_cents=899, name="Netflix"),
         ]
         persist_interval_candidates(txns, [], as_of=date(2026, 11, 23))
         res = notify_interval_candidates(dry_run=False)
