@@ -7,6 +7,7 @@
 #   standing-todos.sh plain <id> "text"
 #   standing-todos.sh done <id>
 #   standing-todos.sh note <id> "text"
+#   standing-todos.sh priority <id> <1-5>
 set -euo pipefail
 export TODOS_PATH="${TODOS_PATH:-$HOME/.local/state/astra/standing-todos.json}"
 exec python3 - "$TODOS_PATH" "$@" <<'PY'
@@ -214,6 +215,31 @@ if cmd == "note":
         for it in doc["items"]:
             if it["id"] == iid or it["id"].startswith(iid):
                 it.setdefault("notes", []).append({"ts": now(), "text": text})
+                it["updated"] = now()
+                save(doc)
+                print(it["id"])
+                sys.exit(0)
+    print(f"not found: {iid}", file=sys.stderr)
+    sys.exit(1)
+
+if cmd == "priority":
+    if len(args) < 3:
+        print("usage: standing-todos.sh priority <id> <1-5>", file=sys.stderr)
+        sys.exit(2)
+    iid = args[1]
+    try:
+        prio = int(args[2])
+    except ValueError:
+        print("priority must be an integer 1-5", file=sys.stderr)
+        sys.exit(2)
+    if not 1 <= prio <= 5:
+        print("priority must be between 1 and 5", file=sys.stderr)
+        sys.exit(2)
+    with board_lock():
+        doc = load()
+        for it in doc["items"]:
+            if it["id"] == iid or it["id"].startswith(iid):
+                it["priority"] = prio
                 it["updated"] = now()
                 save(doc)
                 print(it["id"])

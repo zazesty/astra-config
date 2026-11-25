@@ -1,0 +1,12 @@
+[Unit]
+Description=5th of month 09:00 PT — Budget Bot spend cull review email
+
+[Timer]
+OnCalendar=*-*-05 09:00:00
+Timezone=America/Los_Angeles
+Persistent=true
+AccuracySec=1min
+Unit=budget-bot-cull-review.service
+
+[Install]
+WantedBy=timers.target

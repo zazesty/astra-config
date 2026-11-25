@@ -108,6 +108,8 @@ for u in \
   budget-bot-poll.timer \
   budget-bot-tax-quarterly.service \
   budget-bot-tax-quarterly.timer \
+  budget-bot-cull-review.service \
+  budget-bot-cull-review.timer \
   health-bot.service \
   hermes-gateway.service \
   hermes-dashboard.service \
@@ -387,6 +389,7 @@ systemctl enable --now \
   photon-heal.timer \
   budget-bot-eom-leftover.timer \
   budget-bot-tax-quarterly.timer \
+  budget-bot-cull-review.timer \
   budget-bot-norcal-plaid-nudge.timer \
   budget-bot-norcal-quarantine-recheck.timer \
   budget-bot-poll.timer

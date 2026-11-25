@@ -730,6 +730,38 @@ def cmd_eom_leftover(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cull_review(args: argparse.Namespace) -> int:
+    """Monthly spend cull review email (5th of month 09:00 PT)."""
+    from .cull_review import cull_review_event
+
+    cfg = load_config()
+    as_of = _as_of(cfg, args.as_of)
+    force = bool(getattr(args, "force", False))
+    # 7-day grace window starting on the 5th so Persistent timer catch-up works.
+    if not (5 <= as_of.day <= 11) and not force:
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "status": "skipped_not_cull_window",
+                    "as_of": as_of.isoformat(),
+                }
+            )
+        )
+        return 0
+
+    txns = load_txns()
+    ev = cull_review_event(txns, cfg, as_of=as_of, use_llm=not bool(getattr(args, "no_llm", False)))
+    dry_run = bool(getattr(args, "dry_run", False))
+    if dry_run:
+        print(ev.body)
+        return 0
+    live = bool(getattr(args, "live", False)) or bool(cfg.get("notify_enabled"))
+    st = send_alert(ev, dry_run=not live, force=force, channel="email")
+    print(json.dumps({"ok": True, "status": st, "key": ev.key}))
+    return 0
+
+
 def cmd_tax_tie_out(args: argparse.Namespace) -> int:
     """Year (or date range) tie-out. Prints counts. Does not email."""
     from .tax import tie_out
@@ -1264,6 +1296,17 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--live", action="store_true", help="Send even if notify_enabled is false")
     s.add_argument("--dry-run", action="store_true", help="Print the body. Does not email or mark sent")
     s.set_defaults(func=cmd_tax_quarterly)
+
+    s = sub.add_parser(
+        "cull-review",
+        help="Email prior-month spend cull review (5th of month 09:00 PT)",
+    )
+    s.add_argument("--as-of", default=None, help="YYYY-MM-DD (default: today PT)")
+    s.add_argument("--force", action="store_true", help="Run even outside the 5th-11th window")
+    s.add_argument("--live", action="store_true", help="Send even if notify_enabled is false")
+    s.add_argument("--dry-run", action="store_true", help="Print the body. Does not email or mark sent")
+    s.add_argument("--no-llm", action="store_true", help="Skip OpenRouter LLM call; use deterministic rules")
+    s.set_defaults(func=cmd_cull_review)
 
     s = sub.add_parser("watch", help="Full watch cycle (default dry-run notify)")
     s.add_argument("--fixture", default=None)

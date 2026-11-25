@@ -82,6 +82,7 @@ AlertKind = Literal[
     "buy_queue_ask",
     "xai_month",
     "tax_review",
+    "cull_review",
 ]
 
 

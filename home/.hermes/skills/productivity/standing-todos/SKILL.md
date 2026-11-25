@@ -26,7 +26,7 @@ Open work board for the box. Grok Build reads this later. Not system status.
 
 `--owner` is who acts next: `agent` | `human` | `either`. Default `agent` when parking implementation.
 
-`--priority` defaults to `2` for new work (`1` only for urgent/groundbreaking errors). `list` sorts by priority ascending, then insertion order.
+`--priority` defaults to `2` for all new work (80%+ of items should be P2). Use `1` only for urgent items (e.g., bugfixes, groundbreaking errors) or easy-to-ship quick wins. Use `3` only for items that must wait at least 1 month. `list` sorts by priority ascending, then insertion order.
 
 ## When to add (default)
 

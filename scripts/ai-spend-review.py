@@ -33,6 +33,10 @@ TZ = ZoneInfo("America/Los_Angeles")
 CENTS = Decimal("0.01")
 TOP_N = 5
 ANCHOR = datetime(2026, 11, 13, tzinfo=TZ).date()  # first Friday of the cadence
+PLAN_MONTHLY_USD = Decimal(os.environ.get("AI_PLAN_MONTHLY_USD", "20"))
+CONSIDER_UPGRADE_MONTHLY_USD = Decimal("60")
+ADVISE_UPGRADE_MONTHLY_USD = Decimal("80")
+HARD_BLOCKS_TIEBREAKER_14D = 4  # >=2/week bumps stay->consider or consider->advise
 STATE_DIR = Path(os.environ.get("AI_SPEND_STATE", str(Path.home() / ".local/state/astra")))
 STATE_PATH = STATE_DIR / "ai-spend-review.json"
 AI_STUDIO_LOG = Path(os.environ.get("ARGON_PROXY_USAGE_LOG", str(STATE_DIR / "ai-studio-usage.jsonl")))
@@ -312,7 +316,59 @@ def build(now: datetime | None = None) -> str:
         lines.append("  none this window")
     for model, usd in top(merged):
         lines.append(f"  {model[:42]:<42} {money(usd):>10}")
+    variable_usd = sum(merged.values(), Decimal("0"))
+    hard_blocks_14d = int(os.environ.get("AI_HARD_BLOCKS", "0") or 0)
+    dec_res = evaluate_decision(variable_usd, PLAN_MONTHLY_USD, hard_blocks_14d)
+    lines.append("")
+    lines.append(dec_res["message"])
     return "\n".join(lines) + "\n"
+
+
+def evaluate_decision(
+    variable_usd: Decimal,
+    base_monthly_usd: Decimal = PLAN_MONTHLY_USD,
+    hard_blocks_14d: int = 0,
+) -> dict:
+    """Return plain-English upgrade guidance from 30d-paced spend (>$60 consider, >$80 advise)."""
+    monthly_pace = (variable_usd * Decimal("30") / Decimal("14")).quantize(
+        CENTS, rounding=ROUND_HALF_UP
+    )
+    if monthly_pace > ADVISE_UPGRADE_MONTHLY_USD:
+        action = "advise-upgrade"
+    elif monthly_pace > CONSIDER_UPGRADE_MONTHLY_USD:
+        action = "consider-upgrade"
+    else:
+        action = "stay"
+    if hard_blocks_14d >= HARD_BLOCKS_TIEBREAKER_14D:
+        if action == "stay":
+            action = "consider-upgrade"
+        elif action == "consider-upgrade":
+            action = "advise-upgrade"
+    if action == "advise-upgrade":
+        message = (
+            f"Advise you upgrade AI plan — monthly spend is ~{money(monthly_pace)} "
+            f"(over $80; 14d {money(variable_usd)})."
+        )
+    elif action == "consider-upgrade":
+        message = (
+            f"Consider upgrading AI plan — monthly spend is ~{money(monthly_pace)} "
+            f"(over $60; 14d {money(variable_usd)}). "
+            "Tiebreaker is if rate limits interrupt workflow."
+        )
+    else:
+        message = (
+            f"Stay on current AI plan — monthly spend is ~{money(monthly_pace)} "
+            f"(under $60; 14d {money(variable_usd)}). "
+            "Tiebreaker is if rate limits interrupt workflow."
+        )
+    return {
+        "action": action,
+        "message": message,
+        "monthly_pace": monthly_pace,
+        "variable_usd": variable_usd,
+        "base_monthly": base_monthly_usd,
+        "hard_blocks_14d": hard_blocks_14d,
+    }
 
 
 def write_state(now: datetime, body: str) -> None:
@@ -341,6 +397,11 @@ def self_test() -> int:
     assert short_model("google/gemini-3.8-flash") == "gemini-3.8-flash"
     rows = top({"a": Decimal("1"), "b": Decimal("3"), "c": Decimal("2")}, 2)
     assert [name for name, _ in rows] == ["b", "c"]
+    assert evaluate_decision(Decimal("20"), Decimal("20"), 0)["action"] == "stay"
+    assert evaluate_decision(Decimal("29"), Decimal("20"), 0)["action"] == "consider-upgrade"
+    assert evaluate_decision(Decimal("38"), Decimal("20"), 0)["action"] == "advise-upgrade"
+    assert evaluate_decision(Decimal("20"), Decimal("20"), 4)["action"] == "consider-upgrade"
+    assert evaluate_decision(Decimal("29"), Decimal("20"), 4)["action"] == "advise-upgrade"
     print("ai-spend-review self-test ok")
     return 0
 
