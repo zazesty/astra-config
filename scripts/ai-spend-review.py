@@ -526,8 +526,7 @@ def build(now: datetime | None = None) -> str:
     lines = [
         "AI spend review",
         f"Window: {start.isoformat()} -> {end.isoformat()} (PT, 14 days)",
-        "Usage dollars from billing feeds, plus card charges no feed can see.",
-        "Each vendor is counted from one source; reloads are a memo, not added.",
+        "All AI spend: billed usage plus plans and extra usage (prepaid reloads excluded).",
         "",
     ]
     parts = []
@@ -559,7 +558,7 @@ def build(now: datetime | None = None) -> str:
     for part in parts:
         lines.append(f"  {part}")
     lines.append("")
-    lines.append("Overage / credits on card (no usage feed sees these)")
+    lines.append("Extra usage on card")
     if not card.get("ok"):
         lines.append(f"  unavailable ({card.get('error')})")
     elif not card["overage"]:
@@ -567,7 +566,7 @@ def build(now: datetime | None = None) -> str:
     for label, usd in sorted((card.get("overage") or {}).items(), key=lambda kv: -kv[1]):
         lines.append(f"  {label[:42]:<42} {money(usd):>10}")
     lines.append("")
-    lines.append(f"Subscriptions per month (Budget Bot bills; else posted in last {PLAN_LOOKBACK_DAYS}d)")
+    lines.append("Subscriptions (monthly)")
     plans_usd = sum((card.get("plans") or {}).values(), Decimal("0"))
     if card.get("ok") and not card["plans"]:
         lines.append("  none seen")
@@ -577,11 +576,6 @@ def build(now: datetime | None = None) -> str:
         lines.append(f"  {'total':<42} {money(plans_usd):>10}")
     if card.get("bills_error"):
         lines.append(f"  note: {card['bills_error']}; ledger guess only")
-    if card.get("reloads"):
-        memo = "  ·  ".join(f"{k} {money(v)}" for k, v in sorted(card["reloads"].items()))
-        lines.append("")
-        lines.append("Memo, not added (prepay; usage above is the spend)")
-        lines.append(f"  {memo}")
     lines.append("")
     variable_usd = sum(merged.values(), Decimal("0"))
     if goog.get("ok") and oru.get("ok"):
