@@ -59,6 +59,8 @@ GCLOUD = os.environ.get("GCLOUD", "/opt/google-cloud-sdk/bin/gcloud")
 GCP_PROJECT = os.environ.get("AI_SPEND_GCP_PROJECT", "gen-lang-client-0789043233")
 GCP_DATASET = os.environ.get("AI_SPEND_BQ_DATASET", "billing_export")
 GCP_TABLE = os.environ.get("AI_SPEND_BQ_TABLE", "")  # project.dataset.table; auto-discovered if empty
+GCP_TODO_ID = "ai-spend-review-enable-google-billing-ex-eb04cc"
+TODOS_CLI = "/root/astra-config/scripts/standing-todos.sh"
 LEDGER = Path(os.environ.get("AI_SPEND_LEDGER", str(Path.home() / ".local/state/budget-bot/txns.json")))
 BB_CONFIG = Path(os.environ.get("AI_SPEND_BB_CONFIG", str(Path.home() / ".local/state/budget-bot/config.json")))
 PLAN_LOOKBACK_DAYS = 40  # a plan is "active" if it posted in this many days
@@ -526,7 +528,7 @@ def build(now: datetime | None = None) -> str:
     lines = [
         "AI spend review",
         f"Window: {start.isoformat()} -> {end.isoformat()} (PT, 14 days)",
-        "All AI spend: billed usage plus plans and extra usage (prepaid reloads excluded).",
+        "All AI spend: billed usage plus plans and extra usage.",
         "",
     ]
     parts = []
@@ -540,6 +542,8 @@ def build(now: datetime | None = None) -> str:
                 parts.append(f"{name} {money(total)} ({tag})")
             else:
                 parts.append(f"{name} {money(total)}")
+        elif res is goog:
+            parts.append(f"{name} n/a (BigQuery still borked — see todo {GCP_TODO_ID}: {res.get('error')})")
         else:
             parts.append(f"{name} n/a ({res.get('error')})")
     lines.append("Top 5 across the billed sources")
@@ -586,7 +590,24 @@ def build(now: datetime | None = None) -> str:
     hard_blocks_14d = int(os.environ.get("AI_HARD_BLOCKS", "0") or 0)
     dec_res = evaluate_decision(variable_usd, PLAN_MONTHLY_USD, hard_blocks_14d)
     lines.append(dec_res["message"])
+    if goog.get("ok"):
+        auto_close_gcp_todo()
     return "\n".join(lines) + "\n"
+
+
+def auto_close_gcp_todo() -> None:
+    """Close the BigQuery setup todo automatically once Google billing data flows."""
+    import subprocess
+    try:
+        listed = subprocess.run([TODOS_CLI, "list"], capture_output=True, text=True, timeout=10)
+        if listed.returncode == 0 and GCP_TODO_ID in listed.stdout:
+            subprocess.run(
+                [TODOS_CLI, "note", GCP_TODO_ID, "Auto-closed by ai-spend-review: BigQuery billing export returned live data."],
+                capture_output=True, text=True, timeout=10,
+            )
+            subprocess.run([TODOS_CLI, "done", GCP_TODO_ID], capture_output=True, text=True, timeout=10)
+    except Exception:
+        pass
 
 
 def evaluate_decision(
