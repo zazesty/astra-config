@@ -9,6 +9,15 @@ Sources, in order:
   - AI Studio is named and omitted. Grok Build logs do not keep Gemini
     thinking tokens, and customers who dropped those undercounted the bill
     by 2-3x. No dollar figure until a billed source exists.
+  - Google Cloud billed cost (AI Studio + Vertex + grounding, net of credits)
+    from the BigQuery standard usage cost export, once it is enabled. When it
+    is live, OpenRouter BYOK is shown but not added (Google bills those calls).
+  - Plans + overage from the Budget Bot ledger (card charges). Each vendor is
+    counted from exactly one source: usage feeds for OpenRouter / xAI API /
+    Google Cloud, so their card reloads are listed as a memo and never added;
+    the card charge is the spend only where no usage feed exists (flat plans,
+    Anthropic / OpenAI credits or extra usage). Ledger amounts stay in the mail
+    and the 600 state file, never in /root/memory.
 
 The archived weekly digest stays archived. This job does not read it, and
 it does not read the ledger.
@@ -21,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -45,6 +55,28 @@ NOTIFY = os.environ.get("AI_SPEND_NOTIFY", "/root/astra-config/scripts/notify-em
 XAI_ENV = Path(os.environ.get("XAI_MANAGEMENT_ENV", str(Path.home() / ".local/state/astra/xai-management.env")))
 OR_ENV = Path(os.environ.get("OR_MANAGEMENT_ENV", str(Path.home() / ".local/state/astra/openrouter-management.env")))
 GROK_ENV = Path(os.environ.get("GROK_ENV", "/etc/grok-mcp.env"))
+GCLOUD = os.environ.get("GCLOUD", "/opt/google-cloud-sdk/bin/gcloud")
+GCP_PROJECT = os.environ.get("AI_SPEND_GCP_PROJECT", "gen-lang-client-0789043233")
+GCP_DATASET = os.environ.get("AI_SPEND_BQ_DATASET", "billing_export")
+GCP_TABLE = os.environ.get("AI_SPEND_BQ_TABLE", "")  # project.dataset.table; auto-discovered if empty
+LEDGER = Path(os.environ.get("AI_SPEND_LEDGER", str(Path.home() / ".local/state/budget-bot/txns.json")))
+PLAN_LOOKBACK_DAYS = 40  # a plan is "active" if it posted in this many days
+# Amount rules (cents). xAI plan tiers: Plus 8, Premium 30, Super 100, Ultra 200.
+XAI_PLAN_CENTS = {800, 3000, 10000, 20000}
+OPENAI_PLAN_CENTS = {2000, 10000, 20000}
+# (label, regex on lowercased description + merchant, kind). First match wins.
+CARD_VENDORS = [
+    ("OpenRouter reloads", r"openrouter|openrout", "reload"),
+    ("Google Cloud invoice", r"google \*?cloud|google cloud", "reload"),
+    ("Google One", r"google one|google \*?one", "plan"),
+    ("Anthropic", r"anthropic|claude", "anthropic"),
+    ("OpenAI", r"openai|chatgpt", "openai"),
+    ("xAI", r"\bx\.?ai\b|grok", "xai"),
+    ("X Premium", r"x corp|twitter", "plan"),
+    ("Cursor", r"\bcursor\b", "plan"),
+    ("GitHub Copilot", r"copilot", "plan"),
+    ("Perplexity", r"perplexity", "plan"),
+]
 
 
 def money(x: Decimal) -> str:
@@ -177,6 +209,169 @@ def or_usage(start, end) -> dict:
     }
 
 
+def gcp_token() -> str:
+    import subprocess
+    try:
+        proc = subprocess.run(
+            [GCLOUD, "auth", "application-default", "print-access-token"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def gcp_call(url: str, token: str, body: dict | None = None) -> tuple[int, dict]:
+    import urllib.request
+    import urllib.error
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method="POST" if body is not None else "GET")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("x-goog-user-project", GCP_PROJECT)
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.status, json.loads(resp.read() or b"{}")
+    except urllib.error.HTTPError as exc:
+        try:
+            payload = json.loads(exc.read() or b"{}")
+        except Exception:
+            payload = {}
+        return exc.code, payload
+    except Exception as exc:
+        return 0, {"error": {"message": str(exc)[:120]}}
+
+
+def gcp_err(status: int, data: dict) -> str:
+    msg = ((data or {}).get("error") or {}).get("message") or ""
+    if "has not been used" in msg or "is disabled" in msg:
+        return "BigQuery API is off in the project"
+    if "Not found" in msg:
+        return f"billing export dataset {GCP_DATASET} not found"
+    return f"bigquery {status}: {msg[:80]}".strip()
+
+
+def google_billing(start, end) -> dict:
+    """Billed Google Cloud cost (AI Studio + Vertex + grounding) from the BigQuery
+    standard usage cost export. Net of credits, grouped by service + SKU."""
+    out = {"ok": False, "error": None, "by_model": {}, "gross": Decimal("0"), "credits": Decimal("0")}
+    token = gcp_token()
+    if not token:
+        out["error"] = "no ADC token"
+        return out
+    base = f"https://bigquery.googleapis.com/bigquery/v2/projects/{GCP_PROJECT}"
+    table = GCP_TABLE
+    if not table:
+        status, data = gcp_call(f"{base}/datasets/{GCP_DATASET}/tables?maxResults=100", token)
+        if status != 200:
+            out["error"] = gcp_err(status, data)
+            return out
+        names = [t.get("tableReference", {}).get("tableId", "") for t in data.get("tables") or []]
+        names = sorted(n for n in names if n.startswith("gcp_billing_export_v1_"))
+        if not names:
+            out["error"] = "export not enabled yet (no gcp_billing_export_v1_* table)"
+            return out
+        table = f"{GCP_PROJECT}.{GCP_DATASET}.{names[0]}"
+    sql = (
+        "SELECT service.description AS svc, sku.description AS sku, currency, "
+        "SUM(cost) AS gross, "
+        "SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) c), 0)) AS credits "
+        f"FROM `{table}` "
+        "WHERE DATE(usage_start_time, 'America/Los_Angeles') BETWEEN @s AND @e "
+        "GROUP BY svc, sku, currency"
+    )
+    body = {
+        "query": sql,
+        "useLegacySql": False,
+        "timeoutMs": 50000,
+        "parameterMode": "NAMED",
+        "queryParameters": [
+            {"name": "s", "parameterType": {"type": "DATE"}, "parameterValue": {"value": start.isoformat()}},
+            {"name": "e", "parameterType": {"type": "DATE"}, "parameterValue": {"value": end.isoformat()}},
+        ],
+    }
+    status, data = gcp_call(f"{base}/queries", token, body)
+    if status != 200 or not data.get("jobComplete", False):
+        out["error"] = gcp_err(status, data) if status != 200 else "query timed out"
+        return out
+    currencies = set()
+    for row in data.get("rows") or []:
+        vals = [cell.get("v") for cell in row.get("f") or []]
+        svc, sku, cur, gross, credits = (vals + [None] * 5)[:5]
+        currencies.add(cur)
+        gross_d, credits_d = dec(gross or 0), dec(credits or 0)
+        out["gross"] += gross_d
+        out["credits"] += credits_d
+        label = f"{(svc or '').replace('Vertex AI', 'Vertex').replace('Generative Language API', 'AI Studio')}: {sku or ''}"
+        add_usd(out["by_model"], label.strip(": "), gross_d + credits_d)
+    out["ok"] = True
+    cur_other = sorted(c for c in currencies if c and c != "USD")
+    if cur_other:
+        out["error"] = f"currency {','.join(cur_other)}, not converted"
+    return out
+
+
+def classify_card(text: str, cents: int) -> tuple[str, str] | None:
+    """(label, kind) for an AI-vendor ledger row, or None if not AI.
+    kind: plan (flat subscription), overage (no usage feed sees it, so the card
+    charge is the spend), reload (prepay for a vendor whose usage feed is
+    already counted above; never added, or it would double count)."""
+    t = text.lower()
+    if "7-eleven" in t or "youtube" in t:
+        return None
+    for label, pattern, kind in CARD_VENDORS:
+        if re.search(pattern, t):
+            if kind == "xai":
+                return ("X / Grok plan", "plan") if abs(cents) in XAI_PLAN_CENTS else ("xAI API credits", "reload")
+            if kind == "anthropic":
+                if re.search(r"claude\.ai subscription|anthropic\*? ?claude|claude sub", t):
+                    return ("Claude plan", "plan")
+                return ("Anthropic credits / extra usage", "overage")
+            if kind == "openai":
+                if abs(cents) in OPENAI_PLAN_CENTS and "chatgpt" in t:
+                    return ("ChatGPT plan", "plan")
+                return ("OpenAI credits / extra usage", "overage")
+            return (label, kind)
+    return None
+
+
+def card_charges(start, end, today) -> dict:
+    """Plans + overage from the Budget Bot ledger. Canonical rows only
+    (transfer=no, excluded=no, posted), which drops the credit-union mirror rows."""
+    out = {"ok": False, "error": None, "plans": {}, "overage": {}, "reloads": {}}
+    try:
+        rows = json.loads(LEDGER.read_text())
+    except Exception as exc:
+        out["error"] = f"ledger unreadable ({type(exc).__name__})"
+        return out
+    plan_from = today - timedelta(days=PLAN_LOOKBACK_DAYS)
+    latest_plan: dict[str, tuple[str, Decimal]] = {}
+    for row in rows if isinstance(rows, list) else []:
+        if row.get("transfer") or row.get("excluded") or row.get("pending"):
+            continue
+        cents = int(row.get("amount_cents") or 0)
+        if not cents:
+            continue
+        hit = classify_card(f"{row.get('name', '')} {row.get('merchant_name') or ''}", cents)
+        if not hit:
+            continue
+        label, kind = hit
+        day = str(row.get("date") or "")[:10]
+        usd = Decimal(cents) / 100
+        if kind == "plan":
+            if day >= plan_from.isoformat() and cents > 0 and day >= latest_plan.get(label, ("", 0))[0]:
+                latest_plan[label] = (day, usd)
+            continue
+        if not (start.isoformat() <= day <= end.isoformat()):
+            continue
+        bucket = out["overage"] if kind == "overage" else out["reloads"]
+        bucket[label] = bucket.get(label, Decimal("0")) + usd
+    out["plans"] = {label: usd for label, (_, usd) in latest_plan.items()}
+    out["ok"] = True
+    return out
+
+
 def ai_studio_usage(start, end) -> dict[str, dict[str, int]]:
     by_model: dict[str, dict[str, int]] = {}
     if not AI_STUDIO_LOG.is_file():
@@ -286,11 +481,13 @@ def build(now: datetime | None = None) -> str:
     start, end = window(now)
     xai = xai_usage(start, end)
     oru = or_usage(start, end)
+    goog = google_billing(start, end)
+    card = card_charges(start, end, now.date())
     lines = [
         "AI spend review",
         f"Window: {start.isoformat()} -> {end.isoformat()} (PT, 14 days)",
-        "Dollars spent. Card reloads are not in this mail.",
-        "Covers keys this box can see. grok.com chat and Claude chat are absent.",
+        "Usage dollars from billing feeds, plus card charges no feed can see.",
+        "Each vendor is counted from one source; reloads are a memo, not added.",
         "",
     ]
     lines.extend(format_source("xAI direct (billed)", xai))
@@ -298,16 +495,45 @@ def build(now: datetime | None = None) -> str:
     extra = None
     if oru.get("ok"):
         extra = f"of which OR credits {money(oru['credits'])}  ·  BYOK {money(oru['byok'])}"
+        if goog.get("ok"):
+            extra += " (BYOK is in the Google bill; not added twice)"
     lines.extend(format_source("OpenRouter (credits + BYOK, per model)", oru, extra))
     lines.append("")
-    lines.append("AI Studio (omitted)")
-    lines.append("  No billed figure. Local logs drop thinking tokens, and")
-    lines.append("  customers who priced without them undercounted by 2-3x.")
-    lines.append("  Grounding fees are also missing from those logs.")
+    if goog.get("ok"):
+        gextra = None
+        if goog["credits"]:
+            gextra = f"gross {money(goog['gross'])}  ·  credits {money(goog['credits'])}"
+        lines.extend(format_source("Google Cloud billed (AI Studio + Vertex, net)", goog, gextra))
+    else:
+        lines.append("Google Cloud billed (not wired yet)")
+        lines.append(f"  {goog.get('error')}")
+        lines.append("  Until then AI Studio / Vertex direct spend is missing.")
+    lines.append("")
+    lines.append("Overage / credits on card (no usage feed sees these)")
+    if not card.get("ok"):
+        lines.append(f"  unavailable ({card.get('error')})")
+    elif not card["overage"]:
+        lines.append("  none this window")
+    for label, usd in sorted((card.get("overage") or {}).items(), key=lambda kv: -kv[1]):
+        lines.append(f"  {label[:42]:<42} {money(usd):>10}")
+    lines.append("")
+    lines.append(f"Subscriptions (active, last {PLAN_LOOKBACK_DAYS}d, per month)")
+    plans_usd = sum((card.get("plans") or {}).values(), Decimal("0"))
+    if card.get("ok") and not card["plans"]:
+        lines.append("  none seen")
+    for label, usd in sorted((card.get("plans") or {}).items(), key=lambda kv: -kv[1]):
+        lines.append(f"  {label[:42]:<42} {money(usd):>10}")
+    if card.get("plans"):
+        lines.append(f"  {'total':<42} {money(plans_usd):>10}")
+    if card.get("reloads"):
+        memo = "  ·  ".join(f"{k} {money(v)}" for k, v in sorted(card["reloads"].items()))
+        lines.append("")
+        lines.append("Memo, not added (prepay; usage above is the spend)")
+        lines.append(f"  {memo}")
     lines.append("")
     lines.append("Top 5 across the billed sources")
     merged: dict[str, Decimal] = {}
-    for result in (xai, oru):
+    for result in (xai, oru, goog):
         if not result.get("ok"):
             continue
         for model, usd in (result.get("by_model") or {}).items():
@@ -317,9 +543,14 @@ def build(now: datetime | None = None) -> str:
     for model, usd in top(merged):
         lines.append(f"  {model[:42]:<42} {money(usd):>10}")
     variable_usd = sum(merged.values(), Decimal("0"))
+    if goog.get("ok") and oru.get("ok"):
+        variable_usd -= oru["byok"]
+    variable_usd += sum((card.get("overage") or {}).values(), Decimal("0"))
+    monthly_all = (variable_usd * Decimal("30") / Decimal("14") + plans_usd).quantize(CENTS, rounding=ROUND_HALF_UP)
+    lines.append("")
+    lines.append(f"All-in monthly pace: ~{money(monthly_all)} (usage + overage paced from 14d, plus plans {money(plans_usd)}).")
     hard_blocks_14d = int(os.environ.get("AI_HARD_BLOCKS", "0") or 0)
     dec_res = evaluate_decision(variable_usd, PLAN_MONTHLY_USD, hard_blocks_14d)
-    lines.append("")
     lines.append(dec_res["message"])
     return "\n".join(lines) + "\n"
 
@@ -402,6 +633,18 @@ def self_test() -> int:
     assert evaluate_decision(Decimal("38"), Decimal("20"), 0)["action"] == "advise-upgrade"
     assert evaluate_decision(Decimal("20"), Decimal("20"), 4)["action"] == "consider-upgrade"
     assert evaluate_decision(Decimal("29"), Decimal("20"), 4)["action"] == "advise-upgrade"
+    assert classify_card("Withdrawal 11/13 Grok Xai Www.Grok.Com Xai", 800) == ("X / Grok plan", "plan")
+    assert classify_card("GROK XAI 1450 PAGE MILL ROAD", 3000) == ("X / Grok plan", "plan")
+    assert classify_card("Withdrawal 10/03 Grok Xai Www.Grok.Com Xai", 1000)[1] == "reload"
+    assert classify_card("Openrouter, Inc Openrouter.Ai Ny", 1080)[1] == "reload"
+    assert classify_card("CLAUDE.AI SUBSCRIPTION", 2000) == ("Claude plan", "plan")
+    assert classify_card("ANTHROPIC SAN FRANCISCO", 5000)[1] == "overage"
+    assert classify_card("OPENAI *CHATGPT SUBSCR", 2000) == ("ChatGPT plan", "plan")
+    assert classify_card("OPENAI *CHATGPT SUBSCR", 1500)[1] == "overage"
+    assert classify_card("Google One Support.Googl", 899) == ("Google One", "plan")
+    assert classify_card("GOOGLE *CLOUD 7XK", 1000)[1] == "reload"
+    assert classify_card("GOOGLE *YouTube Videos", 999) is None
+    assert classify_card("7-ELEVEN 1234", 500) is None
     print("ai-spend-review self-test ok")
     return 0
 
