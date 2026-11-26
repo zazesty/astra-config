@@ -60,6 +60,7 @@ GCP_PROJECT = os.environ.get("AI_SPEND_GCP_PROJECT", "gen-lang-client-0789043233
 GCP_DATASET = os.environ.get("AI_SPEND_BQ_DATASET", "billing_export")
 GCP_TABLE = os.environ.get("AI_SPEND_BQ_TABLE", "")  # project.dataset.table; auto-discovered if empty
 LEDGER = Path(os.environ.get("AI_SPEND_LEDGER", str(Path.home() / ".local/state/budget-bot/txns.json")))
+BB_CONFIG = Path(os.environ.get("AI_SPEND_BB_CONFIG", str(Path.home() / ".local/state/budget-bot/config.json")))
 PLAN_LOOKBACK_DAYS = 40  # a plan is "active" if it posted in this many days
 # Amount rules (cents). xAI plan tiers: Plus 8, Premium 30, Super 100, Ultra 200.
 XAI_PLAN_CENTS = {800, 3000, 10000, 20000}
@@ -368,7 +369,46 @@ def card_charges(start, end, today) -> dict:
         bucket = out["overage"] if kind == "overage" else out["reloads"]
         bucket[label] = bucket.get(label, Decimal("0")) + usd
     out["plans"] = {label: usd for label, (_, usd) in latest_plan.items()}
+    # Budget Bot's bills registry is the SSOT for which subscriptions are live.
+    # An AI bill there wins over the ledger guess for the same plan; ledger
+    # plans that are not enrolled stay, marked, so a new sub shows up at once.
+    enrolled = ai_bills(today)
+    out["bills_error"] = enrolled.pop("__error__", None)
+    for label in list(out["plans"]):
+        if label in enrolled:
+            out["plans"].pop(label)
+        else:
+            out["plans"][f"{label} (not in bills)"] = out["plans"].pop(label)
+    out["plans"].update(enrolled)
     out["ok"] = True
+    return out
+
+
+def ai_bills(today) -> dict:
+    """Monthly cost of active AI subscriptions in Budget Bot config `bills`."""
+    try:
+        bills = json.loads(BB_CONFIG.read_text()).get("bills") or []
+    except Exception as exc:
+        return {"__error__": f"bills unreadable ({type(exc).__name__})"}
+    out: dict = {}
+    for bill in bills:
+        if bill.get("renews") is False or bill.get("cash_only"):
+            continue
+        if str(bill.get("active_from") or "") > today.isoformat():
+            continue
+        text = f"{bill.get('name') or ''} {bill.get('match') or ''}".replace("\\b", " ").lower()
+        label = None
+        for vlabel, pattern, kind in CARD_VENDORS:
+            if kind != "reload" and re.search(pattern, text):
+                label = {"xai": "X / Grok plan", "anthropic": "Claude plan", "openai": "ChatGPT plan"}.get(kind, vlabel)
+                break
+        if not label:
+            continue
+        cents = bill.get("amount_cents")
+        if cents is None and bill.get("annual_cents"):
+            cents = round(int(bill["annual_cents"]) / 12)
+        if cents:
+            out[label] = out.get(label, Decimal("0")) + Decimal(int(cents)) / 100
     return out
 
 
@@ -517,7 +557,7 @@ def build(now: datetime | None = None) -> str:
     for label, usd in sorted((card.get("overage") or {}).items(), key=lambda kv: -kv[1]):
         lines.append(f"  {label[:42]:<42} {money(usd):>10}")
     lines.append("")
-    lines.append(f"Subscriptions (active, last {PLAN_LOOKBACK_DAYS}d, per month)")
+    lines.append(f"Subscriptions per month (Budget Bot bills; else posted in last {PLAN_LOOKBACK_DAYS}d)")
     plans_usd = sum((card.get("plans") or {}).values(), Decimal("0"))
     if card.get("ok") and not card["plans"]:
         lines.append("  none seen")
@@ -525,6 +565,8 @@ def build(now: datetime | None = None) -> str:
         lines.append(f"  {label[:42]:<42} {money(usd):>10}")
     if card.get("plans"):
         lines.append(f"  {'total':<42} {money(plans_usd):>10}")
+    if card.get("bills_error"):
+        lines.append(f"  note: {card['bills_error']}; ledger guess only")
     if card.get("reloads"):
         memo = "  ·  ".join(f"{k} {money(v)}" for k, v in sorted(card["reloads"].items()))
         lines.append("")
