@@ -271,7 +271,7 @@ def google_billing(start, end) -> dict:
         names = [t.get("tableReference", {}).get("tableId", "") for t in data.get("tables") or []]
         names = sorted(n for n in names if n.startswith("gcp_billing_export_v1_"))
         if not names:
-            out["error"] = "export not enabled yet (no gcp_billing_export_v1_* table)"
+            out["error"] = "waiting for first export (table not created yet)"
             return out
         table = f"{GCP_PROJECT}.{GCP_DATASET}.{names[0]}"
     sql = (
@@ -530,24 +530,34 @@ def build(now: datetime | None = None) -> str:
         "Each vendor is counted from one source; reloads are a memo, not added.",
         "",
     ]
-    lines.extend(format_source("xAI direct (billed)", xai))
+    parts = []
+    for name, res in (("xAI", xai), ("OpenRouter", oru), ("Google", goog)):
+        if res.get("ok"):
+            total = sum((res.get("by_model") or {}).values(), Decimal("0"))
+            if res is oru:
+                tag = f"credits {money(oru['credits'])} + BYOK {money(oru['byok'])}"
+                if goog.get("ok"):
+                    tag += ", BYOK inside Google"
+                parts.append(f"{name} {money(total)} ({tag})")
+            else:
+                parts.append(f"{name} {money(total)}")
+        else:
+            parts.append(f"{name} n/a ({res.get('error')})")
+    lines.append("Top 5 across the billed sources")
+    merged: dict[str, Decimal] = {}
+    for result in (xai, oru, goog):
+        if not result.get("ok"):
+            continue
+        for model, usd in (result.get("by_model") or {}).items():
+            add_usd(merged, model, usd)
+    if not merged:
+        lines.append("  none this window")
+    for model, usd in top(merged):
+        lines.append(f"  {model[:42]:<42} {money(usd):>10}")
     lines.append("")
-    extra = None
-    if oru.get("ok"):
-        extra = f"of which OR credits {money(oru['credits'])}  ·  BYOK {money(oru['byok'])}"
-        if goog.get("ok"):
-            extra += " (BYOK is in the Google bill; not added twice)"
-    lines.extend(format_source("OpenRouter (credits + BYOK, per model)", oru, extra))
-    lines.append("")
-    if goog.get("ok"):
-        gextra = None
-        if goog["credits"]:
-            gextra = f"gross {money(goog['gross'])}  ·  credits {money(goog['credits'])}"
-        lines.extend(format_source("Google Cloud billed (AI Studio + Vertex, net)", goog, gextra))
-    else:
-        lines.append("Google Cloud billed (not wired yet)")
-        lines.append(f"  {goog.get('error')}")
-        lines.append("  Until then AI Studio / Vertex direct spend is missing.")
+    lines.append("Usage by source")
+    for part in parts:
+        lines.append(f"  {part}")
     lines.append("")
     lines.append("Overage / credits on card (no usage feed sees these)")
     if not card.get("ok"):
@@ -573,23 +583,11 @@ def build(now: datetime | None = None) -> str:
         lines.append("Memo, not added (prepay; usage above is the spend)")
         lines.append(f"  {memo}")
     lines.append("")
-    lines.append("Top 5 across the billed sources")
-    merged: dict[str, Decimal] = {}
-    for result in (xai, oru, goog):
-        if not result.get("ok"):
-            continue
-        for model, usd in (result.get("by_model") or {}).items():
-            add_usd(merged, model, usd)
-    if not merged:
-        lines.append("  none this window")
-    for model, usd in top(merged):
-        lines.append(f"  {model[:42]:<42} {money(usd):>10}")
     variable_usd = sum(merged.values(), Decimal("0"))
     if goog.get("ok") and oru.get("ok"):
         variable_usd -= oru["byok"]
     variable_usd += sum((card.get("overage") or {}).values(), Decimal("0"))
     monthly_all = (variable_usd * Decimal("30") / Decimal("14") + plans_usd).quantize(CENTS, rounding=ROUND_HALF_UP)
-    lines.append("")
     lines.append(f"All-in monthly pace: ~{money(monthly_all)} (usage + overage paced from 14d, plus plans {money(plans_usd)}).")
     hard_blocks_14d = int(os.environ.get("AI_HARD_BLOCKS", "0") or 0)
     dec_res = evaluate_decision(variable_usd, PLAN_MONTHLY_USD, hard_blocks_14d)
