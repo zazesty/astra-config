@@ -2269,6 +2269,54 @@ class TestAnnualCadence(unittest.TestCase):
         self.assertEqual(len(g), 1)
         self.assertEqual(g[0]["name"], "Grok / xAI")
 
+    def test_auto_annual_ignores_unrelated_named_merchants(self):
+        from budget_bot.rules import proposed_auto_annual_conversions
+
+        usm = {
+            "name": "US Mobile",
+            "amount_cents": 2700,
+            "day_of_month": 5,
+            "match": r"US MOBILE",
+            "auto_annual": True,
+        }
+        grok = {
+            "name": "Grok / xAI",
+            "amount_cents": 800,
+            "day_of_month": 13,
+            "match": r"GROK|\bXAI\b",
+            "saas": True,
+            "auto_annual": True,
+        }
+        unrelated = [
+            Transaction(
+                id="dmv-247",
+                date="2026-11-05",
+                amount_cents=24700,
+                name="Withdrawal 11/04 Fd *Ca Dmv 664 Pleasanton Ca",
+                merchant_name="California DMV",
+            ),
+            Transaction(
+                id="honda-300",
+                date="2026-11-17",
+                amount_cents=30000,
+                name="Withdrawal 11/17 Mostly Honda Concord Ca",
+                merchant_name="Mostly Hondas",
+            ),
+            Transaction(
+                id="maro-7650",
+                date="2026-11-22",
+                amount_cents=7650,
+                name="Payment to MARO",
+                merchant_name="Payment to MARO",
+            ),
+        ]
+        self.assertEqual(
+            proposed_auto_annual_conversions(
+                [usm, grok], unrelated, as_of=date(2026, 11, 25)
+            ),
+            [],
+        )
+
     def test_auto_annual_ignores_tax_and_usage_and_untagged(self):
         from budget_bot.rules import proposed_auto_annual_conversions
 

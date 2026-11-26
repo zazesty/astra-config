@@ -1270,6 +1270,8 @@ def proposed_auto_annual_conversions(
                 posted = int(t.amount_cents)
                 if posted <= 0:
                     continue
+                if not is_opaque_mastermoney(name=t.name or "", merchant_name=t.merchant_name):
+                    continue
                 if _txn_matches_any_bill_name(t, bills):
                     continue
                 d = parse_ymd(t.date)
