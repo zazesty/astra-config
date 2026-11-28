@@ -160,6 +160,12 @@ def xai_usage(start, end) -> dict:
     return {"ok": True, "error": note, "by_model": by_model}
 
 
+def is_google_byok(row: dict) -> bool:
+    provider = str(row.get("provider_name") or "").lower()
+    model = str(row.get("model_permaslug") or row.get("model") or "").lower()
+    return provider.startswith("google") or model.startswith("google/")
+
+
 def or_usage(start, end) -> dict:
     env = load_env(OR_ENV)
     key = env.get("OPENROUTER_MANAGEMENT_KEY", "")
@@ -170,14 +176,26 @@ def or_usage(start, end) -> dict:
             "by_model": {},
             "credits": Decimal("0"),
             "byok": Decimal("0"),
+            "google_byok": Decimal("0"),
+            "other_byok": Decimal("0"),
         }
     status, data = http_json("https://openrouter.ai/api/v1/activity", key)
     if status != 200 or not isinstance(data, dict):
-        return {"ok": False, "error": f"activity {status}", "by_model": {}, "credits": Decimal("0"), "byok": Decimal("0")}
+        return {
+            "ok": False,
+            "error": f"activity {status}",
+            "by_model": {},
+            "credits": Decimal("0"),
+            "byok": Decimal("0"),
+            "google_byok": Decimal("0"),
+            "other_byok": Decimal("0"),
+        }
     by_model: dict[str, Decimal] = {}
     by_tokens: dict[str, dict[str, int]] = {}
     credits = Decimal("0")
     byok = Decimal("0")
+    google_byok = Decimal("0")
+    other_byok = Decimal("0")
     for row in data.get("data") or []:
         if not isinstance(row, dict):
             continue
@@ -192,6 +210,11 @@ def or_usage(start, end) -> dict:
         row_byok = dec(row.get("byok_usage_inference"))
         credits += row_credits
         byok += row_byok
+        if row_byok > 0:
+            if is_google_byok(row):
+                google_byok += row_byok
+            else:
+                other_byok += row_byok
         add_usd(by_model, model, row_credits + row_byok)
         tok = by_tokens.setdefault(
             model,
@@ -209,6 +232,8 @@ def or_usage(start, end) -> dict:
         "by_tokens": by_tokens,
         "credits": credits,
         "byok": byok,
+        "google_byok": google_byok,
+        "other_byok": other_byok,
     }
 
 
@@ -518,6 +543,41 @@ def format_source(title: str, result: dict, extra: str | None = None) -> list[st
     return lines
 
 
+def format_source_lines(xai: dict, oru: dict, goog: dict) -> list[str]:
+    parts = []
+    google_byok = oru.get("google_byok", Decimal("0")) if oru.get("ok") else Decimal("0")
+    other_byok = oru.get("other_byok", Decimal("0")) if oru.get("ok") else Decimal("0")
+    if xai.get("ok"):
+        xai_total = sum((xai.get("by_model") or {}).values(), Decimal("0"))
+        parts.append(f"xAI {money(xai_total)}")
+    else:
+        parts.append(f"xAI n/a ({xai.get('error')})")
+    if oru.get("ok"):
+        or_total = oru["credits"] + other_byok
+        if other_byok > 0:
+            parts.append(f"OpenRouter {money(or_total)} (credits {money(oru['credits'])} + BYOK {money(other_byok)})")
+        else:
+            parts.append(f"OpenRouter {money(or_total)}")
+    else:
+        parts.append(f"OpenRouter n/a ({oru.get('error')})")
+    if goog.get("ok"):
+        goog_total = sum((goog.get("by_model") or {}).values(), Decimal("0"))
+        notes = []
+        if google_byok > 0:
+            notes.append(f"incl. {money(google_byok)} OR BYOK")
+        if goog.get("credits", Decimal("0")) < 0:
+            notes.append(f"{money(goog.get('gross', Decimal('0')))} gross net of credits")
+        suffix = f" ({'; '.join(notes)})" if notes else ""
+        parts.append(f"Google {money(goog_total)}{suffix}")
+    elif google_byok > 0:
+        parts.append(
+            f"Google {money(google_byok)} (OR BYOK only; BigQuery n/a — see todo {GCP_TODO_ID}: {goog.get('error')})"
+        )
+    else:
+        parts.append(f"Google n/a (BigQuery still borked — see todo {GCP_TODO_ID}: {goog.get('error')})")
+    return parts
+
+
 def build(now: datetime | None = None) -> str:
     now = now or datetime.now(TZ)
     start, end = window(now)
@@ -531,21 +591,7 @@ def build(now: datetime | None = None) -> str:
         "All AI spend: billed usage plus plans and extra usage.",
         "",
     ]
-    parts = []
-    for name, res in (("xAI", xai), ("OpenRouter", oru), ("Google", goog)):
-        if res.get("ok"):
-            total = sum((res.get("by_model") or {}).values(), Decimal("0"))
-            if res is oru:
-                tag = f"credits {money(oru['credits'])} + BYOK {money(oru['byok'])}"
-                if goog.get("ok"):
-                    tag += ", BYOK inside Google"
-                parts.append(f"{name} {money(total)} ({tag})")
-            else:
-                parts.append(f"{name} {money(total)}")
-        elif res is goog:
-            parts.append(f"{name} n/a (BigQuery still borked — see todo {GCP_TODO_ID}: {res.get('error')})")
-        else:
-            parts.append(f"{name} n/a ({res.get('error')})")
+    parts = format_source_lines(xai, oru, goog)
     lines.append("Top 5 across the billed sources")
     merged: dict[str, Decimal] = {}
     for result in (xai, oru, goog):
@@ -583,7 +629,7 @@ def build(now: datetime | None = None) -> str:
     lines.append("")
     variable_usd = sum(merged.values(), Decimal("0"))
     if goog.get("ok") and oru.get("ok"):
-        variable_usd -= oru["byok"]
+        variable_usd -= oru.get("google_byok", Decimal("0"))
     variable_usd += sum((card.get("overage") or {}).values(), Decimal("0"))
     monthly_all = (variable_usd * Decimal("30") / Decimal("14") + plans_usd).quantize(CENTS, rounding=ROUND_HALF_UP)
     lines.append(f"All-in monthly pace: ~{money(monthly_all)} (usage + overage paced from 14d, plus plans {money(plans_usd)}).")
@@ -700,6 +746,26 @@ def self_test() -> int:
     assert classify_card("GOOGLE *CLOUD 7XK", 1000)[1] == "reload"
     assert classify_card("GOOGLE *YouTube Videos", 999) is None
     assert classify_card("7-ELEVEN 1234", 500) is None
+    assert is_google_byok({"provider_name": "google-ai-studio", "model": "google/gemini-4-neon"})
+    assert is_google_byok({"provider_name": "", "model_permaslug": "google/gemini-4-hydrogen"})
+    assert not is_google_byok({"provider_name": "openai/fast", "model": "openai/gpt-6.1-sol"})
+    src_ok = format_source_lines(
+        {"ok": True, "by_model": {"grok-4.7": Decimal("0.70")}},
+        {"ok": True, "credits": Decimal("18.07"), "byok": Decimal("4.84"), "google_byok": Decimal("4.84"), "other_byok": Decimal("0")},
+        {"ok": True, "by_model": {}, "gross": Decimal("27.95"), "credits": Decimal("-27.95")},
+    )
+    assert src_ok == [
+        "xAI $0.70",
+        "OpenRouter $18.07",
+        "Google $0.00 (incl. $4.84 OR BYOK; $27.95 gross net of credits)",
+    ], src_ok
+    src_nobq = format_source_lines(
+        {"ok": True, "by_model": {"grok-4.7": Decimal("0.70")}},
+        {"ok": True, "credits": Decimal("18.07"), "byok": Decimal("5.84"), "google_byok": Decimal("4.84"), "other_byok": Decimal("1.00")},
+        {"ok": False, "error": "down"},
+    )
+    assert src_nobq[1] == "OpenRouter $19.07 (credits $18.07 + BYOK $1.00)", src_nobq
+    assert src_nobq[2].startswith("Google $4.84 (OR BYOK only; BigQuery n/a"), src_nobq
     print("ai-spend-review self-test ok")
     return 0
 
