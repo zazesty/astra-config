@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Daily VPS telemetry aggregator (dollars, human vs agent hours, leverage, shipping vs firefighting, cache/cheap-seat share).
+"""Daily VPS ops telemetry aggregator (human vs agent hours, leverage, shipping vs firefighting, cache/cheap-seat share).
+
+AI spend dollars live exclusively in ai-spend-review.py; this script tracks
+local operational metrics only (no network calls, no billing APIs).
 
 Writes quiet local snapshots under ~/.local/state/astra/ (mode 700/600, out of git):
-  - vps-telemetry-config.json   (multipliers, VPS rate, exclusions)
-  - vps-telemetry-api-cache.json (incremental daily xAI + OpenRouter + journal cache)
+  - vps-telemetry-config.json   (window/gap settings)
+  - vps-telemetry-api-cache.json (incremental daily journal churn cache)
   - vps-telemetry.json          (latest full rollup: all-time, 30d, 7d)
   - vps-telemetry.jsonl         (one compact row per PT day, deduped on date)
   - vps-telemetry.md            (human-readable dashboard)
@@ -17,7 +20,7 @@ Usage:
   vps-telemetry.py              # collect, update cache, write state + markdown
   vps-telemetry.py --dry-run    # compute and print markdown, do not write state
   vps-telemetry.py --json       # print latest/computed JSON to stdout (no write)
-  vps-telemetry.py --self-test  # unit checks, no network or state writes
+  vps-telemetry.py --self-test  # unit checks, no state writes
 """
 from __future__ import annotations
 
@@ -29,11 +32,8 @@ import subprocess
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from zoneinfo import ZoneInfo
-
-from astra_common import http_json, load_env, validate_xai_team
 
 TZ = ZoneInfo("America/Los_Angeles")
 STATE_DIR = Path(os.environ.get("VPS_TELEMETRY_STATE", str(Path.home() / ".local/state/astra")))
@@ -43,20 +43,12 @@ JSON_PATH = STATE_DIR / "vps-telemetry.json"
 JSONL_PATH = STATE_DIR / "vps-telemetry.jsonl"
 MD_PATH = STATE_DIR / "vps-telemetry.md"
 
-XAI_ENV = Path(os.environ.get("XAI_MANAGEMENT_ENV", str(STATE_DIR / "xai-management.env")))
-OR_ENV = Path(os.environ.get("OR_MANAGEMENT_ENV", str(STATE_DIR / "openrouter-management.env")))
 AI_STUDIO_LOG = STATE_DIR / "ai-studio-usage.jsonl"
 ARGON_LATEST = STATE_DIR / "argon-usage.json"
 PHOTON_HEAL_LOG = STATE_DIR / "photon-heal.log"
 
 DEFAULT_CONFIG = {
     "vps_start_date": "2026-05-18",
-    "vps_monthly_usd": 15.32,
-    "vps_multiplier": 1.0,
-    "api_overage_multiplier": 0.85,
-    "subscriptions_multiplier": 0.0,
-    "one_off_exclusions_usd": 0.0,
-    "excluded_notes": "Personal subscriptions (e.g. Claude Max $100, SuperGrok/Plus) and ~$150 bankruptcy tokens excluded.",
     "human_gap_minutes": 15.0,
     "human_burst_floor_minutes": 3.0,
     "agent_gap_minutes": 15.0,
@@ -75,27 +67,6 @@ CHEAP_MODEL_MARKERS = (
     "nano",
     "lite",
 )
-
-# List rates ($ per 1M tokens) for non-billed / grant-covered AI Studio estimate only.
-AI_STUDIO_RATES = {
-    "hydrogen": (0.75, 0.075, 3.75),
-    "flash-lite": (0.25, 0.025, 1.50),
-    "flash": (0.75, 0.075, 3.75),
-    "argon": (2.00, 0.20, 10.00),
-}
-
-
-def ai_studio_seat(model: str) -> str:
-    m = (model or "").lower()
-    if "hydrogen" in m:
-        return "hydrogen"
-    if "flash-lite" in m:
-        return "flash-lite"
-    if "flash" in m:
-        return "flash"
-    if "argon" in m:
-        return "argon"
-    return "other"
 
 
 def load_config() -> dict:
@@ -124,10 +95,10 @@ def load_cache() -> dict:
         try:
             data = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                return data
+                return {"churn_daily": data.get("churn_daily") or {}}
         except (OSError, ValueError):
             pass
-    return {"xai_daily": {}, "or_daily": {}, "churn_daily": {}}
+    return {"churn_daily": {}}
 
 
 def save_cache(cache: dict) -> None:
@@ -207,120 +178,6 @@ def bucket_active_hours(
     return round(total_sec / 3600.0, 2)
 
 
-def fetch_xai_daily(start: date, end: date, cache: dict) -> tuple[bool, str | None]:
-    key = load_env(XAI_ENV).get("XAI_MANAGEMENT_KEY", "")
-    team, err = validate_xai_team(key)
-    if err or not team:
-        return False, err
-
-    body = {
-        "analyticsRequest": {
-            "timeRange": {
-                "startTime": f"{start.isoformat()} 00:00:00",
-                "endTime": f"{(end + timedelta(days=1)).isoformat()} 00:00:00",
-                "timezone": "America/Los_Angeles",
-            },
-            "timeUnit": "TIME_UNIT_DAY",
-            "values": [{"name": "usd", "aggregation": "AGGREGATION_SUM"}],
-            "groupBy": ["description"],
-            "filters": [],
-        }
-    }
-    status, data = http_json(f"https://management-api.x.ai/v1/billing/teams/{team}/usage", key, body)
-    if status != 200 or not isinstance(data, dict):
-        return False, f"usage {status}"
-
-    daily: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-    for series in data.get("timeSeries") or []:
-        labels = series.get("groupLabels") or series.get("group") or []
-        label = (labels[0] if labels else "unknown").strip()
-        for pt in series.get("dataPoints") or []:
-            ts_raw = pt.get("timestamp") or pt.get("time") or ""
-            dt = parse_any_ts(ts_raw)
-            day_str = dt.astimezone(TZ).date().isoformat() if dt else str(ts_raw)[:10]
-            vals = pt.get("values") or []
-            if len(day_str) == 10 and vals:
-                try:
-                    usd = float(vals[0])
-                except (TypeError, ValueError):
-                    usd = 0.0
-                if usd > 0:
-                    daily[day_str][label] += usd
-
-    # Replace fetched range days cleanly; preserve any older cached days.
-    xai_cache = cache.setdefault("xai_daily", {})
-    for d_str, models in daily.items():
-        xai_cache[d_str] = {
-            "usd": round(sum(models.values()), 6),
-            "by_model": {m: round(u, 6) for m, u in models.items()},
-        }
-    return True, "truncated" if data.get("limitReached") else None
-
-
-def fetch_or_daily(cache: dict) -> tuple[bool, str | None]:
-    env = load_env(OR_ENV)
-    key = env.get("OPENROUTER_MANAGEMENT_KEY", "")
-    if not key:
-        return False, "no OPENROUTER_MANAGEMENT_KEY"
-    status, data = http_json("https://openrouter.ai/api/v1/activity", key)
-    if status != 200 or not isinstance(data, dict):
-        return False, f"activity {status}"
-
-    grouped: dict[str, dict] = {}
-    for row in data.get("data") or []:
-        if not isinstance(row, dict):
-            continue
-        day_str = str(row.get("date") or "")[:10]
-        if len(day_str) != 10:
-            continue
-        entry = grouped.setdefault(
-            day_str,
-            {
-                "credits": 0.0,
-                "byok": 0.0,
-                "usd": 0.0,
-                "by_model": {},
-                "reqs": 0,
-                "prompt_tokens": 0,
-                "cached_tokens": 0,
-                "completion_tokens": 0,
-                "reasoning_tokens": 0,
-                "cheap_tokens": 0,
-                "total_tokens": 0,
-            },
-        )
-        model = str(row.get("model_permaslug") or row.get("model") or "unknown")
-        cred = float(row.get("usage") or 0.0)
-        byok = float(row.get("byok_usage_inference") or 0.0)
-        entry["credits"] += cred
-        entry["byok"] += byok
-        entry["usd"] += cred + byok
-        entry["by_model"][model] = round(entry["by_model"].get(model, 0.0) + cred + byok, 6)
-
-        reqs = int(row.get("requests") or 0)
-        prompt = int(row.get("prompt_tokens") or 0)
-        cached = int(row.get("cached_tokens") or 0)
-        comp = int(row.get("completion_tokens") or 0)
-        reas = int(row.get("reasoning_tokens") or 0)
-        tot = prompt + comp + reas
-        entry["reqs"] += reqs
-        entry["prompt_tokens"] += prompt
-        entry["cached_tokens"] += cached
-        entry["completion_tokens"] += comp
-        entry["reasoning_tokens"] += reas
-        entry["total_tokens"] += tot
-        if any(m in model.lower() for m in CHEAP_MODEL_MARKERS):
-            entry["cheap_tokens"] += tot
-
-    or_cache = cache.setdefault("or_daily", {})
-    for d_str, entry in grouped.items():
-        entry["credits"] = round(entry["credits"], 6)
-        entry["byok"] = round(entry["byok"], 6)
-        entry["usd"] = round(entry["usd"], 6)
-        or_cache[d_str] = entry
-    return True, None
-
-
 def collect_ai_studio(since_date: date | None = None) -> dict:
     out = {
         "reqs": 0,
@@ -329,17 +186,6 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
         "output_tokens": 0,
         "thoughts_tokens": 0,
         "total_tokens": 0,
-        "est_list_usd": 0.0,
-        "by_seat": defaultdict(lambda: {
-            "reqs": 0,
-            "prompt_tokens": 0,
-            "cached_tokens": 0,
-            "output_tokens": 0,
-            "thoughts_tokens": 0,
-            "total_tokens": 0,
-            "est_list_usd": 0.0,
-        }),
-        "by_day": defaultdict(lambda: {"reqs": 0, "prompt_tokens": 0, "cached_tokens": 0, "total_tokens": 0, "est_list_usd": 0.0}),
     }
     if not AI_STUDIO_LOG.is_file():
         return out
@@ -357,17 +203,11 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
         d_pt = dt.astimezone(TZ).date()
         if since_date and d_pt < since_date:
             continue
-        model = str(row.get("model") or "").lower()
         prompt = int(row.get("prompt_tokens") or 0)
         cached = int(row.get("cached_tokens") or 0)
-        fresh = max(0, prompt - cached)
         cand = int(row.get("candidates_tokens") or 0)
         thoughts = int(row.get("thoughts_tokens") or 0)
         tot = prompt + cand + thoughts
-
-        seat = ai_studio_seat(model)
-        rates = AI_STUDIO_RATES.get(seat, AI_STUDIO_RATES["flash"])
-        usd = (fresh * rates[0] + cached * rates[1] + (cand + thoughts) * rates[2]) / 1_000_000.0
 
         out["reqs"] += 1
         out["prompt_tokens"] += prompt
@@ -375,30 +215,6 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
         out["output_tokens"] += cand
         out["thoughts_tokens"] += thoughts
         out["total_tokens"] += tot
-        out["est_list_usd"] += usd
-
-        srow = out["by_seat"][seat]
-        srow["reqs"] += 1
-        srow["prompt_tokens"] += prompt
-        srow["cached_tokens"] += cached
-        srow["output_tokens"] += cand
-        srow["thoughts_tokens"] += thoughts
-        srow["total_tokens"] += tot
-        srow["est_list_usd"] += usd
-
-        d_str = d_pt.isoformat()
-        day = out["by_day"][d_str]
-        day["reqs"] += 1
-        day["prompt_tokens"] += prompt
-        day["cached_tokens"] += cached
-        day["total_tokens"] += tot
-        day["est_list_usd"] += usd
-
-    out["est_list_usd"] = round(out["est_list_usd"], 4)
-    out["by_seat"] = {
-        k: {**v, "est_list_usd": round(v["est_list_usd"], 4)}
-        for k, v in sorted(out["by_seat"].items())
-    }
     return out
 
 
@@ -697,13 +513,11 @@ def filter_ts(items: list[datetime], cutoff: datetime | None) -> list[datetime]:
     return [t for t in items if t >= cutoff]
 
 
-def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None, skip_network: bool = False) -> dict:
+def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None) -> dict:
     now = (now or datetime.now(TZ)).astimezone(TZ)
     today = now.date()
     start_date = date.fromisoformat(cfg["vps_start_date"])
 
-    xai_ok, xai_err = (True, "skipped") if skip_network else fetch_xai_daily(start_date, today, cache)
-    or_ok, or_err = (True, "skipped") if skip_network else fetch_or_daily(cache)
     churn_daily = collect_churn(cache)
 
     ts_data = collect_human_and_agent_timestamps()
@@ -721,45 +535,6 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None, skip_n
             cutoff = datetime.combine(w_start, datetime.min.time(), tzinfo=TZ).astimezone(timezone.utc)
 
         elapsed_days = max(1, (today - w_start).days + 1)
-        vps_raw = round(elapsed_days * (float(cfg["vps_monthly_usd"]) / 30.4375), 2)
-        vps_usd = round(vps_raw * float(cfg["vps_multiplier"]), 2)
-
-        xai_raw = 0.0
-        for d_str, entry in (cache.get("xai_daily") or {}).items():
-            try:
-                d = date.fromisoformat(d_str)
-            except ValueError:
-                continue
-            if w_start <= d <= today:
-                xai_raw += float(entry.get("usd") or 0.0)
-
-        or_raw = 0.0
-        or_credits = 0.0
-        or_byok = 0.0
-        or_prompt = 0
-        or_cached = 0
-        or_total = 0
-        or_cheap = 0
-        for d_str, entry in (cache.get("or_daily") or {}).items():
-            try:
-                d = date.fromisoformat(d_str)
-            except ValueError:
-                continue
-            if w_start <= d <= today:
-                or_raw += float(entry.get("usd") or 0.0)
-                or_credits += float(entry.get("credits") or 0.0)
-                or_byok += float(entry.get("byok") or 0.0)
-                or_prompt += int(entry.get("prompt_tokens") or 0)
-                or_cached += int(entry.get("cached_tokens") or 0)
-                or_total += int(entry.get("total_tokens") or 0)
-                or_cheap += int(entry.get("cheap_tokens") or 0)
-
-        api_mult = float(cfg["api_overage_multiplier"])
-        excl = float(cfg["one_off_exclusions_usd"]) if days is None else 0.0
-        api_raw = round(xai_raw + or_raw, 2)
-        api_weighted = round(max(0.0, api_raw - excl) * api_mult, 2)
-        total_vps_usd = round(vps_usd + api_weighted, 2)
-
         studio_win = collect_ai_studio(since_date=w_start)
 
         # Hours
@@ -784,7 +559,6 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None, skip_n
         }
 
         leverage_ratio = round(agent_hours / human_hours, 2) if human_hours > 0 else None
-        usd_per_human_hour = round(total_vps_usd / human_hours, 2) if human_hours > 0 else None
 
         # Shipping vs firefighting
         commits_n = len(filter_ts(git_commits, cutoff))
@@ -803,11 +577,11 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None, skip_n
         fire_events = failures_n + heals_n
         ship_ratio = round(commits_n / max(1, fire_events), 2)
 
-        # Cheap seat & cache share (OpenRouter + AI Studio proxy + Grok Build when all-time)
-        tot_prompt = or_prompt + studio_win["prompt_tokens"]
-        tot_cached = or_cached + studio_win["cached_tokens"]
-        tot_tokens = or_total + studio_win["total_tokens"]
-        tot_cheap = or_cheap + studio_win["total_tokens"]  # AI Studio proxy seats are all flash/hydrogen/argon
+        # Cheap seat & cache share (local AI Studio proxy + Grok Build when all-time)
+        tot_prompt = studio_win["prompt_tokens"]
+        tot_cached = studio_win["cached_tokens"]
+        tot_tokens = studio_win["total_tokens"]
+        tot_cheap = studio_win["total_tokens"]  # AI Studio proxy seats are all flash/hydrogen/argon
         if days is None:
             et = ts_data["extra_tokens"]
             tot_prompt += et["grok_prompt"]
@@ -822,26 +596,10 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None, skip_n
             "window_days": elapsed_days,
             "start_date": w_start.isoformat(),
             "end_date": today.isoformat(),
-            "dollars": {
-                "vps_hosting_usd": vps_usd,
-                "xai_raw_usd": round(xai_raw, 2),
-                "openrouter_raw_usd": round(or_raw, 2),
-                "openrouter_credits_usd": round(or_credits, 2),
-                "openrouter_byok_usd": round(or_byok, 2),
-                "api_raw_usd": api_raw,
-                "api_weighted_usd": api_weighted,
-                "api_multiplier": api_mult,
-                "subscriptions_vps_usd": 0.0,
-                "total_vps_usd": total_vps_usd,
-                "ai_studio_proxy_est_list_usd": studio_win["est_list_usd"],
-                "ai_studio_proxy_reqs": studio_win["reqs"],
-                "ai_studio_proxy_by_seat": studio_win["by_seat"],
-            },
             "hours": {
                 "human_hours": human_hours,
                 "agent_hours": agent_hours,
                 "leverage_ratio": leverage_ratio,
-                "usd_per_human_hour": usd_per_human_hour,
                 "human_by_harness": human_breakdown,
                 "agent_by_harness": agent_breakdown,
             },
@@ -871,8 +629,6 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None, skip_n
         "as_of": now.isoformat(),
         "date_pt": today.isoformat(),
         "sources": {
-            "xai": {"ok": xai_ok, "note": xai_err},
-            "openrouter": {"ok": or_ok, "note": or_err},
             "ai_studio_proxy_all_time_tokens": studio_all["total_tokens"],
             "argon_subagent_ratio": argon_sub_ratio,
         },
@@ -889,9 +645,6 @@ def render_markdown(snap: dict) -> str:
     w7 = snap["last_7d"]
     cfg = snap["config"]
 
-    def fmt_usd(v):
-        return f"${v:,.2f}"
-
     def fmt_ratio(v):
         return f"{v:.2f}x" if v is not None else "n/a"
 
@@ -899,23 +652,16 @@ def render_markdown(snap: dict) -> str:
         return f"{v:.1f}%" if v is not None else "n/a"
 
     lines = [
-        f"# zaz-astra Running Telemetry Log",
+        f"# zaz-astra Running Ops Telemetry",
         f"",
         f"Updated: `{snap['as_of']}` (PT) · VPS start: `{cfg['vps_start_date']}`",
-        f"Multipliers: VPS hosting `{cfg['vps_multiplier']*100:.0f}%`, box API/overages `{cfg['api_overage_multiplier']*100:.0f}%`, flat subs `{cfg['subscriptions_multiplier']*100:.0f}%` (personal)",
-        f"Exclusions: {cfg['excluded_notes']}",
+        f"AI spend dollars live in `ai-spend-review` (not tracked here).",
         f"",
         f"| Metric | Last 7d | Last 30d | All-time ({a['window_days']}d) |",
         f"|---|---:|---:|---:|",
-        f"| **VPS-weighted total ($)** | {fmt_usd(w7['dollars']['total_vps_usd'])} | {fmt_usd(w30['dollars']['total_vps_usd'])} | {fmt_usd(a['dollars']['total_vps_usd'])} |",
-        f"| — Hetzner VPS (100%) | {fmt_usd(w7['dollars']['vps_hosting_usd'])} | {fmt_usd(w30['dollars']['vps_hosting_usd'])} | {fmt_usd(a['dollars']['vps_hosting_usd'])} |",
-        f"| — API weighted ({cfg['api_overage_multiplier']*100:.0f}% of xAI+OR) | {fmt_usd(w7['dollars']['api_weighted_usd'])} | {fmt_usd(w30['dollars']['api_weighted_usd'])} | {fmt_usd(a['dollars']['api_weighted_usd'])} |",
-        f"| — Raw xAI / OpenRouter | {fmt_usd(w7['dollars']['xai_raw_usd'])} / {fmt_usd(w7['dollars']['openrouter_raw_usd'])} | {fmt_usd(w30['dollars']['xai_raw_usd'])} / {fmt_usd(w30['dollars']['openrouter_raw_usd'])} | {fmt_usd(a['dollars']['xai_raw_usd'])} / {fmt_usd(a['dollars']['openrouter_raw_usd'])} |",
-        f"| — AI Studio proxy est. (grant/non-cash) | {fmt_usd(w7['dollars']['ai_studio_proxy_est_list_usd'])} | {fmt_usd(w30['dollars']['ai_studio_proxy_est_list_usd'])} | {fmt_usd(a['dollars']['ai_studio_proxy_est_list_usd'])} |",
         f"| **Human hands-on hours** | {w7['hours']['human_hours']:.2f}h | {w30['hours']['human_hours']:.2f}h | {a['hours']['human_hours']:.2f}h |",
         f"| **Agent wall-clock hours** | {w7['hours']['agent_hours']:.2f}h | {w30['hours']['agent_hours']:.2f}h | {a['hours']['agent_hours']:.2f}h |",
         f"| **Leverage ratio (agent / human)** | {fmt_ratio(w7['hours']['leverage_ratio'])} | {fmt_ratio(w30['hours']['leverage_ratio'])} | {fmt_ratio(a['hours']['leverage_ratio'])} |",
-        f"| **$/human-hour** | {fmt_usd(w7['hours']['usd_per_human_hour'] or 0)} | {fmt_usd(w30['hours']['usd_per_human_hour'] or 0)} | {fmt_usd(a['hours']['usd_per_human_hour'] or 0)} |",
         f"| **Commits vs. failures/heals** | {w7['shipping_vs_firefighting']['commits']} / {w7['shipping_vs_firefighting']['service_failures'] + w7['shipping_vs_firefighting']['photon_heals']} ({fmt_ratio(w7['shipping_vs_firefighting']['ship_to_fire_ratio'])}) | {w30['shipping_vs_firefighting']['commits']} / {w30['shipping_vs_firefighting']['service_failures'] + w30['shipping_vs_firefighting']['photon_heals']} ({fmt_ratio(w30['shipping_vs_firefighting']['ship_to_fire_ratio'])}) | {a['shipping_vs_firefighting']['commits']} / {a['shipping_vs_firefighting']['service_failures'] + a['shipping_vs_firefighting']['photon_heals']} ({fmt_ratio(a['shipping_vs_firefighting']['ship_to_fire_ratio'])}) |",
         f"| **Cache hit %** | {fmt_pct(w7['efficiency']['cache_hit_pct'])} | {fmt_pct(w30['efficiency']['cache_hit_pct'])} | {fmt_pct(a['efficiency']['cache_hit_pct'])} |",
         f"| **Cheap-seat token %** | {fmt_pct(w7['efficiency']['cheap_seat_token_pct'])} | {fmt_pct(w30['efficiency']['cheap_seat_token_pct'])} | {fmt_pct(a['efficiency']['cheap_seat_token_pct'])} |",
@@ -929,7 +675,7 @@ def render_markdown(snap: dict) -> str:
     lines.append("")
     lines.append(f"Grok Build subagent ratio (latest `argon-usage.json`): `{sub_r}`")
     lines.append("")
-    lines.append("Notes: Antigravity direct OAuth/Vertex grounding fees and web chats (grok.com / claude.ai) are not visible to the box. OpenRouter activity (~30d upstream) and systemd journal (~7d upstream) are cached incrementally in `vps-telemetry-api-cache.json` going forward; pre-Nov Claude project `.jsonl`s were purged by `claude-journal-cleanup`, so `Last 7d` is the cleanest leverage & ship/fire baseline.")
+    lines.append("Notes: Systemd journal (~7d upstream) is cached incrementally in `vps-telemetry-api-cache.json`; pre-Nov Claude project `.jsonl`s were purged by `claude-journal-cleanup`, so `Last 7d` is the cleanest leverage & ship/fire baseline.")
     return "\n".join(lines) + "\n"
 
 
@@ -937,11 +683,9 @@ def upsert_jsonl(snap: dict) -> None:
     row = {
         "date_pt": snap["date_pt"],
         "as_of": snap["as_of"],
-        "all_time_vps_usd": snap["all_time"]["dollars"]["total_vps_usd"],
         "all_time_human_hours": snap["all_time"]["hours"]["human_hours"],
         "all_time_agent_hours": snap["all_time"]["hours"]["agent_hours"],
         "all_time_leverage": snap["all_time"]["hours"]["leverage_ratio"],
-        "d7_vps_usd": snap["last_7d"]["dollars"]["total_vps_usd"],
         "d7_human_hours": snap["last_7d"]["hours"]["human_hours"],
         "d7_ship_to_fire": snap["last_7d"]["shipping_vs_firefighting"]["ship_to_fire_ratio"],
         "d30_cache_hit_pct": snap["last_30d"]["efficiency"]["cache_hit_pct"],
@@ -986,10 +730,6 @@ def self_test() -> int:
     assert parse_any_ts(1794267852230).year == 2026
     assert parse_any_ts(1794265639).year == 2026
     assert parse_any_ts("2026-11-15T00:06:13.803196996Z").year == 2026
-    assert ai_studio_seat("gemini-4-hydrogen") == "hydrogen"
-    assert ai_studio_seat("gemini-3.8-flash") == "flash"
-    assert ai_studio_seat("gemini-flash-lite-latest") == "flash-lite"
-    assert ai_studio_seat("gemini-4-argon") == "argon"
     print("vps-telemetry self-test ok")
     return 0
 
@@ -1001,7 +741,7 @@ def main(argv: list[str]) -> int:
     cache = load_cache()
     dry = "--dry-run" in argv
     want_json = "--json" in argv
-    snap = compute_snapshot(cfg, cache, skip_network=False)
+    snap = compute_snapshot(cfg, cache)
     md = render_markdown(snap)
     if want_json:
         sys.stdout.write(json.dumps(snap, indent=2) + "\n")
@@ -1014,7 +754,6 @@ def main(argv: list[str]) -> int:
     write_outputs(snap, md)
     print(
         f"vps-telemetry: ok date={snap['date_pt']} "
-        f"vps_usd=${snap['all_time']['dollars']['total_vps_usd']:.2f} "
         f"human={snap['all_time']['hours']['human_hours']:.2f}h "
         f"agent={snap['all_time']['hours']['agent_hours']:.2f}h"
     )
