@@ -49,8 +49,6 @@ ADVISE_UPGRADE_MONTHLY_USD = Decimal("80")
 HARD_BLOCKS_TIEBREAKER_14D = 4  # >=2/week bumps stay->consider or consider->advise
 STATE_DIR = Path(os.environ.get("AI_SPEND_STATE", str(Path.home() / ".local/state/astra")))
 STATE_PATH = STATE_DIR / "ai-spend-review.json"
-AI_STUDIO_LOG = Path(os.environ.get("ARGON_PROXY_USAGE_LOG", str(STATE_DIR / "ai-studio-usage.jsonl")))
-SNAPSHOT_PATH = Path(os.environ.get("AI_SPEND_SNAPSHOT", "/root/memory/ai-coding-plans-snapshot.md"))
 NOTIFY = os.environ.get("AI_SPEND_NOTIFY", "/root/astra-config/scripts/notify-email.sh")
 XAI_ENV = Path(os.environ.get("XAI_MANAGEMENT_ENV", str(Path.home() / ".local/state/astra/xai-management.env")))
 OR_ENV = Path(os.environ.get("OR_MANAGEMENT_ENV", str(Path.home() / ".local/state/astra/openrouter-management.env")))
@@ -439,89 +437,6 @@ def ai_bills(today) -> dict:
     return out
 
 
-def ai_studio_usage(start, end) -> dict[str, dict[str, int]]:
-    by_model: dict[str, dict[str, int]] = {}
-    if not AI_STUDIO_LOG.is_file():
-        return by_model
-    for line in AI_STUDIO_LOG.read_text(errors="replace").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        ts = str(row.get("ts") or "")
-        try:
-            dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(TZ).date()
-        except ValueError:
-            continue
-        if not (start <= dt <= end):
-            continue
-        model = short_model(str(row.get("model") or "unknown"))
-        tok = by_model.setdefault(
-            model,
-            {"reqs": 0, "prompt": 0, "cached": 0, "comp": 0, "thoughts": 0},
-        )
-        tok["reqs"] += 1
-        tok["prompt"] += int(row.get("prompt_tokens") or 0)
-        tok["cached"] += int(row.get("cached_tokens") or 0)
-        tok["comp"] += int(row.get("candidates_tokens") or 0)
-        tok["thoughts"] += int(row.get("thoughts_tokens") or 0)
-    return by_model
-
-
-def format_snapshot_entry(start, end, xai: dict, oru: dict, studio: dict[str, dict[str, int]]) -> str:
-    header = f"### {start.isoformat()} -> {end.isoformat()}"
-    lines = [header, ""]
-    if xai.get("ok"):
-        xai_items = sorted((xai.get("by_model") or {}).items(), key=lambda x: -x[1])
-        xai_str = ", ".join(f"`{m}` {money(u)}" for m, u in xai_items) or "$0.00"
-        lines.append(f"- **xAI direct:** {xai_str}")
-    if oru.get("ok"):
-        by_m = oru.get("by_model") or {}
-        by_t = oru.get("by_tokens") or {}
-        lines.append(
-            f"- **OpenRouter** (credits {money(oru['credits'])}, BYOK {money(oru['byok'])}):"
-        )
-        for m, u in sorted(by_m.items(), key=lambda x: -x[1]):
-            t = by_t.get(m) or {}
-            lines.append(
-                f"  - `{m}`: {money(u)} ({t.get('reqs', 0)} reqs, prompt {t.get('prompt', 0):,}, "
-                f"cached {t.get('cached', 0):,}, comp {t.get('comp', 0):,}, reas {t.get('reas', 0):,})"
-            )
-    if studio:
-        lines.append("- **AI Studio (local proxy log):**")
-        for m, t in sorted(studio.items()):
-            lines.append(
-                f"  - `{m}`: {t['reqs']} reqs, prompt {t['prompt']:,}, cached {t['cached']:,}, "
-                f"cand {t['comp']:,}, thoughts {t['thoughts']:,}"
-            )
-    else:
-        lines.append("- **AI Studio (local proxy log):** no calls logged")
-    return "\n".join(lines) + "\n"
-
-
-def append_snapshot(start, end, xai: dict, oru: dict, studio: dict[str, dict[str, int]]) -> bool:
-    if not SNAPSHOT_PATH.is_file():
-        return False
-    text = SNAPSHOT_PATH.read_text(encoding="utf-8")
-    header = f"### {start.isoformat()} -> {end.isoformat()}"
-    if header in text:
-        return False
-    entry = format_snapshot_entry(start, end, xai, oru, studio)
-    if "## Biweekly snapshots" not in text:
-        if not text.endswith("\n"):
-            text += "\n"
-        text += "\n## Biweekly snapshots\n\n" + entry
-    else:
-        if not text.endswith("\n"):
-            text += "\n"
-        text += "\n" + entry
-    SNAPSHOT_PATH.write_text(text, encoding="utf-8")
-    return True
-
-
 def top(by_model: dict[str, Decimal], n: int = TOP_N) -> list[tuple[str, Decimal]]:
     return sorted(by_model.items(), key=lambda item: -item[1])[:n]
 
@@ -828,7 +743,6 @@ def main(argv: list[str]) -> int:
         return 0
     write_state(now, body, end_iso, monthly_all)
     start, end = window(now)
-    append_snapshot(start, end, xai_usage(start, end), or_usage(start, end), ai_studio_usage(start, end))
     subject = f"AI spend {start.isoformat()} – {end.isoformat()}"
     rc = send(subject, body)
     print(f"ai-spend-review: mailed rc={rc}")
