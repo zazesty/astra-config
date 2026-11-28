@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Daily VPS ops telemetry aggregator (human vs agent hours, leverage, shipping vs firefighting, cache/cheap-seat share).
+"""Daily VPS ops telemetry aggregator (commits per human prompt, shipping vs firefighting, cache/cheap-seat share, box monthly total).
 
-AI spend dollars live exclusively in ai-spend-review.py; this script tracks
-local operational metrics only (no network calls, no billing APIs).
+AI spend polling lives exclusively in ai-spend-review.py; this script reads
+ai-spend-review.json for the AI + Hetzner box monthly total (Hetzner stays
+out of the biweekly AI spend emails).
 
 Writes quiet local snapshots under ~/.local/state/astra/ (mode 700/600, out of git):
-  - vps-telemetry-config.json   (window/gap settings)
+  - vps-telemetry-config.json    (start date, Hetzner rate)
   - vps-telemetry-api-cache.json (incremental daily journal churn cache)
-  - vps-telemetry.json          (latest full rollup: all-time, 30d, 7d)
-  - vps-telemetry.jsonl         (one compact row per PT day, deduped on date)
-  - vps-telemetry.md            (human-readable dashboard)
+  - vps-telemetry.json           (latest full rollup: all-time, 30d, 7d)
+  - vps-telemetry.jsonl          (one compact row per PT day, deduped on date)
+  - vps-telemetry.md             (human-readable dashboard)
 
 Privacy / security:
   - Never reads Budget Bot bank/ledger files (~/.local/state/budget-bot/).
@@ -43,16 +44,14 @@ JSON_PATH = STATE_DIR / "vps-telemetry.json"
 JSONL_PATH = STATE_DIR / "vps-telemetry.jsonl"
 MD_PATH = STATE_DIR / "vps-telemetry.md"
 
+AI_SPEND_STATE = STATE_DIR / "ai-spend-review.json"
 AI_STUDIO_LOG = STATE_DIR / "ai-studio-usage.jsonl"
 ARGON_LATEST = STATE_DIR / "argon-usage.json"
 PHOTON_HEAL_LOG = STATE_DIR / "photon-heal.log"
 
 DEFAULT_CONFIG = {
     "vps_start_date": "2026-05-18",
-    "human_gap_minutes": 15.0,
-    "human_burst_floor_minutes": 3.0,
-    "agent_gap_minutes": 15.0,
-    "agy_turn_cap_minutes": 30.0,
+    "vps_monthly_usd": 15.32,
 }
 
 CHEAP_MODEL_MARKERS = (
@@ -108,6 +107,36 @@ def save_cache(cache: dict) -> None:
     os.chmod(CACHE_PATH, 0o600)
 
 
+def load_box_monthly_pace(hetzner_monthly: float) -> dict | None:
+    """Read latest AI monthly pace from ai-spend-review.json and add Hetzner."""
+    if not AI_SPEND_STATE.is_file():
+        return None
+    try:
+        data = json.loads(AI_SPEND_STATE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    bm = data.get("box_monthly_pace")
+    if isinstance(bm, dict) and bm.get("ai_monthly_usd") is not None:
+        ai_usd = float(bm["ai_monthly_usd"])
+        hz_usd = float(bm.get("hetzner_monthly_usd", hetzner_monthly))
+        return {
+            "as_of": data.get("as_of"),
+            "ai_monthly_usd": round(ai_usd, 2),
+            "hetzner_monthly_usd": round(hz_usd, 2),
+            "total_box_monthly_usd": round(ai_usd + hz_usd, 2),
+        }
+    hist = data.get("history") or []
+    if hist and isinstance(hist[-1], dict) and hist[-1].get("monthly_all") is not None:
+        ai_usd = float(hist[-1]["monthly_all"])
+        return {
+            "as_of": data.get("as_of"),
+            "ai_monthly_usd": round(ai_usd, 2),
+            "hetzner_monthly_usd": round(hetzner_monthly, 2),
+            "total_box_monthly_usd": round(ai_usd + hetzner_monthly, 2),
+        }
+    return None
+
+
 def parse_any_ts(val) -> datetime | None:
     if val is None:
         return None
@@ -135,47 +164,6 @@ def parse_any_ts(val) -> datetime | None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
     return None
-
-
-def bucket_active_hours(
-    timestamps: list[datetime],
-    gap_minutes: float = 15.0,
-    floor_minutes: float = 3.0,
-    dedup_seconds: float = 30.0,
-) -> float:
-    """Cluster timestamps into active bursts and sum elapsed active time (hours).
-
-    Events closer than `dedup_seconds` collapse (parallel CLIs).
-    Gaps <= `gap_minutes` add exact elapsed time; gaps > `gap_minutes` close the
-    previous burst (adding `floor_minutes` tail/isolation credit) and open a new one.
-    """
-    if not timestamps:
-        return 0.0
-    pts = sorted(t.astimezone(timezone.utc) for t in timestamps)
-    deduped = [pts[0]]
-    for t in pts[1:]:
-        if (t - deduped[-1]).total_seconds() >= dedup_seconds:
-            deduped.append(t)
-
-    gap_sec = gap_minutes * 60.0
-    floor_sec = floor_minutes * 60.0
-    total_sec = 0.0
-    burst_start = deduped[0]
-    burst_last = deduped[0]
-
-    for t in deduped[1:]:
-        dt = (t - burst_last).total_seconds()
-        if dt <= gap_sec:
-            burst_last = t
-        else:
-            span = (burst_last - burst_start).total_seconds()
-            total_sec += max(span, floor_sec)
-            burst_start = t
-            burst_last = t
-
-    span = (burst_last - burst_start).total_seconds()
-    total_sec += max(span, floor_sec)
-    return round(total_sec / 3600.0, 2)
 
 
 def collect_ai_studio(since_date: date | None = None) -> dict:
@@ -218,19 +206,14 @@ def collect_ai_studio(since_date: date | None = None) -> dict:
     return out
 
 
-def collect_human_and_agent_timestamps() -> dict:
-    """Collect timestamps (no prompt text) across all harnesses."""
+def collect_human_prompts_and_commits() -> dict:
+    """Collect explicit human prompt timestamps (no prompt text) and non-auto git commits."""
     human_by_source: dict[str, list[datetime]] = defaultdict(list)
-    agent_by_source: dict[str, list[datetime]] = defaultdict(list)
     extra_tokens = {
         "grok_prompt": 0,
         "grok_cached": 0,
         "grok_total": 0,
         "grok_cheap": 0,
-        "codex_prompt": 0,
-        "codex_cached": 0,
-        "codex_total": 0,
-        "codex_cheap": 0,
     }
 
     # 1. Claude Code (root + dev)
@@ -248,23 +231,6 @@ def collect_human_and_agent_timestamps() -> dict:
                 if dt:
                     human_by_source["claude"].append(dt)
 
-    for root in ("/root/.claude/projects", "/home/dev/.claude/projects"):
-        for fp in glob.glob(f"{root}/**/*.jsonl", recursive=True):
-            try:
-                with open(fp, errors="replace") as f:
-                    for line in f:
-                        if not line.strip():
-                            continue
-                        try:
-                            d = json.loads(line)
-                        except ValueError:
-                            continue
-                        dt = parse_any_ts(d.get("timestamp"))
-                        if dt:
-                            agent_by_source["claude"].append(dt)
-            except OSError:
-                continue
-
     # 2. Codex (root + dev)
     for p in ("/root/.codex/history.jsonl", "/home/dev/.codex/history.jsonl"):
         path = Path(p)
@@ -279,23 +245,6 @@ def collect_human_and_agent_timestamps() -> dict:
                 dt = parse_any_ts(d.get("ts"))
                 if dt:
                     human_by_source["codex"].append(dt)
-
-    for root in ("/root/.codex/sessions", "/home/dev/.codex/sessions"):
-        for fp in glob.glob(f"{root}/**/*.jsonl", recursive=True):
-            try:
-                with open(fp, errors="replace") as f:
-                    for line in f:
-                        if not line.strip():
-                            continue
-                        try:
-                            d = json.loads(line)
-                        except ValueError:
-                            continue
-                        dt = parse_any_ts(d.get("timestamp"))
-                        if dt:
-                            agent_by_source["codex"].append(dt)
-            except OSError:
-                continue
 
     # 3. Grok Build (root + dev)
     for root in ("/root/.grok/sessions", "/home/dev/.grok/sessions"):
@@ -315,34 +264,14 @@ def collect_human_and_agent_timestamps() -> dict:
             except OSError:
                 continue
 
-        for fp in glob.glob(f"{root}/**/events.jsonl", recursive=True):
-            try:
-                with open(fp, errors="replace") as f:
-                    for line in f:
-                        if not line.strip():
-                            continue
-                        try:
-                            d = json.loads(line)
-                        except ValueError:
-                            continue
-                        dt = parse_any_ts(d.get("ts") or d.get("timestamp"))
-                        if dt:
-                            agent_by_source["grok_build"].append(dt)
-            except OSError:
-                continue
-
         for fp in glob.glob(f"{root}/**/usage.json", recursive=True):
-            is_subagent = "/subagents/" in fp
+            if "/subagents/" in fp:
+                continue
             try:
                 d = json.loads(Path(fp).read_text(errors="replace"))
             except (OSError, ValueError):
                 continue
             for turn in d.get("turns") or []:
-                dt = parse_any_ts(turn.get("endedAt"))
-                if dt:
-                    agent_by_source["grok_build"].append(dt)
-                if is_subagent:
-                    continue
                 mu = turn.get("modelUsage") or {}
                 if not mu and turn.get("primaryModelId"):
                     mu = {turn["primaryModelId"]: turn}
@@ -358,7 +287,7 @@ def collect_human_and_agent_timestamps() -> dict:
                     if any(m in m_name.lower() for m in CHEAP_MODEL_MARKERS):
                         extra_tokens["grok_cheap"] += tot
 
-    # 4. Antigravity (agy)
+    # 4. Antigravity (agy) — history.jsonl only (avoid double-counting transcript)
     ag_hist = Path("/root/.gemini/antigravity-cli/history.jsonl")
     if ag_hist.is_file():
         for line in ag_hist.read_text(errors="replace").splitlines():
@@ -372,47 +301,21 @@ def collect_human_and_agent_timestamps() -> dict:
             if dt:
                 human_by_source["antigravity"].append(dt)
 
-    for fp in glob.glob("/root/.gemini/antigravity-cli/brain/*/.system_generated/logs/transcript.jsonl"):
-        try:
-            with open(fp, errors="replace") as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        d = json.loads(line)
-                    except ValueError:
-                        continue
-                    dt = parse_any_ts(d.get("created_at"))
-                    if not dt:
-                        continue
-                    if d.get("source") == "USER_EXPLICIT" and d.get("type") == "USER_INPUT":
-                        human_by_source["antigravity"].append(dt)
-                    else:
-                        agent_by_source["antigravity"].append(dt)
-        except OSError:
-            continue
-
     # 5. Hermes
     hdb = Path("/root/.hermes/state.db")
     if hdb.is_file():
         try:
             conn = sqlite3.connect(f"file:{hdb}?mode=ro", uri=True)
-            for (role, ts) in conn.execute("SELECT role, timestamp FROM messages WHERE timestamp IS NOT NULL"):
+            for (ts,) in conn.execute("SELECT timestamp FROM messages WHERE role = 'user' AND timestamp IS NOT NULL"):
                 dt = parse_any_ts(ts)
-                if not dt:
-                    continue
-                if role == "user":
+                if dt:
                     human_by_source["hermes"].append(dt)
-                else:
-                    agent_by_source["hermes"].append(dt)
             conn.close()
         except sqlite3.Error:
             pass
 
-    # 6. Non-auto git commits (only count as standalone human touchpoints when >20m from any agent prompt)
-    all_prompt_pts = sorted(t for k, lst in human_by_source.items() for t in lst)
+    # 6. Non-auto git commits
     git_commits: list[datetime] = []
-    manual_git: list[datetime] = []
     for repo in ("/root/grok-mcp", "/root/astra-config"):
         if not Path(repo, ".git").exists():
             continue
@@ -432,16 +335,11 @@ def collect_human_and_agent_timestamps() -> dict:
                 dt = parse_any_ts(ts_s)
                 if dt:
                     git_commits.append(dt)
-                    if not any(abs((dt - p).total_seconds()) <= 1200 for p in all_prompt_pts):
-                        manual_git.append(dt)
         except Exception:
             pass
-    if manual_git:
-        human_by_source["git_manual"] = manual_git
 
     return {
         "human_by_source": human_by_source,
-        "agent_by_source": agent_by_source,
         "git_commits": git_commits,
         "extra_tokens": extra_tokens,
     }
@@ -513,16 +411,21 @@ def filter_ts(items: list[datetime], cutoff: datetime | None) -> list[datetime]:
     return [t for t in items if t >= cutoff]
 
 
+def commits_per_prompt(commits: int, prompts: int) -> float | None:
+    if prompts <= 0:
+        return None
+    return round(commits / prompts, 3)
+
+
 def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None) -> dict:
     now = (now or datetime.now(TZ)).astimezone(TZ)
     today = now.date()
     start_date = date.fromisoformat(cfg["vps_start_date"])
+    hetzner_monthly = float(cfg.get("vps_monthly_usd", 15.32))
 
     churn_daily = collect_churn(cache)
-
-    ts_data = collect_human_and_agent_timestamps()
+    ts_data = collect_human_prompts_and_commits()
     human_src = ts_data["human_by_source"]
-    agent_src = ts_data["agent_by_source"]
     git_commits = ts_data["git_commits"]
     studio_all = collect_ai_studio()
 
@@ -537,31 +440,15 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None) -> dic
         elapsed_days = max(1, (today - w_start).days + 1)
         studio_win = collect_ai_studio(since_date=w_start)
 
-        # Hours
-        gap_h = float(cfg["human_gap_minutes"])
-        floor_h = float(cfg["human_burst_floor_minutes"])
-        gap_a = float(cfg["agent_gap_minutes"])
-
-        all_human = [t for lst in human_src.values() for t in filter_ts(lst, cutoff)]
-        human_hours = bucket_active_hours(all_human, gap_minutes=gap_h, floor_minutes=floor_h)
-        human_breakdown = {
-            k: bucket_active_hours(filter_ts(v, cutoff), gap_minutes=gap_h, floor_minutes=floor_h)
+        prompts_by_harness = {
+            k: len(filter_ts(v, cutoff))
             for k, v in human_src.items()
             if filter_ts(v, cutoff)
         }
-
-        all_agent = [t for lst in agent_src.values() for t in filter_ts(lst, cutoff)]
-        agent_hours = bucket_active_hours(all_agent, gap_minutes=gap_a, floor_minutes=2.0)
-        agent_breakdown = {
-            k: bucket_active_hours(filter_ts(v, cutoff), gap_minutes=gap_a, floor_minutes=2.0)
-            for k, v in agent_src.items()
-            if filter_ts(v, cutoff)
-        }
-
-        leverage_ratio = round(agent_hours / human_hours, 2) if human_hours > 0 else None
-
-        # Shipping vs firefighting
+        prompts_n = sum(prompts_by_harness.values())
         commits_n = len(filter_ts(git_commits, cutoff))
+        cpp = commits_per_prompt(commits_n, prompts_n)
+
         restarts_n = 0
         failures_n = 0
         heals_n = 0
@@ -577,11 +464,10 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None) -> dic
         fire_events = failures_n + heals_n
         ship_ratio = round(commits_n / max(1, fire_events), 2)
 
-        # Cheap seat & cache share (local AI Studio proxy + Grok Build when all-time)
         tot_prompt = studio_win["prompt_tokens"]
         tot_cached = studio_win["cached_tokens"]
         tot_tokens = studio_win["total_tokens"]
-        tot_cheap = studio_win["total_tokens"]  # AI Studio proxy seats are all flash/hydrogen/argon
+        tot_cheap = studio_win["total_tokens"]
         if days is None:
             et = ts_data["extra_tokens"]
             tot_prompt += et["grok_prompt"]
@@ -596,12 +482,11 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None) -> dic
             "window_days": elapsed_days,
             "start_date": w_start.isoformat(),
             "end_date": today.isoformat(),
-            "hours": {
-                "human_hours": human_hours,
-                "agent_hours": agent_hours,
-                "leverage_ratio": leverage_ratio,
-                "human_by_harness": human_breakdown,
-                "agent_by_harness": agent_breakdown,
+            "throughput": {
+                "human_prompts": prompts_n,
+                "commits": commits_n,
+                "commits_per_prompt": cpp,
+                "prompts_by_harness": prompts_by_harness,
             },
             "shipping_vs_firefighting": {
                 "commits": commits_n,
@@ -628,6 +513,7 @@ def compute_snapshot(cfg: dict, cache: dict, now: datetime | None = None) -> dic
     return {
         "as_of": now.isoformat(),
         "date_pt": today.isoformat(),
+        "box_monthly_pace": load_box_monthly_pace(hetzner_monthly),
         "sources": {
             "ai_studio_proxy_all_time_tokens": studio_all["total_tokens"],
             "argon_subagent_ratio": argon_sub_ratio,
@@ -648,6 +534,10 @@ def render_markdown(snap: dict) -> str:
     def fmt_ratio(v):
         return f"{v:.2f}x" if v is not None else "n/a"
 
+    def fmt_cpp(t: dict) -> str:
+        c, p, r = t["commits"], t["human_prompts"], t["commits_per_prompt"]
+        return f"{c} / {p} ({r:.2f})" if r is not None else f"{c} / {p} (n/a)"
+
     def fmt_pct(v):
         return f"{v:.1f}%" if v is not None else "n/a"
 
@@ -655,38 +545,43 @@ def render_markdown(snap: dict) -> str:
         f"# zaz-astra Running Ops Telemetry",
         f"",
         f"Updated: `{snap['as_of']}` (PT) · VPS start: `{cfg['vps_start_date']}`",
-        f"AI spend dollars live in `ai-spend-review` (not tracked here).",
+    ]
+    bm = snap.get("box_monthly_pace")
+    if bm:
+        lines.append(
+            f"Total box monthly pace: **${bm['total_box_monthly_usd']:,.2f}/mo** "
+            f"(AI all-in ${bm['ai_monthly_usd']:,.2f} + Hetzner ${bm['hetzner_monthly_usd']:,.2f}; Hetzner excluded from biweekly AI emails)"
+        )
+    lines.extend([
         f"",
         f"| Metric | Last 7d | Last 30d | All-time ({a['window_days']}d) |",
         f"|---|---:|---:|---:|",
-        f"| **Human hands-on hours** | {w7['hours']['human_hours']:.2f}h | {w30['hours']['human_hours']:.2f}h | {a['hours']['human_hours']:.2f}h |",
-        f"| **Agent wall-clock hours** | {w7['hours']['agent_hours']:.2f}h | {w30['hours']['agent_hours']:.2f}h | {a['hours']['agent_hours']:.2f}h |",
-        f"| **Leverage ratio (agent / human)** | {fmt_ratio(w7['hours']['leverage_ratio'])} | {fmt_ratio(w30['hours']['leverage_ratio'])} | {fmt_ratio(a['hours']['leverage_ratio'])} |",
+        f"| **Commits / human prompts** | {fmt_cpp(w7['throughput'])} | {fmt_cpp(w30['throughput'])} | {fmt_cpp(a['throughput'])} |",
         f"| **Commits vs. failures/heals** | {w7['shipping_vs_firefighting']['commits']} / {w7['shipping_vs_firefighting']['service_failures'] + w7['shipping_vs_firefighting']['photon_heals']} ({fmt_ratio(w7['shipping_vs_firefighting']['ship_to_fire_ratio'])}) | {w30['shipping_vs_firefighting']['commits']} / {w30['shipping_vs_firefighting']['service_failures'] + w30['shipping_vs_firefighting']['photon_heals']} ({fmt_ratio(w30['shipping_vs_firefighting']['ship_to_fire_ratio'])}) | {a['shipping_vs_firefighting']['commits']} / {a['shipping_vs_firefighting']['service_failures'] + a['shipping_vs_firefighting']['photon_heals']} ({fmt_ratio(a['shipping_vs_firefighting']['ship_to_fire_ratio'])}) |",
         f"| **Cache hit %** | {fmt_pct(w7['efficiency']['cache_hit_pct'])} | {fmt_pct(w30['efficiency']['cache_hit_pct'])} | {fmt_pct(a['efficiency']['cache_hit_pct'])} |",
         f"| **Cheap-seat token %** | {fmt_pct(w7['efficiency']['cheap_seat_token_pct'])} | {fmt_pct(w30['efficiency']['cheap_seat_token_pct'])} | {fmt_pct(a['efficiency']['cheap_seat_token_pct'])} |",
         f"",
-        f"## All-time Hours Breakdown by Harness",
-    ]
-    for src, hrs in sorted(a["hours"]["human_by_harness"].items(), key=lambda x: -x[1]):
-        ag = a["hours"]["agent_by_harness"].get(src, 0.0)
-        lines.append(f"- `{src}`: **{hrs:.2f}h** human · **{ag:.2f}h** agent")
+        f"## All-time Human Prompts by Harness",
+    ])
+    for src, cnt in sorted(a["throughput"]["prompts_by_harness"].items(), key=lambda x: -x[1]):
+        lines.append(f"- `{src}`: **{cnt}** prompts")
     sub_r = snap["sources"].get("argon_subagent_ratio")
     lines.append("")
     lines.append(f"Grok Build subagent ratio (latest `argon-usage.json`): `{sub_r}`")
     lines.append("")
-    lines.append("Notes: Systemd journal (~7d upstream) is cached incrementally in `vps-telemetry-api-cache.json`; pre-Nov Claude project `.jsonl`s were purged by `claude-journal-cleanup`, so `Last 7d` is the cleanest leverage & ship/fire baseline.")
+    lines.append("Notes: Systemd journal (~7d upstream) is cached incrementally in `vps-telemetry-api-cache.json`. AI spend polling lives exclusively in `ai-spend-review.py`.")
     return "\n".join(lines) + "\n"
 
 
 def upsert_jsonl(snap: dict) -> None:
+    bm = snap.get("box_monthly_pace") or {}
     row = {
         "date_pt": snap["date_pt"],
         "as_of": snap["as_of"],
-        "all_time_human_hours": snap["all_time"]["hours"]["human_hours"],
-        "all_time_agent_hours": snap["all_time"]["hours"]["agent_hours"],
-        "all_time_leverage": snap["all_time"]["hours"]["leverage_ratio"],
-        "d7_human_hours": snap["last_7d"]["hours"]["human_hours"],
+        "box_monthly_usd": bm.get("total_box_monthly_usd"),
+        "d7_commits": snap["last_7d"]["throughput"]["commits"],
+        "d7_prompts": snap["last_7d"]["throughput"]["human_prompts"],
+        "d7_commits_per_prompt": snap["last_7d"]["throughput"]["commits_per_prompt"],
         "d7_ship_to_fire": snap["last_7d"]["shipping_vs_firefighting"]["ship_to_fire_ratio"],
         "d30_cache_hit_pct": snap["last_30d"]["efficiency"]["cache_hit_pct"],
         "d30_cheap_seat_pct": snap["last_30d"]["efficiency"]["cheap_seat_token_pct"],
@@ -718,18 +613,11 @@ def write_outputs(snap: dict, md: str) -> None:
 
 
 def self_test() -> int:
-    t0 = datetime(2026, 11, 14, 10, 0, tzinfo=timezone.utc)
-    # Single isolated prompt -> 3 min floor = 0.05h
-    assert bucket_active_hours([t0], gap_minutes=15, floor_minutes=3) == 0.05
-    # Two prompts 10 min apart -> 10 min = 0.17h
-    assert bucket_active_hours([t0, t0 + timedelta(minutes=10)], gap_minutes=15, floor_minutes=3) == 0.17
-    # Parallel duplicate within 10s collapses -> 0.05h
-    assert bucket_active_hours([t0, t0 + timedelta(seconds=10)], gap_minutes=15, floor_minutes=3) == 0.05
-    # Two separate bursts 2h apart -> 3m + 3m = 6m = 0.10h
-    assert bucket_active_hours([t0, t0 + timedelta(hours=2)], gap_minutes=15, floor_minutes=3) == 0.10
     assert parse_any_ts(1794267852230).year == 2026
     assert parse_any_ts(1794265639).year == 2026
     assert parse_any_ts("2026-11-15T00:06:13.803196996Z").year == 2026
+    assert commits_per_prompt(15, 100) == 0.15
+    assert commits_per_prompt(5, 0) is None
     print("vps-telemetry self-test ok")
     return 0
 
@@ -752,10 +640,10 @@ def main(argv: list[str]) -> int:
     save_config_if_missing(cfg)
     save_cache(cache)
     write_outputs(snap, md)
+    t7 = snap["last_7d"]["throughput"]
     print(
         f"vps-telemetry: ok date={snap['date_pt']} "
-        f"human={snap['all_time']['hours']['human_hours']:.2f}h "
-        f"agent={snap['all_time']['hours']['agent_hours']:.2f}h"
+        f"d7_commits_per_prompt={t7['commits']}/{t7['human_prompts']} ({t7['commits_per_prompt']})"
     )
     return 0
 

@@ -42,6 +42,7 @@ from astra_common import http_json, load_env, validate_xai_team
 TZ = ZoneInfo("America/Los_Angeles")
 CENTS = Decimal("0.01")
 TOP_N = 5
+HETZNER_MONTHLY_USD = Decimal(os.environ.get("HETZNER_MONTHLY_USD", "15.32"))
 ANCHOR = datetime(2026, 11, 13, tzinfo=TZ).date()  # first Friday of the cadence
 PLAN_MONTHLY_USD = Decimal(os.environ.get("AI_PLAN_MONTHLY_USD", "20"))
 CONSIDER_UPGRADE_MONTHLY_USD = Decimal("60")
@@ -655,7 +656,18 @@ def write_state(
     if window_end and monthly_all is not None:
         history[window_end] = f"{monthly_all.quantize(CENTS, rounding=ROUND_HALF_UP):.2f}"
     hist_list = [{"window_end": k, "monthly_all": v} for k, v in sorted(history.items())[-26:]]
-    payload = {"as_of": now.isoformat(), "body": body, "history": hist_list}
+    latest_ai = monthly_all if monthly_all is not None else (dec(hist_list[-1]["monthly_all"]) if hist_list else Decimal("0"))
+    box_monthly = (latest_ai + HETZNER_MONTHLY_USD).quantize(CENTS, rounding=ROUND_HALF_UP)
+    payload = {
+        "as_of": now.isoformat(),
+        "body": body,
+        "history": hist_list,
+        "box_monthly_pace": {
+            "ai_monthly_usd": f"{latest_ai.quantize(CENTS, rounding=ROUND_HALF_UP):.2f}",
+            "hetzner_monthly_usd": f"{HETZNER_MONTHLY_USD.quantize(CENTS, rounding=ROUND_HALF_UP):.2f}",
+            "total_box_monthly_usd": f"{box_monthly:.2f}",
+        },
+    }
     STATE_PATH.write_text(json.dumps(payload, indent=2) + "\n")
     os.chmod(STATE_PATH, 0o600)
 
