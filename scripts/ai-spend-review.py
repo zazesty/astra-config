@@ -631,8 +631,13 @@ def build(now: datetime | None = None) -> str:
     if goog.get("ok") and oru.get("ok"):
         variable_usd -= oru.get("google_byok", Decimal("0"))
     variable_usd += sum((card.get("overage") or {}).values(), Decimal("0"))
-    monthly_all = (variable_usd * Decimal("30") / Decimal("14") + plans_usd).quantize(CENTS, rounding=ROUND_HALF_UP)
-    lines.append(f"All-in monthly pace: ~{money(monthly_all)} (usage + overage paced from 14d, plus plans {money(plans_usd)}).")
+    variable_monthly = (variable_usd * Decimal("30") / Decimal("14")).quantize(CENTS, rounding=ROUND_HALF_UP)
+    monthly_all = (variable_monthly + plans_usd).quantize(CENTS, rounding=ROUND_HALF_UP)
+    lines.append("Summary")
+    lines.append(f"  14-day API/usage spend: {money(variable_usd)} (~{money(variable_monthly)}/mo pace)")
+    lines.append(f"  Monthly subscriptions:  {money(plans_usd)}/mo")
+    lines.append(f"  All-in monthly pace:    ~{money(monthly_all)}/mo")
+    lines.append("")
     hard_blocks_14d = int(os.environ.get("AI_HARD_BLOCKS", "0") or 0)
     dec_res = evaluate_decision(variable_usd, PLAN_MONTHLY_USD, hard_blocks_14d)
     lines.append(dec_res["message"])
@@ -678,20 +683,18 @@ def evaluate_decision(
             action = "advise-upgrade"
     if action == "advise-upgrade":
         message = (
-            f"Advise you upgrade AI plan — monthly spend is ~{money(monthly_pace)} "
-            f"(over $80; 14d {money(variable_usd)})."
+            f"Plan check: Advise upgrading AI plan — pay-as-you-go pace (~{money(monthly_pace)}/mo) "
+            "is over the $80/mo threshold."
         )
     elif action == "consider-upgrade":
         message = (
-            f"Consider upgrading AI plan — monthly spend is ~{money(monthly_pace)} "
-            f"(over $60; 14d {money(variable_usd)}). "
-            "Tiebreaker is if rate limits interrupt workflow."
+            f"Plan check: Consider upgrading AI plan — pay-as-you-go pace (~{money(monthly_pace)}/mo) "
+            "is over the $60/mo threshold. Tiebreaker is if rate limits interrupt workflow."
         )
     else:
         message = (
-            f"Stay on current AI plan — monthly spend is ~{money(monthly_pace)} "
-            f"(under $60; 14d {money(variable_usd)}). "
-            "Tiebreaker is if rate limits interrupt workflow."
+            f"Plan check: Stay on current AI plan — pay-as-you-go pace (~{money(monthly_pace)}/mo) "
+            "is under the $60/mo threshold. Tiebreaker is if rate limits interrupt workflow."
         )
     return {
         "action": action,
