@@ -578,7 +578,29 @@ def format_source_lines(xai: dict, oru: dict, goog: dict) -> list[str]:
     return parts
 
 
-def build(now: datetime | None = None) -> str:
+def load_history() -> list[dict]:
+    if not STATE_PATH.is_file():
+        return []
+    try:
+        data = json.loads(STATE_PATH.read_text())
+    except Exception:
+        return []
+    raw = data.get("history")
+    return [row for row in raw if isinstance(row, dict) and row.get("window_end") and row.get("monthly_all") is not None] if isinstance(raw, list) else []
+
+
+def format_pace_line(monthly_all: Decimal, end_iso: str, history: list[dict], limit: int = 3) -> str:
+    entries = {row["window_end"]: dec(row["monthly_all"]) for row in history}
+    entries[end_iso] = monthly_all
+    ordered = sorted(entries.items())[-limit:]
+    base = f"All-in monthly pace: ~{money(monthly_all)}/mo"
+    if len(ordered) >= 2:
+        trail = " -> ".join(money(val) for _, val in ordered)
+        return f"{base} (last {len(ordered)}: {trail})"
+    return base
+
+
+def build_report(now: datetime | None = None) -> tuple[str, Decimal, str]:
     now = now or datetime.now(TZ)
     start, end = window(now)
     xai = xai_usage(start, end)
@@ -633,17 +655,18 @@ def build(now: datetime | None = None) -> str:
     variable_usd += sum((card.get("overage") or {}).values(), Decimal("0"))
     variable_monthly = (variable_usd * Decimal("30") / Decimal("14")).quantize(CENTS, rounding=ROUND_HALF_UP)
     monthly_all = (variable_monthly + plans_usd).quantize(CENTS, rounding=ROUND_HALF_UP)
-    lines.append("Summary")
-    lines.append(f"  14-day API/usage spend: {money(variable_usd)} (~{money(variable_monthly)}/mo pace)")
-    lines.append(f"  Monthly subscriptions:  {money(plans_usd)}/mo")
-    lines.append(f"  All-in monthly pace:    ~{money(monthly_all)}/mo")
-    lines.append("")
+    lines.append(format_pace_line(monthly_all, end.isoformat(), load_history()))
     hard_blocks_14d = int(os.environ.get("AI_HARD_BLOCKS", "0") or 0)
     dec_res = evaluate_decision(variable_usd, PLAN_MONTHLY_USD, hard_blocks_14d)
     lines.append(dec_res["message"])
     if goog.get("ok"):
         auto_close_gcp_todo()
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n", monthly_all, end.isoformat()
+
+
+def build(now: datetime | None = None) -> str:
+    body, _, _ = build_report(now)
+    return body
 
 
 def auto_close_gcp_todo() -> None:
@@ -683,18 +706,17 @@ def evaluate_decision(
             action = "advise-upgrade"
     if action == "advise-upgrade":
         message = (
-            f"Plan check: Advise upgrading AI plan — pay-as-you-go pace (~{money(monthly_pace)}/mo) "
-            "is over the $80/mo threshold."
+            "Plan check: Advise upgrading AI plan — pay-as-you-go usage is over the $80/mo threshold."
         )
     elif action == "consider-upgrade":
         message = (
-            f"Plan check: Consider upgrading AI plan — pay-as-you-go pace (~{money(monthly_pace)}/mo) "
-            "is over the $60/mo threshold. Tiebreaker is if rate limits interrupt workflow."
+            "Plan check: Consider upgrading AI plan — pay-as-you-go usage is over the $60/mo threshold. "
+            "Tiebreaker is if rate limits interrupt workflow."
         )
     else:
         message = (
-            f"Plan check: Stay on current AI plan — pay-as-you-go pace (~{money(monthly_pace)}/mo) "
-            "is under the $60/mo threshold. Tiebreaker is if rate limits interrupt workflow."
+            "Plan check: Stay on current AI plan — pay-as-you-go usage is under the $60/mo threshold. "
+            "Tiebreaker is if rate limits interrupt workflow."
         )
     return {
         "action": action,
@@ -706,10 +728,19 @@ def evaluate_decision(
     }
 
 
-def write_state(now: datetime, body: str) -> None:
+def write_state(
+    now: datetime,
+    body: str,
+    window_end: str | None = None,
+    monthly_all: Decimal | None = None,
+) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(STATE_DIR, 0o700)
-    payload = {"as_of": now.isoformat(), "body": body}
+    history = {row["window_end"]: str(row["monthly_all"]) for row in load_history()}
+    if window_end and monthly_all is not None:
+        history[window_end] = f"{monthly_all.quantize(CENTS, rounding=ROUND_HALF_UP):.2f}"
+    hist_list = [{"window_end": k, "monthly_all": v} for k, v in sorted(history.items())[-26:]]
+    payload = {"as_of": now.isoformat(), "body": body, "history": hist_list}
     STATE_PATH.write_text(json.dumps(payload, indent=2) + "\n")
     os.chmod(STATE_PATH, 0o600)
 
@@ -769,6 +800,15 @@ def self_test() -> int:
     )
     assert src_nobq[1] == "OpenRouter $19.07 (credits $18.07 + BYOK $1.00)", src_nobq
     assert src_nobq[2].startswith("Google $4.84 (OR BYOK only; BigQuery n/a"), src_nobq
+    assert format_pace_line(Decimal("57.21"), "2026-11-26", []) == "All-in monthly pace: ~$57.21/mo"
+    assert format_pace_line(
+        Decimal("57.21"),
+        "2026-11-26",
+        [
+            {"window_end": "2026-10-29", "monthly_all": "48.10"},
+            {"window_end": "2026-11-12", "monthly_all": "52.40"},
+        ],
+    ) == "All-in monthly pace: ~$57.21/mo (last 3: $48.10 -> $52.40 -> $57.21)"
     print("ai-spend-review self-test ok")
     return 0
 
@@ -782,11 +822,11 @@ def main(argv: list[str]) -> int:
     if not force and not due(now.date()):
         print(f"ai-spend-review: not a review Friday ({now.date().isoformat()})")
         return 0
-    body = build(now)
+    body, monthly_all, end_iso = build_report(now)
     if no_send:
         sys.stdout.write(body)
         return 0
-    write_state(now, body)
+    write_state(now, body, end_iso, monthly_all)
     start, end = window(now)
     append_snapshot(start, end, xai_usage(start, end), or_usage(start, end), ai_studio_usage(start, end))
     subject = f"AI spend {start.isoformat()} – {end.isoformat()}"
